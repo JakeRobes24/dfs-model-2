@@ -3,9 +3,61 @@ import pandas as pd
 from model import consensus,optimize
 from evidence import validate_sources,evaluate_minutes,scenario_projections
 from calibration import audit_actuals,evaluate_bias_correction
+from research_integration import prepare_research_pool, optimize_research, lineup_summary
+from research_upgrade import compare_scenarios, scenario_pool, verify_lineups
+from pathlib import Path
 st.set_page_config(page_title='DFS Model 2.0 | Consensus',layout='wide')
 st.title('DFS Model 2.0 — Minutes & Source Consensus')
 st.caption('Evidence-first projections. Missing source evidence is never presented as verified.')
+
+st.subheader('November 20 research-integrated optimization')
+st.caption('This tab uses the 247-player cumulative research file, with historical evidence, independent minutes, injury snapshot, and explicitly labeled tentative projections. It does not auto-verify live news.')
+research_upload=st.file_uploader('Optional replacement cumulative research CSV',type='csv',key='research_upload')
+bundled=Path(__file__).parent/'data'/'nov20_research_v33_full.csv'
+if research_upload is not None or bundled.exists():
+    try:
+        research=pd.read_csv(research_upload if research_upload is not None else bundled,low_memory=False)
+        col='v33_tentative_fd_for_comparison'
+        left,right=st.columns(2)
+        exclude_q=left.checkbox('Exclude questionable players (morning report)',True,key='research_q')
+        exclude_h=right.checkbox('Exclude Kevin Huerter for comparison',True,key='research_h')
+        overlap_r=st.slider('Maximum overlap — research lineups',4,8,7,key='research_overlap')
+        pool=prepare_research_pool(research,projection_column=col,exclude_questionable=exclude_q,exclude_huerter=exclude_h)
+        stats=st.columns(4)
+        stats[0].metric('Research rows',len(pool))
+        stats[1].metric('Historical L5 coverage',int(pool.historical_l5_fd.notna().sum()))
+        stats[2].metric('Excluded by status/choice',int((~pool.eligible).sum()))
+        stats[3].metric('Missing scenario scores',int(pool.adjusted_fd_points.isna().sum()))
+        st.dataframe(pool[['fanduel_name','salary','official_status_snapshot','projected_fd_points','adjusted_fd_points','historical_l5_fd','historical_l10_fd','historical_l5_minutes','minutes_disagreement','confidence','projection_warning']],use_container_width=True,hide_index=True)
+        st.download_button('Download 247-player research model input',pool.to_csv(index=False).encode(),'nov20_research_optimizer_input.csv')
+        if st.button('Optimize four lineups from research',key='research_opt'):
+            lineups=__import__('model').optimize(pool,number=4,max_overlap=overlap_r)
+            if lineups.empty:st.error('No legal four-lineup portfolio under current filters.')
+            else:
+                st.dataframe(lineup_summary(lineups),hide_index=True,use_container_width=True)
+                for k,g in lineups.groupby('lineup'):
+                    st.markdown(f'**Lineup {k} — ${g.salary.sum():,} — {g.adjusted_fd_points.sum():.1f} scenario FD**')
+                    st.dataframe(g[['slot','player','salary','adjusted_fd_points','confidence']],hide_index=True,use_container_width=True)
+                st.download_button('Save pre-news lineups and model projections',lineups.to_csv(index=False).encode(),'nov20_research_model_lineups.csv')
+        st.subheader('Model 2.0 — baseline vs uncertainty vs historical-upside sensitivity')
+        st.caption('Upward historical scoring evidence is used only as a capped sensitivity proxy, never as a calibrated ceiling. Ownership/correlation are not estimated.')
+        if st.button('Compare all three research scenarios and save four lineups each',key='research_scenarios'):
+            scenario_inputs,scenario_lineups=compare_scenarios(research,max_overlap=overlap_r,exclude_questionable=exclude_q,exclude_huerter=exclude_h)
+            for mode,g in scenario_lineups.groupby('scenario',sort=False):
+                st.markdown(f'**{mode}**')
+                st.dataframe(lineup_summary(g),hide_index=True,use_container_width=True)
+                for k,team in g.groupby('lineup'):
+                    with st.expander(f'{mode} lineup {k} — ${team.salary.sum():,} — {team.adjusted_fd_points.sum():.1f} sensitivity FD'):
+                        st.dataframe(team[['slot','player','salary','adjusted_fd_points','confidence']],hide_index=True)
+            st.download_button('Download scenario comparison lineups',scenario_lineups.to_csv(index=False).encode(),'nov20_scenario_lineups.csv',key='download_scenario_lineups')
+            st.download_button('Download full research scoring inputs',scenario_inputs.to_csv(index=False).encode(),'nov20_scenario_inputs.csv',key='download_scenario_inputs')
+            st.download_button('Save pre-news model snapshot',scenario_lineups.to_csv(index=False).encode(),'nov20_pre_news_model_snapshot.csv',key='download_snapshot')
+        st.warning('Morning injury statuses, third-party historical data and tentative projections are NOT live confirmed starters or final projections. Review every uncertain player before lock.')
+    except Exception as exc:st.exception(exc)
+else:
+    st.info('Upload the cumulative research CSV to use the research-integrated optimizer.')
+st.divider()
+
 base=st.file_uploader('Upload reconciled contest + DAILY CSV',type='csv',key='base')
 sources=st.file_uploader('Upload independent minutes estimates (optional)',type='csv',key='sources')
 history=st.file_uploader('Upload historical minutes (optional)',type='csv',key='history')
