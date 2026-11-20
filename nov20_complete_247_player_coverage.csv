@@ -1,0 +1,248 @@
+fanduel_id,fanduel_name,salary,injury_flag,projection_name,projected_minutes,projected_fd_points,match_type,coverage_status,needs_manual_review
+136961-84680,Shai Gilgeous-Alexander,10600,,Shai Gilgeous-Alexander,23.86,33.5,normalized_exact,matched_DAILY,False
+136961-157808,Cade Cunningham,10200,P,Cade Cunningham,22.4,30.9,normalized_exact,matched_DAILY,False
+136961-15755,Anthony Davis,10000,,Anthony Davis,22.5,28.8,normalized_exact,matched_DAILY,False
+136961-157851,Franz Wagner,9800,,Franz Wagner,25.32,27.1,normalized_exact,matched_DAILY,False
+136961-157833,Jalen Johnson,9600,,Jalen Johnson,24.62,33.6,normalized_exact,matched_DAILY,False
+136961-157822,Scottie Barnes,9200,,Scottie Barnes,24.85,28.8,normalized_exact,matched_DAILY,False
+136961-66113,Donovan Mitchell,8500,,Donovan Mitchell,22.15,27.6,normalized_exact,matched_DAILY,False
+136961-58460,Devin Booker,7900,,Devin Booker,23.91,27.8,normalized_exact,matched_DAILY,False
+136961-60021,Pascal Siakam,7700,,Pascal Siakam,20.37,24.1,normalized_exact,matched_DAILY,False
+136961-171770,Paolo Banchero,7500,O,Paolo Banchero,22.9,26.1,normalized_exact,excluded_contest_OUT,False
+136961-145337,Tyrese Haliburton,7500,O,Tyrese Haliburton,20.97,24.4,normalized_exact,excluded_contest_OUT,False
+136961-188412,Keyonte George,7400,,Keyonte George,20.96,22.9,normalized_exact,matched_DAILY,False
+136961-110310,Zion Williamson,7300,,Zion Williamson,24.57,25.6,normalized_exact,matched_DAILY,False
+136961-9644,James Harden,7300,,James Harden,21.63,25.2,normalized_exact,matched_DAILY,False
+136961-84671,Trae Young,7200,,Trae Young,23.06,24.3,normalized_exact,matched_DAILY,False
+136961-110995,Naz Reid,7100,,Naz Reid,19.17,20.9,normalized_exact,matched_DAILY,False
+136961-188408,Anthony Black,7100,,Anthony Black,21.61,21.4,normalized_exact,matched_DAILY,False
+136961-157845,Evan Mobley,7000,O,Evan Mobley,20.95,25.2,normalized_exact,excluded_contest_OUT,False
+136961-42669,Julius Randle,7000,,Julius Randle,23.53,26.0,normalized_exact,matched_DAILY,False
+136961-171784,Dyson Daniels,7000,,Dyson Daniels,22.44,23.7,normalized_exact,matched_DAILY,False
+136961-228131,Jeremiah Fears,7000,,Jeremiah Fears,23.06,21.9,normalized_exact,matched_DAILY,False
+136961-84682,Michael Porter,6900,,Michael Porter Jr.,23.61,26.9,normalized_exact,matched_DAILY,False
+136961-110356,Nickeil Alexander-Walker,6900,,Nickeil Alexander-Walker,23.05,24.0,normalized_exact,matched_DAILY,False
+136961-80825,Isaiah Hartenstein,6900,,Isaiah Hartenstein,18.92,21.3,normalized_exact,matched_DAILY,False
+136961-110357,RJ Barrett,6800,O,RJ Barrett,24.91,24.2,normalized_exact,excluded_contest_OUT,False
+136961-145304,Onyeka Okongwu,6800,,Onyeka Okongwu,21.89,24.2,normalized_exact,matched_DAILY,False
+136961-188419,Brandon Miller,6700,,Brandon Miller,18.27,19.7,normalized_exact,matched_DAILY,False
+136961-157905,Josh Giddey,6700,,Josh Giddey,23.46,30.7,normalized_exact,matched_DAILY,False
+136961-248938,Darryn Peterson,6600,,Darryn Peterson,20.86,18.9,normalized_exact,matched_DAILY,False
+136961-80821,Jarrett Allen,6600,,Jarrett Allen,16.69,19.0,normalized_exact,matched_DAILY,False
+136961-188426,Ausar Thompson,6500,,Ausar Thompson,18.98,20.0,normalized_exact,matched_DAILY,False
+136961-14513,Kawhi Leonard,6500,O,Kawhi Leonard,22.01,28.4,normalized_exact,excluded_contest_OUT,False
+136961-145348,Immanuel Quickley,6500,,Immanuel Quickley,22.91,22.6,normalized_exact,matched_DAILY,False
+136961-16293,Norman Powell,6400,,Norman Powell,22.65,24.6,normalized_exact,matched_DAILY,False
+136961-145328,Saddiq Bey,6300,,Saddiq Bey,21.22,19.1,normalized_exact,matched_DAILY,False
+136961-203722,Kyshawn George,6300,,Kyshawn George,23.16,23.1,normalized_exact,matched_DAILY,False
+136961-145334,Desmond Bane,6200,,Desmond Bane,23.49,22.4,normalized_exact,matched_DAILY,False
+136961-203761,Matas Buzelis,6200,,Matas Buzelis,22.65,23.9,normalized_exact,matched_DAILY,False
+136961-70827,Ivica Zubac,6100,,Ivica Zubac,15.41,16.5,normalized_exact,matched_DAILY,False
+136961-171747,Andrew Nembhard,6100,Q,Andrew Nembhard,21.19,22.0,normalized_exact,matched_DAILY,False
+136961-203808,Ajay Mitchell,6000,,Ajay Mitchell,20.21,19.8,normalized_exact,matched_DAILY,False
+136961-157839,Day'Ron Sharpe,6000,,Day'Ron Sharpe,16.75,20.2,normalized_exact,matched_DAILY,False
+136961-157847,Trey Murphy,6000,Q,Trey Murphy III,25.17,24.7,normalized_exact,matched_DAILY,False
+136961-84678,Miles Bridges,6000,,Miles Bridges,19.89,20.1,normalized_exact,matched_DAILY,False
+136961-203812,Daniss Jenkins,5900,,Daniss Jenkins,19.37,18.5,normalized_exact,matched_DAILY,False
+136961-248945,AJ Dybantsa,5900,,AJ Dybantsa,22.8,19.4,normalized_exact,matched_DAILY,False
+136961-145322,Jalen Smith,5900,,Jalen Smith,19.98,23.4,normalized_exact,matched_DAILY,False
+136961-19067,CJ McCollum,5800,O,C.J. McCollum,18.08,18.8,normalized_exact,excluded_contest_OUT,False
+136961-84676,Wendell Carter,5800,,Wendell Carter Jr.,22.4,20.0,normalized_exact,matched_DAILY,False
+136961-157850,Jalen Suggs,5700,,Jalen Suggs,21.9,23.9,normalized_exact,matched_DAILY,False
+136961-171779,Jalen Duren,5600,O,Jalen Duren,17.54,22.9,normalized_exact,excluded_contest_OUT,False
+136961-171765,Moussa Diabate,5500,,Moussa Diabate,18.3,17.4,normalized_exact,matched_DAILY,False
+136961-228122,Collin Murray-Boyles,5500,O,Collin Murray-Boyles,17.27,16.2,normalized_exact,excluded_contest_OUT,False
+136961-248962,Aday Mara,5400,,Aday Mara,18.3,19.6,normalized_exact,matched_DAILY,False
+136961-171761,Peyton Watson,5400,Q,Peyton Watson,18.2,16.9,normalized_exact,matched_DAILY,False
+136961-228119,Ace Bailey,5300,,Ace Bailey,21.0,18.1,normalized_exact,matched_DAILY,False
+136961-145329,Paul Reed,5300,,Paul Reed,17.03,21.2,normalized_exact,matched_DAILY,False
+136961-84711,Grayson Allen,5200,O,Grayson Allen,17.07,16.8,normalized_exact,excluded_contest_OUT,False
+136961-203729,Yves Missi,5200,,Yves Missi,17.18,16.3,normalized_exact,matched_DAILY,False
+136961-228132,Derik Queen,5100,,Derik Queen,15.42,16.7,normalized_exact,matched_DAILY,False
+136961-67708,Dejounte Murray,5000,O,Dejounte Murray,22.19,22.3,normalized_exact,excluded_contest_OUT,False
+136961-84704,Kevin Huerter,5000,,Kevin Huerter,17.84,16.3,normalized_exact,matched_DAILY,False
+136961-58378,Jakob Poeltl,4900,,Jakob Poeltl,18.93,18.2,normalized_exact,matched_DAILY,False
+136961-203798,Jamal Shead,4900,,Jamal Shead,19.19,16.1,normalized_exact,matched_DAILY,False
+136961-60233,Dillon Brooks,4900,,Dillon Brooks,20.73,19.1,normalized_exact,matched_DAILY,False
+136961-85137,Duncan Robinson,4800,O,Duncan Robinson,21.51,16.6,normalized_exact,excluded_contest_OUT,False
+136961-66236,John Collins,4800,,John Collins,18.43,16.2,normalized_exact,matched_DAILY,False
+136961-110322,Jordan Poole,4800,,Jordan Poole,16.01,13.6,normalized_exact,matched_DAILY,False
+136961-203731,Jared McCain,4800,,Jared McCain,19.99,16.2,normalized_exact,matched_DAILY,False
+136961-157907,Jalen Green,4700,,Jalen Green,19.12,19.3,normalized_exact,matched_DAILY,False
+136961-110326,Coby White,4700,,Coby White,11.73,12.3,normalized_exact,matched_DAILY,False
+136961-203716,Tristan da Silva,4700,,Tristan Da Silva,21.44,16.9,normalized_exact,matched_DAILY,False
+136961-203727,Ja'Kobe Walter,4700,,Ja'Kobe Walter,23.21,17.2,normalized_exact,matched_DAILY,False
+136961-110340,Jaxson Hayes,4600,,Jaxson Hayes,16.43,14.7,normalized_exact,matched_DAILY,False
+136961-58153,Kelly Oubre,4600,,Kelly Oubre,15.57,13.1,normalized_exact,matched_DAILY,False
+136961-228159,Tyrese Proctor,4600,,Tyrese Proctor,13.53,12.1,normalized_exact,matched_DAILY,False
+136961-179762,Quenton Jackson,4500,,Quenton Jackson,14.29,13.7,normalized_exact,matched_DAILY,False
+136961-157829,Aaron Wiggins,4500,,Aaron Wiggins,17.91,16.0,normalized_exact,matched_DAILY,False
+136961-228110,Nolan Traore,4500,,Nolan Traore,16.97,14.6,normalized_exact,matched_DAILY,False
+136961-145333,Aaron Nesmith,4500,,Aaron Nesmith,17.09,14.0,normalized_exact,matched_DAILY,False
+136961-248992,Meleek Thomas,4400,,Meleek Thomas,16.09,14.2,normalized_exact,matched_DAILY,False
+136961-171668,Collin Gillespie,4300,,Collin Gillespie,16.87,16.7,normalized_exact,matched_DAILY,False
+136961-228111,Danny Wolf,4300,,Danny Wolf,18.45,17.9,normalized_exact,matched_DAILY,False
+136961-228109,Egor Demin,4300,,Egor Demin,16.56,14.4,normalized_exact,matched_DAILY,False
+136961-160174,Jordan Goodwin,4300,,Jordan Goodwin,12.9,13.0,normalized_exact,matched_DAILY,False
+136961-188413,Brice Sensabaugh,4300,,Brice Sensabaugh,10.72,9.6,normalized_exact,matched_DAILY,False
+136961-203780,Oso Ighodaro,4200,,Oso Ighodaro,15.19,13.4,normalized_exact,matched_DAILY,False
+136961-63123,Mario Hezonja,4200,,Mario Hezonja,12.03,11.5,normalized_exact,matched_DAILY,False
+136961-145323,Tre Jones,4200,,Tre Jones,16.81,18.0,normalized_exact,matched_DAILY,False
+136961-23981,Alex Caruso,4200,Q,Alex Caruso,14.54,13.1,normalized_exact,matched_DAILY,False
+136961-18393,T.J. McConnell,4200,P,T.J. McConnell,8.95,11.3,normalized_exact,matched_DAILY,False
+136961-112709,Javonte Green,4100,,Javonte Green,11.52,9.4,normalized_exact,matched_DAILY,False
+136961-248937,Kingston Flemings,4100,Q,Kingston Flemings,16.77,16.2,normalized_exact,matched_DAILY,False
+136961-111273,Luguentz Dort,4100,,Luguentz Dort,17.49,12.5,normalized_exact,matched_DAILY,False
+136961-145341,Isaac Okoro,4100,,Isaac Okoro,17.14,12.0,normalized_exact,matched_DAILY,False
+136961-203728,Jaylon Tyson,4100,O,Jaylon Tyson,14.73,13.1,normalized_exact,excluded_contest_OUT,False
+136961-188431,Noah Clowney,4000,,Noah Clowney,13.3,11.5,normalized_exact,matched_DAILY,False
+136961-157848,Herbert Jones,4000,,Herbert Jones,17.85,12.7,normalized_exact,matched_DAILY,False
+136961-67312,Thomas Bryant,4000,,Thomas Bryant,10.07,10.9,normalized_exact,matched_DAILY,False
+136961-40201,Dennis Schroder,4000,O,Dennis Schroder,17.29,15.4,normalized_exact,excluded_contest_OUT,False
+136961-55057,Jusuf Nurkic,4000,O,Jusuf Nurkic,18.06,22.2,normalized_exact,excluded_contest_OUT,False
+136961-85305,Kenrich Williams,4000,,Kenrich Williams,15.98,14.4,normalized_exact,matched_DAILY,False
+136961-203726,Isaiah Collier,4000,,Isaiah Collier,10.73,11.0,normalized_exact,matched_DAILY,False
+136961-188416,Bilal Coulibaly,3900,,Bilal Coulibaly,16.68,15.3,normalized_exact,matched_DAILY,False
+136961-23665,Buddy Hield,3900,,Buddy Hield,7.81,6.8,normalized_exact,matched_DAILY,False
+136961-248957,Mikel Brown,3900,,Mikel Brown,17.23,16.4,normalized_exact,matched_DAILY,False
+136961-110359,Goga Bitadze,3900,,Goga Bitadze,8.81,10.1,normalized_exact,matched_DAILY,False
+136961-228130,Khaman Maluach,3900,,Khaman Maluach,13.83,14.3,normalized_exact,matched_DAILY,False
+136961-228147,Ryan Kalkbrenner,3900,,Ryan Kalkbrenner,13.81,12.9,normalized_exact,matched_DAILY,False
+136961-228148,Sion James,3900,,Sion James,16.55,11.0,normalized_exact,matched_DAILY,False
+136961-145339,Obi Toppin,3900,,Obi Toppin,12.56,13.6,normalized_exact,matched_DAILY,False
+136961-158137,Jock Landale,3900,O,Jock Landale,10.57,10.9,normalized_exact,excluded_contest_OUT,False
+136961-189467,Craig Porter,3800,,Craig Porter Jr.,8.75,8.2,normalized_exact,matched_DAILY,False
+136961-157819,Corey Kispert,3800,,Corey Kispert,8.57,7.4,normalized_exact,matched_DAILY,False
+136961-171758,Jaylin Williams,3800,,Jaylin Williams,14.12,13.9,normalized_exact,matched_DAILY,False
+136961-110318,Grant Williams,3800,O,Grant Williams,13.59,11.6,normalized_exact,excluded_contest_OUT,False
+136961-171793,Karlo Matkovic,3800,,Karlo Matkovic,14.84,13.7,normalized_exact,matched_DAILY,False
+136961-228118,Tre Johnson,3800,,Tre Johnson,16.94,13.8,normalized_exact,matched_DAILY,False
+136961-213367,Jamison Battle,3800,,Jamison Battle,15.07,10.7,normalized_exact,matched_DAILY,False
+136961-159097,Jay Huff,3800,,Jay Huff,11.05,12.0,normalized_exact,matched_DAILY,False
+136961-145308,Patrick Williams,3800,,Patrick Williams,21.76,17.1,normalized_exact,matched_DAILY,False
+136961-145330,Isaiah Joe,3800,,Isaiah Joe,10.75,9.0,normalized_exact,matched_DAILY,False
+136961-188409,Jarace Walker,3800,,Jarace Walker,11.79,11.0,normalized_exact,matched_DAILY,False
+136961-66046,Luke Kennard,3800,,Luke Kennard,12.97,10.3,normalized_exact,matched_DAILY,False
+136961-188449,Jalen Slawson,3700,,Jalen Slawson,10.13,9.6,normalized_exact,matched_DAILY,False
+136961-188452,Leonard Miller,3700,,Leonard Miller,12.44,12.2,normalized_exact,matched_DAILY,False
+136961-248936,Zuby Ejiofor,3700,,Zuby Ejiofor,8.19,8.0,normalized_exact,matched_DAILY,False
+136961-248950,Christian Anderson,3700,,Christian Anderson Jr.,8.99,7.7,normalized_exact,matched_DAILY,False
+136961-248959,Allen Graves,3700,,Allen Graves,10.46,9.0,normalized_exact,matched_DAILY,False
+136961-248963,Bennett Stirtz,3700,,Bennett Stirtz,16.26,12.9,normalized_exact,matched_DAILY,False
+136961-171669,Keon Ellis,3700,,Keon Ellis,16.29,12.0,normalized_exact,matched_DAILY,False
+136961-84673,Deandre Ayton,3700,,Deandre Ayton,9.67,9.1,normalized_exact,matched_DAILY,False
+136961-84696,Jevon Carter,3700,,Jevon Carter,10.89,9.0,normalized_exact,matched_DAILY,False
+136961-228155,Alijah Martin,3700,,Alijah Martin,10.63,8.9,normalized_exact,matched_DAILY,False
+136961-18338,Royce O'Neale,3700,,Royce O'Neale,13.65,11.0,normalized_exact,matched_DAILY,False
+136961-145317,Sam Merrill,3700,,Sam Merrill,15.55,12.3,normalized_exact,matched_DAILY,False
+136961-145325,Josh Green,3700,,Josh Green,14.58,8.7,normalized_exact,matched_DAILY,False
+136961-203724,Ryan Dunn,3700,,Ryan Dunn,14.68,12.7,normalized_exact,matched_DAILY,False
+136961-20992,Larry Nance,3600,,Larry Nance Jr.,8.82,7.1,normalized_exact,matched_DAILY,False
+136961-188418,Kobe Brown,3600,,Kobe Brown,11.87,9.5,normalized_exact,matched_DAILY,False
+136961-203778,Kyle Filipowski,3600,,Kyle Filipowski,8.35,9.0,normalized_exact,matched_DAILY,False
+136961-213508,Elijah Harkless,3600,,Elijah Harkless,17.38,14.5,normalized_exact,matched_DAILY,False
+136961-188450,Trayce Jackson-Davis,3600,,Trayce Jackson-Davis,5.48,5.5,normalized_exact,matched_DAILY,False
+136961-233066,Chaney Johnson,3600,,Chaney Johnson,12.61,10.7,normalized_exact,matched_DAILY,False
+136961-249005,Braden Smith,3600,Q,Braden Smith,9.41,8.6,normalized_exact,matched_DAILY,False
+136961-84689,Josh Okogie,3600,,Josh Okogie,12.41,8.0,normalized_exact,matched_DAILY,False
+136961-171746,Bennedict Mathurin,3600,O,Bennedict Mathurin,12.28,10.6,normalized_exact,excluded_contest_OUT,False
+136961-213226,RayJ Dennis,3600,,RayJ Dennis,6.66,6.1,normalized_exact,matched_DAILY,False
+136961-110315,Terance Mann,3600,,Terance Mann,13.3,9.9,normalized_exact,matched_DAILY,False
+136961-171776,Josh Minott,3600,,Josh Minott,6.85,6.4,normalized_exact,matched_DAILY,False
+136961-171785,Bryce McGowens,3600,O,Bryce McGowens,11.04,7.8,normalized_exact,excluded_contest_OUT,False
+136961-228128,Jase Richardson,3600,,Jase Richardson,14.58,11.2,normalized_exact,matched_DAILY,False
+136961-228145,Chaz Lanier,3600,,Chaz Lanier,3.22,2.3,normalized_exact,matched_DAILY,False
+136961-180555,Jamal Cain,3600,,Jamal Cain,15.38,11.5,normalized_exact,matched_DAILY,False
+136961-16261,Khris Middleton,3600,,Khris Middleton,9.79,8.2,normalized_exact,matched_DAILY,False
+136961-80815,Zach Collins,3600,,Zach Collins,8.05,8.7,normalized_exact,matched_DAILY,False
+136961-203763,Nikola Topic,3600,,Nikola Topic,16.06,14.9,normalized_exact,matched_DAILY,False
+136961-203766,Tidjane Salaun,3600,,Tidjane Salaun,10.04,8.5,normalized_exact,matched_DAILY,False
+136961-203785,Isaac Jones,3500,,Isaac Jones,2.72,2.6,normalized_exact,matched_DAILY,False
+136961-203790,PJ Hall,3500,,PJ Hall,7.22,7.6,normalized_exact,matched_DAILY,False
+136961-203793,Harrison Ingram,3500,,Harrison Ingram,2.61,2.1,normalized_exact,matched_DAILY,False
+136961-23572,Taurean Prince,3500,O,Taurean Prince,14.85,11.5,normalized_exact,excluded_contest_OUT,False
+136961-188442,Jalen Wilson,3500,,Jalen Wilson,18.03,13.4,normalized_exact,matched_DAILY,False
+136961-189468,Colin Castleton,3500,,Colin Castleton,2.43,2.8,normalized_exact,matched_DAILY,False
+136961-188451,Tristan Vukcevic,3500,O,Tristan Vukcevic,11.08,12.9,normalized_exact,excluded_contest_OUT,False
+136961-188454,Mouhamed Gueye,3500,O,Mouhamed Gueye,9.87,9.1,normalized_exact,excluded_contest_OUT,False
+136961-248934,Koa Peat,3500,,Koa Peat,3.24,2.9,normalized_exact,matched_DAILY,False
+136961-248949,Hannes Steinbach,3500,,Hannes Steinbach,8.98,8.0,normalized_exact,matched_DAILY,False
+136961-248953,Ebuka Okorie,3500,O,Ebuka Okorie,3.08,2.7,normalized_exact,excluded_contest_OUT,False
+136961-248958,Joshua Jefferson,3500,,Joshua Jefferson,2.66,2.6,normalized_exact,matched_DAILY,False
+136961-248961,Dailyn Swain,3500,,Dailyn Swain,7.47,6.9,normalized_exact,matched_DAILY,False
+136961-248960,Caleb Wilson,3500,O,Caleb Wilson,22.67,24.0,normalized_exact,excluded_contest_OUT,False
+136961-157831,Tre Mann,3500,,Tre Mann,3.46,2.9,normalized_exact,matched_DAILY,False
+136961-158855,Justin Champagnie,3500,O,Justin Champagnie,13.49,13.5,normalized_exact,excluded_contest_OUT,False
+136961-171679,Jamaree Bouyea,3500,,Jamaree Bouyea,6.03,5.3,normalized_exact,matched_DAILY,False
+136961-23716,Kyle Anderson,3500,,Kyle Anderson,8.34,7.7,normalized_exact,matched_DAILY,False
+136961-248999,Tobe Awaka,3500,O,Tobe Awaka,7.53,8.0,normalized_exact,excluded_contest_OUT,False
+136961-14514,Nikola Vucevic,3500,,Nikola Vucevic,8.12,9.0,normalized_exact,matched_DAILY,False
+136961-249013,Jaden Bradley,3500,,Jaden Bradley,4.49,4.0,normalized_exact,matched_DAILY,False
+136961-213172,Nae'Qwan Tomlin,3500,O,Nae'Qwan Tomlin,13.26,11.4,normalized_exact,excluded_contest_OUT,False
+136961-84683,Jaren Jackson,3500,O,Jaren Jackson Jr.,17.03,18.2,normalized_exact,excluded_contest_OUT,False
+136961-171759,Chet Holmgren,3500,O,Chet Holmgren,20.8,25.1,normalized_exact,excluded_contest_OUT,False
+136961-171760,Jalen Williams,3500,O,Jalen Williams,21.51,22.6,normalized_exact,excluded_contest_OUT,False
+136961-171786,Mark Williams,3500,O,Mark Williams,16.02,18.2,normalized_exact,excluded_contest_OUT,False
+136961-213259,Tolu Smith,3500,,Tolu Smith,3.56,3.6,normalized_exact,matched_DAILY,False
+136961-228107,Drake Powell,3500,,Drake Powell,11.73,7.1,normalized_exact,matched_DAILY,False
+136961-228108,Ben Saraf,3500,,Ben Saraf,17.39,13.9,normalized_exact,matched_DAILY,False
+136961-228117,Will Riley,3500,,Will Riley,7.97,6.3,normalized_exact,matched_DAILY,False
+136961-171797,Khalifa Diop,3500,,Khalifa Diop,4.99,5.4,normalized_exact,matched_DAILY,False
+136961-228116,Asa Newell,3500,O,Asa Newell,9.05,8.5,normalized_exact,excluded_contest_OUT,False
+136961-228135,Kon Knueppel,3500,O,Kon Knueppel,16.75,16.1,normalized_exact,excluded_contest_OUT,False
+136961-228134,Liam McNeeley,3500,,Liam McNeeley,7.33,5.9,normalized_exact,matched_DAILY,False
+136961-228156,Brooks Barnhizer,3500,,Brooks Barnhizer,5.41,4.3,normalized_exact,matched_DAILY,False
+136961-228163,Jamir Watkins,3500,O,Jamir Watkins,19.01,16.2,normalized_exact,excluded_contest_OUT,False
+136961-194881,Alex Morales,3500,,Alex Morales,9.9,8.3,normalized_exact,matched_DAILY,False
+136961-228164,Noah Penda,3500,O,Noah Penda,5.13,4.5,normalized_exact,excluded_contest_OUT,False
+136961-228173,Rasheer Fleming,3500,,Rasheer Fleming,9.88,7.7,normalized_exact,matched_DAILY,False
+136961-9561,DeAndre Jordan,3500,,DeAndre Jordan,11.66,11.8,normalized_exact,matched_DAILY,False
+136961-174501,Pat Spencer,3500,,Pat Spencer,8.79,8.1,normalized_exact,matched_DAILY,False
+136961-80811,Jonathan Isaac,3500,O,Jonathan Isaac,5.7,5.2,normalized_exact,excluded_contest_OUT,False
+136961-80812,Lauri Markkanen,3500,O,Lauri Markkanen,20.42,22.2,normalized_exact,excluded_contest_OUT,False
+136961-203765,AJ Johnson,3500,,AJ Johnson,7.5,5.4,normalized_exact,matched_DAILY,False
+136961-16376,Dorian Finney-Smith,3500,,Dorian Finney-Smith,6.8,4.5,normalized_exact,matched_DAILY,False
+136961-188410,Ben Sheppard,3500,O,Ben Sheppard,12.22,9.2,normalized_exact,excluded_contest_OUT,False
+136961-188415,Cason Wallace,3500,O,Cason Wallace,14.04,11.6,normalized_exact,excluded_contest_OUT,False
+136961-203773,Johnny Furphy,3500,O,Johnny Furphy,13.69,10.9,normalized_exact,excluded_contest_OUT,False
+136961-203764,Alex Sarr,6200,,Alexandre Sarr,17.4,20.4,verified_alias,matched_DAILY,False
+136961-84675,Mo Bamba,5700,,Mohamed Bamba,10.88,11.8,verified_alias,matched_DAILY,False
+136961-110354,Nic Claxton,4600,,Nicolas Claxton,16.87,17.8,verified_alias,matched_DAILY,False
+136961-84713,Svi Mykhailiuk,3900,,Sviatoslav Mykhailiuk,10.74,7.3,verified_alias,matched_DAILY,False
+136961-203762,Ronald Holland,3900,O,Ron Holland II,11.12,9.9,verified_alias,excluded_contest_OUT,False
+136961-84714,Moritz Wagner,3800,,Moe Wagner,12.8,13.3,verified_alias,matched_DAILY,False
+136961-203721,Bub Carrington,3600,,Carlton Carrington,12.28,9.6,verified_alias,matched_DAILY,False
+136961-233065,Norchad Omier,3800,,,,,,missing_scoring_projection,True
+136961-158856,Trendon Watford,3700,O,,,,,excluded_contest_OUT,False
+136961-249012,Jaron Pierre,3700,,,,,,missing_scoring_projection,True
+136961-228123,Noa Essengue,3600,P,,,,,missing_scoring_projection,True
+136961-228124,Nique Clifford,3600,,,,,,missing_scoring_projection,True
+136961-228169,Micah Peavy,3600,,,,,,missing_scoring_projection,True
+136961-188417,Kobe Bufkin,3500,,,,,,missing_scoring_projection,True
+136961-188421,Jordan Hawkins,3500,,,,,,missing_scoring_projection,True
+136961-203788,Kevin McCullar,3500,,,,,,missing_scoring_projection,True
+136961-203794,Reece Beekman,3500,O,,,,,excluded_contest_OUT,False
+136961-197659,Malachi Smith,3500,,,,,,missing_scoring_projection,True
+136961-233092,Zack Austin,3500,,,,,,missing_scoring_projection,True
+136961-145548,Anthony Gill,3500,,,,,,missing_scoring_projection,True
+136961-171665,Orlando Robinson,3500,,,,,,missing_scoring_projection,True
+136961-248986,Ugonna Onyenso,3500,Q,,,,,missing_scoring_projection,True
+136961-248984,Izaiyah Nelson,3500,O,,,,,excluded_contest_OUT,False
+136961-253087,Malik Dia,3500,,,,,,missing_scoring_projection,True
+136961-249007,Josh Dix,3500,,,,,,missing_scoring_projection,True
+136961-249009,Tyler Bilodeau,3500,,,,,,missing_scoring_projection,True
+136961-249014,Henri Veesaar,3500,O,,,,,excluded_contest_OUT,False
+136961-249018,Felix Okpara,3500,Q,,,,,missing_scoring_projection,True
+136961-249034,Rafael Castro,3500,,,,,,missing_scoring_projection,True
+136961-249033,Jaylin Sellers,3500,,,,,,missing_scoring_projection,True
+136961-194767,Duop Reath,3500,,,,,,missing_scoring_projection,True
+136961-249041,Ernest Udeh,3500,,,,,,missing_scoring_projection,True
+136961-233180,Julian Reese,3500,,,,,,missing_scoring_projection,True
+136961-228112,Thomas Sorber,3500,O,,,,,excluded_contest_OUT,False
+136961-249143,Kylan Boswell,3500,,,,,,missing_scoring_projection,True
+136961-249144,Michael Ajayi,3500,,,,,,missing_scoring_projection,True
+136961-254302,Jonas Aidoo,3500,,,,,,missing_scoring_projection,True
+136961-254369,Nate Bittle,3500,O,,,,,excluded_contest_OUT,False
+136961-80823,Tony Bradley,3500,,,,,,missing_scoring_projection,True
+136961-188862,Drew Timme,3500,,,,,,missing_scoring_projection,True
+136961-241122,Grant Nelson,3500,O,,,,,excluded_contest_OUT,False
