@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from model import consensus,optimize
 from evidence import validate_sources,evaluate_minutes,scenario_projections
+from calibration import audit_actuals,evaluate_bias_correction
 st.set_page_config(page_title='DFS Model 2.0 | Consensus',layout='wide')
 st.title('DFS Model 2.0 — Minutes & Source Consensus')
 st.caption('Evidence-first projections. Missing source evidence is never presented as verified.')
@@ -32,6 +33,23 @@ if base:
                 st.dataframe(ranking,use_container_width=True,hide_index=True)
                 st.download_button('Download source accuracy',ranking.to_csv(index=False),'source_accuracy.csv')
                 st.caption('Provider rankings are descriptive. Small samples should not drive automatic weights.')
+        with st.expander('DAILY historical calibration — actual minutes (optional)'):
+            st.caption('Use completed-game actuals only. Same-day results are never used to calibrate pre-lock projections. No automatic correction is applied without validated improvement.')
+            actual_history=st.file_uploader('Upload dated actuals tracker: slate_date,fanduel_id,projected_minutes,actual_minutes',type='csv',key='actual_history')
+            cutoff=st.text_input('Slate date for leakage-safe cutoff (YYYY-MM-DD)',value='2026-11-20')
+            if actual_history is not None:
+                hist=pd.read_csv(actual_history)
+                cleaned,summary=audit_actuals(hist,as_of_date=cutoff)
+                st.write('Historical actuals audit',summary)
+                walk,metrics=evaluate_bias_correction(hist,as_of_date=cutoff)
+                st.write('Walk-forward comparison',metrics)
+                if not walk.empty:
+                    st.dataframe(walk,use_container_width=True,hide_index=True)
+                    st.download_button('Download walk-forward calibration audit',walk.to_csv(index=False),'walk_forward_calibration.csv')
+                if not metrics.get('correction_improves_mae',False):
+                    st.warning('Calibration not approved: insufficient history or no demonstrated MAE improvement. Existing projections remain unchanged.')
+                else:
+                    st.info('Historical correction shows positive walk-forward improvement. This is research evidence, not automatic authorization to alter the live slate.')
         cols=st.columns(4)
         cols[0].metric('Players in reconciliation',len(d));cols[1].metric('With independent sources',int((d.independent_sources>0).sum()));cols[2].metric('Consensus (2+ agreeing)',int(d.minutes_method.eq('independent_source_consensus').sum()));cols[3].metric('DAILY-only',int(d.minutes_method.eq('DAILY_only_unverified').sum()))
         st.dataframe(d[['fanduel_name','salary','injury_flag','projected_minutes','adjusted_minutes','minutes_method','confidence','independent_sources','historical_minutes','adjusted_fd_points','projection_warning']],use_container_width=True)
