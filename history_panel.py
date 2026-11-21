@@ -35,38 +35,39 @@ def owner_can_view_history(owner_email, identity):
     )
 
 
+def configured_history():
+    path = os.environ.get('DFS_HISTORY_DB')
+    if path:
+        return load_history(path)
+    url = os.environ.get('DFS_HISTORY_SNAPSHOT_URL')
+    if not url:
+        return None, 'No persistent history database configured. Existing CSV workflow remains available.'
+    owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
+    if not owner:
+        return None, 'Remote history is disabled until owner sign-in is configured.'
+    if not owner_can_view_history(owner, st.user):
+        return None, 'Sign in with the authorized account to view historical results.'
+    try:
+        return load_configured_snapshot(
+            url, os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', ''),
+            os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
+        )
+    except (OSError, ValueError, sqlite3.Error):
+        return None, 'History snapshot could not be loaded or verified. Use the verified CSV fallback.'
+
+
 def render_history_panel():
+    frame, status = configured_history()
     with st.expander('Historical player results (read-only)', expanded=False):
-        path = os.environ.get('DFS_HISTORY_DB')
-        snapshot_url = os.environ.get('DFS_HISTORY_SNAPSHOT_URL')
-        if path:
-            frame, status = load_history(path)
-        elif snapshot_url:
-            owner_email = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
-            if not owner_email:
-                st.info('Remote history is disabled until owner sign-in is configured.')
-                return
-            if not owner_can_view_history(owner_email, st.user):
-                st.info('Sign in with the authorized account to view historical results.')
-                if st.user.get('is_logged_in'):
-                    if st.button('Sign out', key='dfs_history_logout'):
-                        st.logout()
-                elif st.button('Sign in', key='dfs_history_login'):
-                    st.login()
-                return
-            if st.button('Sign out', key='dfs_history_logout'):
-                st.logout()
-            try:
-                configured = (snapshot_url, os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', ''))
-                frame, status = load_configured_snapshot(
-                    *configured, os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
-                )
-            except (OSError, ValueError, sqlite3.Error):
-                st.warning('History snapshot could not be loaded or verified. Use the verified CSV fallback.')
-                return
-        else:
-            st.info('No persistent history database configured. Existing CSV workflow remains available.')
-            return
+        if os.environ.get('DFS_HISTORY_SNAPSHOT_URL') and os.environ.get('DFS_HISTORY_OWNER_EMAIL'):
+            if st.user.get('is_logged_in'):
+                if st.button('Sign out', key='dfs_history_logout'):
+                    st.logout()
+            elif st.button('Sign in', key='dfs_history_login'):
+                st.login()
+        if frame is None:
+            st.info(status)
+            return None
 
         st.caption(status)
         if not frame.empty:
@@ -79,3 +80,4 @@ def render_history_panel():
                 if disagreements:
                     st.caption(f'{disagreements} prior results differ from the official box score. Both values are shown.')
             st.dataframe(frame, hide_index=True, use_container_width=True)
+    return frame

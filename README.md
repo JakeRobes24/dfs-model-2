@@ -1,4 +1,12 @@
-# DFS Model 2.0 — Consensus & historical minutes (prototype v0.1)
+# DFS Model 2.0
+
+Run locally with `pip install -r requirements.txt` and `streamlit run app.py`. The Streamlit development entry point is `app_staging.py` and uses the same interface.
+
+**Build a slate** accepts the original FanDuel NBA classic template and the DAILY projection export. Verify the displayed date and contest, review the full player pool and evidence, then generate four lineups and compare against the strongest different rosters. The owner can save reviewed research and lineups to the existing private archive.
+
+The app checks the official NBA injury report, recent completed NBA box scores, RotoWire's published lineup and minutes information, and Daily Fantasy Fuel's public FanDuel projections. Each source can be partial or unavailable. Prior verified private actuals are available after owner sign-in. DAILY stays the baseline. Corroborated recent rotation adjustments are bounded and provisional. Reviewed minutes consensus and official scratches flow into scoring and eligibility. Public points and minutes do not supply missing DAILY scores. Review unresolved names, stale evidence, unconfirmed starts, minutes caps, role changes and GPP signals before entering.
+
+**History and advanced** contains the November 20 experiment, the prior reconciled CSV workflow, and diagnostics. The dated notes below document earlier checkpoints.
 
 Run: `pip install -r requirements.txt` then `streamlit run app.py`.
 

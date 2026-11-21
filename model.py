@@ -27,7 +27,7 @@ def consensus(base, evidence=None, historical=None, min_sources=2):
             e=e.sort_values('observed_at').drop_duplicates(['key','independent_group'],keep='last')
         else:e=e.drop_duplicates(['key','independent_group'],keep='last')
     h=pd.DataFrame(columns=['key','season_mpg','last5_mpg','last10_mpg']) if historical is None else historical.copy()
-    if len(h):h['key']=h.player.map(norm);h=h.drop_duplicates('key',keep='last')
+    if 'player' in h:h['key']=h.player.map(norm);h=h.drop_duplicates('key',keep='last')
     h=h.drop(columns=['player'],errors='ignore')
     d=d.merge(h,on='key',how='left')
     for col in ['season_mpg','last5_mpg','last10_mpg']:

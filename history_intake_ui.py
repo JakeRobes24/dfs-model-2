@@ -26,7 +26,7 @@ def _intake_token():
     return ''
 
 
-def render_slate_archive(pool):
+def render_slate_archive(pool, *, slate_date=None, generated_lineups=None):
     owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
     if not owner or not owner_can_view_history(owner, st.user):
         return
@@ -37,9 +37,15 @@ def render_slate_archive(pool):
     with st.expander('Save reviewed slate to private history'):
         st.caption('Saves the current full pool and projections. Include verified actuals or a final lineup CSV when available.')
         with st.form('history_intake'):
-            slate = st.date_input('Slate date (ET)', datetime.now(ZoneInfo('America/New_York')).date())
+            slate = slate_date
+            if slate is None:
+                slate = st.date_input('Slate date (ET)', datetime.now(ZoneInfo('America/New_York')).date())
+            else:
+                st.caption(f'Slate date (ET) · {slate:%b %d, %Y}')
             actual = st.file_uploader('Verified actuals CSV (optional)', type='csv')
             lineups = st.file_uploader('Final lineups CSV (optional)', type='csv')
+            use_generated = (generated_lineups is not None and not generated_lineups.empty
+                             and st.checkbox('Include the four lineups shown above.', value=True))
             confirmed = st.checkbox('I reviewed these inputs for this contest.', key='history_intake_reviewed')
             save = st.form_submit_button('Save slate and start backup', key='history_intake_save')
         if save:
@@ -53,6 +59,8 @@ def render_slate_archive(pool):
                         if file.size > MAX_PACKET:
                             raise ValueError('Each upload must be smaller than 8 MiB.')
                         optional[key] = file.getvalue().decode('utf-8-sig')
+                if use_generated and 'lineups' not in optional:
+                    optional['lineups'] = generated_lineups.to_csv(index=False)
                 path, raw = make_submission(pool, slate, **optional)
                 commit = submit_reviewed_slate(token, path, raw)
             except (ValueError, OSError) as error:
