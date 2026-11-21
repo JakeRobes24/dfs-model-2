@@ -1,4 +1,5 @@
 from history_panel import render_history_panel
+from history_intake_ui import render_slate_archive
 import streamlit as st
 import pandas as pd
 from model import consensus,optimize
@@ -122,6 +123,7 @@ if base:
                     st.markdown(f'**Lineup {num}: ${g.salary.sum():,} | {g.adjusted_fd_points.sum():.1f} scenario FD points | {sum(g.confidence=="low")} low-confidence players**')
                     st.dataframe(g,use_container_width=True,hide_index=True)
                 st.download_button('Download lineup candidates',lineups.to_csv(index=False).encode(),'four_lineups.csv','text/csv')
+        render_slate_archive(d)
     except Exception as exc:st.exception(exc)
 else:st.info('Upload the reconciled contest CSV to begin. No external data is fetched automatically.')
 
