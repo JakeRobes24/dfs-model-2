@@ -11,7 +11,7 @@ from advanced_ui import render_advanced
 from evidence import validate_sources
 from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
-from model import optimize
+from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
@@ -99,7 +99,7 @@ def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points
 
 
 def show_results(pool, lineups, comparison, alternative):
-    total = lineups.lineup.nunique()
+    total = 0 if lineups.empty else lineups.lineup.nunique()
     if total < 4:
         st.warning(f'{total} legal lineups found with the current overlap setting and usable projections.')
     if not total:
@@ -110,9 +110,14 @@ def show_results(pool, lineups, comparison, alternative):
     for number, roster in lineups.groupby('lineup'):
         with st.expander(f'Lineup {number} · {roster.adjusted_fd_points.sum():.1f} FD · ${roster.salary.sum():,}',
                          expanded=number == 1):
-            display = roster[['slot', 'player', 'salary', 'adjusted_fd_points']].rename(columns={
-                'slot': 'Slot', 'player': 'Player', 'salary': 'Salary', 'adjusted_fd_points': 'Projected FD'})
-            st.dataframe(display, hide_index=True)
+            ordered = roster.assign(
+                slot_order=roster.slot.map({slot: index for index, slot in enumerate(SLOTS)})
+            ).sort_values('slot_order', kind='stable')
+            players = []
+            for row in ordered.itertuples():
+                name = re.sub(r'([\\`*_{}\[\]<>()#|])', r'\\\1', row.player)
+                players.append(rf'- **{row.slot}** · {name} · \${row.salary:,} · {row.adjusted_fd_points:.1f} FD')
+            st.markdown('\n'.join(players))
             uncertain = status.loc[roster.fanduel_id]
             review = uncertain[(uncertain.confidence.isin(['low', 'missing']))
                                | uncertain.research_attention.str.contains('Availability|disagreement|Role')]

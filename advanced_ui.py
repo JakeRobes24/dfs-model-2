@@ -125,4 +125,3 @@ def render_advanced():
             render_slate_archive(d)
         except Exception as exc:st.exception(exc)
     else:st.info('Upload the reconciled contest CSV to begin. No external data is fetched automatically.')
-
