@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 import pandas as pd
 from source_ingest import read_logs
 from history_bridge import summarize_logs, bridge_missing
-from coverage import VERIFIED_ALIASES
+from pool_coverage import VERIFIED_ALIASES
 
 SOURCE = 'https://huggingface.co/datasets/cbratkovics/nba-game-logs/resolve/main/game_logs/game_logs_2026-27.parquet'
 

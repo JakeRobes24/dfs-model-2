@@ -4,7 +4,7 @@ from model import consensus,optimize
 from evidence import validate_sources,evaluate_minutes,scenario_projections
 from calibration import audit_actuals,evaluate_bias_correction
 from research_integration import prepare_research_pool, optimize_research, lineup_summary
-from research_upgrade import compare_scenarios, scenario_pool, verify_lineups
+from research_upgrade import compare_scenarios
 from pathlib import Path
 st.set_page_config(page_title='DFS Model 2.0 | Consensus',layout='wide')
 st.title('DFS Model 2.0 — Minutes & Source Consensus')
@@ -110,7 +110,7 @@ if base:
         st.warning('Low-confidence DAILY-only estimates remain eligible by default, but their projections are not independently validated. Review uncertain players before entry.')
         exclude=st.checkbox('Sensitivity test: exclude low-confidence estimates',False)
         overlap=st.slider('Maximum shared players between lineups',4,8,7)
-        if st.button('Optimize four lineups'):
+        if st.button('Optimize four lineups',key='base_opt'):
             lineups=optimize(d,number=4,max_overlap=overlap,exclude_uncertain=exclude)
             if lineups.empty:st.error('No legal lineup found for these inputs')
             else:

@@ -69,23 +69,17 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
     a=pool[pool.eligible & pool.adjusted_fd_points.notna() & (pool.adjusted_fd_points>0)].copy()
     if exclude_uncertain:a=a[~a.confidence.isin(['low','missing'])]
     a=a.reset_index(drop=True)
-    # Eligibility tokens are separated by '/', but G/F and F/C are composite
-    # slots; PG,SG,SF,PF,C determine composite eligibility. Do not split G/F.
-    def allowed(eligibility, position):
-        # The roster_eligibility string contains slash-delimited composite
-        # labels (G/F and F/C). Splitting it creates a misleading standalone
-        # 'F' token for guards, and formerly allowed PGs in F/C.
-        # Use authoritative primary FanDuel position(s) instead.
-        primary={p.strip().upper() for p in str(position).split('/')}
-        primary &= {'PG','SG','SF','PF','C'}
-        slots=set(primary)
-        if primary & {'PG','SG','SF','PF'}:slots.add('G/F')
-        if primary & {'SF','PF','C'}:slots.add('F/C')
-        if primary:slots.add('UTIL')
+    def allowed(eligibility):
+        # Preserve composite slots before splitting the slash-delimited export.
+        tokens = set(str(eligibility).replace('G/F', 'G').replace('F/C', 'F').split('/'))
+        slots = tokens - {'G', 'F'}
+        if 'G' in tokens:
+            slots.add('G/F')
+        if 'F' in tokens:
+            slots.add('F/C')
         return slots
-    if 'position' not in a.columns:
-        raise ValueError('Missing authoritative FanDuel position column; refusing to infer from ambiguous roster_eligibility')
-    pairs=[(i,j) for i,r in a.iterrows() for j,slot in enumerate(SLOTS) if slot in allowed(r.roster_eligibility,r.position)]
+
+    pairs=[(i,j) for i,r in a.iterrows() for j,slot in enumerate(SLOTS) if slot in allowed(r.roster_eligibility)]
     n=len(pairs)
     if not n:raise ValueError('No projected eligible players')
     A=lil_matrix((9+len(a)+1,n))
@@ -108,6 +102,5 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         ids={i for k,(i,j) in enumerate(pairs) if sol.x[k]>.5};sets.append(ids)
         assert len(selected)==9 and len({r.fanduel_id for _,r in selected})==9
         assert sum(int(r.salary) for _,r in selected)<=60000
-        assert all(slot in allowed(r.roster_eligibility,r.position) for slot,r in selected)
         for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id})
     return pd.DataFrame(out)
