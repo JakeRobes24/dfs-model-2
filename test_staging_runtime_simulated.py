@@ -20,6 +20,8 @@ class FakeStreamlit(types.ModuleType):
         self.frames=[]
         self.errors=[]
     def __getattr__(self, name):
+        if name == 'cache_data':
+            return lambda **kwargs: lambda function: function
         if name in {'expander'}:
             return lambda *a, **k: contextlib.nullcontext()
         if name in {'columns'}:
