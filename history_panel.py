@@ -8,6 +8,18 @@ from history_readonly import load_history
 from history_snapshot import load_snapshot
 
 
+# Upgrade the exact Nov. 20 preview pin while preserving custom snapshot settings.
+_HISTORY_API = 'https://api.github.com/repos/JakeRobes24/dfs-model-2-history/contents/'
+NOV20_ORIGINAL = (
+    _HISTORY_API + 'nov20_player_history_verified_backup.sqlite?ref=ead20573bc00cfd07750a1ce24587ef4a6a5405f',
+    '419410468b23f912e64fcd03a5516a96578484c3d39f89f5682a35808b2c3cad',
+)
+NOV20_BACKFILL = (
+    _HISTORY_API + 'nov20_player_history_backfill_v2.sqlite?ref=337b35763b9526049837051955df3e1812897c0f',
+    '4485bb7fc97e4417f85082ffc30115ef220f7e3054076d1e3ed18db1e7b6a81d',
+)
+
+
 @st.cache_data(ttl=300, max_entries=2, show_spinner=False)
 def load_configured_snapshot(url, digest, token):
     return load_snapshot(url, digest, token)
@@ -43,10 +55,10 @@ def render_history_panel():
             if st.button('Sign out', key='dfs_history_logout'):
                 st.logout()
             try:
+                configured = (snapshot_url, os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', ''))
+                url, digest = NOV20_BACKFILL if configured == NOV20_ORIGINAL else configured
                 frame, status = load_configured_snapshot(
-                    snapshot_url,
-                    os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', ''),
-                    os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
+                    url, digest, os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
                 )
             except (OSError, ValueError, sqlite3.Error):
                 st.warning('History snapshot could not be loaded or verified. Use the verified CSV fallback.')
@@ -58,5 +70,11 @@ def render_history_panel():
         st.caption(status)
         if not frame.empty:
             st.metric('Historical research rows', len(frame))
-            st.metric('Rows with verified actual FD points', int(frame.actual_fd_points.notna().sum()))
+            score_label = 'Rows with recorded actual FD points' if 'outcome' in frame else 'Rows with verified actual FD points'
+            st.metric(score_label, int(frame.actual_fd_points.notna().sum()))
+            if 'outcome' in frame:
+                st.metric('Did not play', int(frame.outcome.eq('did_not_play').sum()))
+                disagreements = int(frame.prior_comparison.eq('conflict').sum())
+                if disagreements:
+                    st.caption(f'{disagreements} prior results differ from the official box score. Both values are shown.')
             st.dataframe(frame, hide_index=True, use_container_width=True)

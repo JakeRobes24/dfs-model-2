@@ -17,11 +17,18 @@ def load_history(db_path, slate_date=None):
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not required <= tables:
                 return pd.DataFrame(), 'History schema incomplete; use verified CSV fallback.'
-            sql = '''SELECT s.slate_date, sp.snapshot_id, sp.fanduel_id, sp.name,
+            columns = '''SELECT s.slate_date, sp.snapshot_id, sp.fanduel_id, sp.name,
                      sp.salary, sp.position, sp.adjusted_fd_points, sp.projected_minutes,
                      sp.adjusted_minutes, a.actual_minutes, a.actual_fd_points, a.source AS actuals_source
-                     FROM snapshot_players sp JOIN snapshots s ON s.snapshot_id=sp.snapshot_id
+                     '''
+            joins = '''FROM snapshot_players sp JOIN snapshots s ON s.snapshot_id=sp.snapshot_id
                      LEFT JOIN actuals a ON a.slate_date=s.slate_date AND a.fanduel_id=sp.fanduel_id'''
+            if 'actuals_verification' in tables:
+                columns += ''', v.status AS outcome, v.nba_status, v.source AS official_source,
+                              v.official_minutes, v.official_fd_points, v.prior_comparison '''
+                joins += ''' LEFT JOIN actuals_verification v
+                           ON v.slate_date=s.slate_date AND v.fanduel_id=sp.fanduel_id'''
+            sql = columns + joins
             args = ()
             if slate_date:
                 sql += ' WHERE s.slate_date=?'
