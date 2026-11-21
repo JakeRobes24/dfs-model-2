@@ -21,7 +21,8 @@ def load_research(path, expected_rows=None, expected_sha256=None):
         raise ValueError(f'Expected {expected_rows} players, found {len(pool)}')
     if pool.fanduel_id.isna().any() or pool.fanduel_id.duplicated().any():
         raise ValueError('Missing or duplicate FanDuel IDs')
-    if pool.salary.isna().any() or (pd.to_numeric(pool.salary, errors='coerce') <= 0).any():
+    salary = pd.to_numeric(pool.salary, errors='coerce')
+    if salary.isna().any() or ~salary.between(1, 60000).all():
         raise ValueError('Invalid player salary')
     if pool.position.isna().any():
         raise ValueError('Missing authoritative positions')
