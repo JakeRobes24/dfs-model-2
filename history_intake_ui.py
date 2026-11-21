@@ -4,15 +4,34 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from history_intake import MAX_PACKET, make_submission, submit_reviewed_slate
-from history_panel import owner_can_view_history
+from history_panel import NOV20_BACKFILL, NOV20_ORIGINAL, owner_can_view_history
+
+PRODUCTION_CALLBACK = 'https://dfs-model-2-d9e8r22wzuea8frj2jpxxo.streamlit.app/oauth2callback'
+
+
+def _intake_token():
+    token = os.environ.get('DFS_HISTORY_INTAKE_TOKEN', '').strip()
+    if token:
+        return token
+    try:
+        redirect = st.secrets['auth']['redirect_uri']
+    except (KeyError, StreamlitSecretNotFoundError):
+        return ''
+    snapshot = (os.environ.get('DFS_HISTORY_SNAPSHOT_URL'), os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256'))
+    if redirect == PRODUCTION_CALLBACK and snapshot in (NOV20_ORIGINAL, NOV20_BACKFILL):
+        return os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', '').strip()
+    return ''
 
 
 def render_slate_archive(pool):
-    token = os.environ.get('DFS_HISTORY_INTAKE_TOKEN', '').strip()
     owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
-    if not token or not owner or not owner_can_view_history(owner, st.user):
+    if not owner or not owner_can_view_history(owner, st.user):
+        return
+    token = _intake_token()
+    if not token:
         return
 
     with st.expander('Save reviewed slate to private history'):

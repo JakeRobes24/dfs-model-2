@@ -79,3 +79,21 @@ def test_only_verified_owner_can_submit_the_current_pool():
             _, path, raw = send.call_args.args
             packet = json.loads(raw)
             assert packet['contest_id'] in path and 'adjusted_fd_points' in packet['research_csv']
+
+
+def test_existing_key_is_reused_only_for_main_site_configuration():
+    from history_intake_ui import PRODUCTION_CALLBACK, _intake_token
+    from history_panel import NOV20_BACKFILL
+
+    settings = {
+        'DFS_HISTORY_SNAPSHOT_TOKEN': 'existing-test-key',
+        'DFS_HISTORY_SNAPSHOT_URL': NOV20_BACKFILL[0],
+        'DFS_HISTORY_SNAPSHOT_SHA256': NOV20_BACKFILL[1],
+    }
+    with patch.dict('os.environ', settings, clear=True):
+        with patch('history_intake_ui.st.secrets', {'auth': {'redirect_uri': PRODUCTION_CALLBACK}}):
+            assert _intake_token() == 'existing-test-key'
+            with patch.dict('os.environ', {'DFS_HISTORY_SNAPSHOT_URL': 'https://other.example.org/history.sqlite'}):
+                assert _intake_token() == ''
+        with patch('history_intake_ui.st.secrets', {'auth': {'redirect_uri': 'https://preview.example.org/oauth2callback'}}):
+            assert _intake_token() == ''
