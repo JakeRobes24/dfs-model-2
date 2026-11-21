@@ -1,10 +1,12 @@
+from history_panel import render_history_panel
 import streamlit as st
 import pandas as pd
 from model import consensus,optimize
+from slate_tools_ui import review_prelock, render_challenger
 from evidence import validate_sources,evaluate_minutes,scenario_projections
 from calibration import audit_actuals,evaluate_bias_correction
 from research_integration import prepare_research_pool, optimize_research, lineup_summary
-from research_upgrade import compare_scenarios, scenario_pool, verify_lineups
+from research_upgrade import compare_scenarios
 from pathlib import Path
 st.set_page_config(page_title='DFS Model 2.0 | Consensus',layout='wide')
 st.title('DFS Model 2.0 — Minutes & Source Consensus')
@@ -64,7 +66,7 @@ history=st.file_uploader('Upload historical minutes (optional)',type='csv',key='
 st.markdown('**Independent source CSV columns:** `player,source,minutes,independent_group,observed_at` (last two optional).  **History CSV:** `player,season_mpg,last5_mpg,last10_mpg`.')
 if base:
     try:
-        b=pd.read_csv(base);required={'fanduel_id','fanduel_name','salary','roster_eligibility','injury_flag','projected_minutes','projected_fd_points'}
+        b=pd.read_csv(base, dtype={'fanduel_id': str});required={'fanduel_id','fanduel_name','salary','roster_eligibility','injury_flag','projected_minutes','projected_fd_points'}
         if not required.issubset(b.columns):st.error(f'Missing columns: {sorted(required-set(b.columns))}');st.stop()
         e=pd.read_csv(sources) if sources else None;h=pd.read_csv(history) if history else None
         d=consensus(b,e,h)
@@ -77,6 +79,7 @@ if base:
         if scenario is not None:
             d=scenario_projections(d,pd.read_csv(scenario))
             st.info('Explicit scenario applied; this does not imply the scenario will occur.')
+        d=review_prelock(d)
         with st.expander('Post-slate source accuracy (optional)'):
             predictions=st.file_uploader('Upload historical provider predictions CSV: player,source,minutes',type='csv',key='predictions')
             actuals=st.file_uploader('Upload actual game minutes CSV: player,actual_minutes',type='csv',key='actuals')
@@ -110,7 +113,8 @@ if base:
         st.warning('Low-confidence DAILY-only estimates remain eligible by default, but their projections are not independently validated. Review uncertain players before entry.')
         exclude=st.checkbox('Sensitivity test: exclude low-confidence estimates',False)
         overlap=st.slider('Maximum shared players between lineups',4,8,7)
-        if st.button('Optimize four lineups'):
+        render_challenger(d, exclude_uncertain=exclude)
+        if st.button('Optimize four lineups',key='base_opt'):
             lineups=optimize(d,number=4,max_overlap=overlap,exclude_uncertain=exclude)
             if lineups.empty:st.error('No legal lineup found for these inputs')
             else:
@@ -120,3 +124,5 @@ if base:
                 st.download_button('Download lineup candidates',lineups.to_csv(index=False).encode(),'four_lineups.csv','text/csv')
     except Exception as exc:st.exception(exc)
 else:st.info('Upload the reconciled contest CSV to begin. No external data is fetched automatically.')
+
+render_history_panel()

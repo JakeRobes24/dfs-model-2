@@ -1,6 +1,7 @@
 import pandas as pd
 from history_bridge import summarize_logs,bridge_missing
-p='/mnt/data/DFS_Model_2_Consensus_Module/nov20_complete_247_player_coverage.csv'
+from pathlib import Path
+p=Path(__file__).resolve().parent/'nov20_complete_247_player_coverage.csv'
 c=pd.read_csv(p)
 logs=pd.DataFrame([{'player':'Drew Timme','game_date':f'2026-11-{d:02d}','minutes':20,'pts':12,'reb':6,'ast':2,'stl':1,'blk':0,'tov':2} for d in (10,12,14,16)]+[{'player':'Drew Timme','game_date':'2026-11-20','minutes':40,'pts':99,'reb':99,'ast':99,'stl':99,'blk':99,'tov':0}])
 h=summarize_logs(logs,'2026-11-20')

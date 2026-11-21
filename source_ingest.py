@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 from model import norm
 from history_bridge import summarize_logs, bridge_missing
-from coverage import VERIFIED_ALIASES
+from pool_coverage import VERIFIED_ALIASES
 
 HF_COLS={'player_name':'player','game_date':'game_date','minutes':'minutes','pts':'pts','reb':'reb','ast':'ast','stl':'stl','blk':'blk','tov':'tov'}
 FD_COLS={'Player':'player','Date':'game_date','Minutes':'minutes','Points':'pts','Rebounds':'reb','Assists':'ast','Steals':'stl','Blocks':'blk','Turnovers':'tov'}

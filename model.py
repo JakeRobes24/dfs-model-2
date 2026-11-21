@@ -64,50 +64,53 @@ def consensus(base, evidence=None, historical=None, min_sources=2):
     result['projection_warning']=np.where(result.minutes_method.eq('DAILY_only_unverified'),'DAILY minutes not independently validated',np.where(result.confidence.eq('low'),'Uncertain minutes: scenario test required',''))
     return result
 
-def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pairs=()):
+def allowed_slots(eligibility):
+    # Preserve composite slots before splitting the slash-delimited export.
+    tokens = set(str(eligibility).replace('G/F', 'G').replace('F/C', 'F').split('/'))
+    slots = tokens - {'G', 'F'}
+    if 'G' in tokens:
+        slots.add('G/F')
+    if 'F' in tokens:
+        slots.add('F/C')
+    return slots
+
+
+def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pairs=(), *, exclude_rosters=(), objective_column="adjusted_fd_points"):
     """Optimize full defensibly projected pool; preserve low-confidence labels, don't silently exclude."""
     a=pool[pool.eligible & pool.adjusted_fd_points.notna() & (pool.adjusted_fd_points>0)].copy()
     if exclude_uncertain:a=a[~a.confidence.isin(['low','missing'])]
+    if a.fanduel_id.isna().any() or a.fanduel_id.duplicated().any():
+        raise ValueError('Optimizer requires unique FanDuel IDs')
+    if not np.isfinite(a[objective_column]).all():
+        raise ValueError('Objective requires finite scores for all optimizable players')
     a=a.reset_index(drop=True)
-    # Eligibility tokens are separated by '/', but G/F and F/C are composite
-    # slots; PG,SG,SF,PF,C determine composite eligibility. Do not split G/F.
-    def allowed(eligibility, position):
-        # The roster_eligibility string contains slash-delimited composite
-        # labels (G/F and F/C). Splitting it creates a misleading standalone
-        # 'F' token for guards, and formerly allowed PGs in F/C.
-        # Use authoritative primary FanDuel position(s) instead.
-        primary={p.strip().upper() for p in str(position).split('/')}
-        primary &= {'PG','SG','SF','PF','C'}
-        slots=set(primary)
-        if primary & {'PG','SG','SF','PF'}:slots.add('G/F')
-        if primary & {'SF','PF','C'}:slots.add('F/C')
-        if primary:slots.add('UTIL')
-        return slots
-    if 'position' not in a.columns:
-        raise ValueError('Missing authoritative FanDuel position column; refusing to infer from ambiguous roster_eligibility')
-    pairs=[(i,j) for i,r in a.iterrows() for j,slot in enumerate(SLOTS) if slot in allowed(r.roster_eligibility,r.position)]
+    pairs=[(i,j) for i,r in a.iterrows() for j,slot in enumerate(SLOTS) if slot in allowed_slots(r.roster_eligibility)]
     n=len(pairs)
     if not n:raise ValueError('No projected eligible players')
     A=lil_matrix((9+len(a)+1,n))
     for k,(i,j) in enumerate(pairs):A[j,k]=1;A[9+i,k]=1;A[-1,k]=a.iloc[i].salary
     low=np.r_[np.ones(9),np.zeros(len(a)),0];high=np.r_[np.ones(9),np.ones(len(a)),60000]
+    excluded = [set(roster) for roster in exclude_rosters]
     sets=[];out=[]
     for t in range(number):
         mat=A.tocsr();lo=low.copy();hi=high.copy();extra=[];elow=[];ehigh=[]
         for s in sets:
             extra.append([1 if i in s else 0 for i,j in pairs]);elow.append(0);ehigh.append(max_overlap)
+        for roster in excluded:
+            extra.append([int(a.iloc[i].fanduel_id in roster) for i,j in pairs])
+            elow.append(0)
+            ehigh.append(8)
         for x,y in blocked_pairs:
             inds={i for i,r in a.iterrows() if norm(r.fanduel_name) in (norm(x),norm(y))}
             if len(inds)==2:extra.append([1 if i in inds else 0 for i,j in pairs]);elow.append(0);ehigh.append(1)
         if extra:
             mat=vstack([mat,lil_matrix(np.array(extra)).tocsr()]);lo=np.r_[lo,elow];hi=np.r_[hi,ehigh]
-        c=np.array([-float(a.iloc[i].adjusted_fd_points) for i,j in pairs])
+        c=np.array([-float(a.iloc[i][objective_column]) for i,j in pairs])
         sol=milp(c,integrality=np.ones(n),bounds=Bounds(np.zeros(n),np.ones(n)),constraints=LinearConstraint(mat,lo,hi),options={'time_limit':35})
         if sol.x is None:break
         selected=[(SLOTS[j],a.iloc[i]) for k,(i,j) in enumerate(pairs) if sol.x[k]>.5]
         ids={i for k,(i,j) in enumerate(pairs) if sol.x[k]>.5};sets.append(ids)
         assert len(selected)==9 and len({r.fanduel_id for _,r in selected})==9
         assert sum(int(r.salary) for _,r in selected)<=60000
-        assert all(slot in allowed(r.roster_eligibility,r.position) for slot,r in selected)
-        for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id})
+        for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id,'solver_optimal':sol.status==0})
     return pd.DataFrame(out)

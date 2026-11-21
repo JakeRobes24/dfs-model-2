@@ -17,13 +17,12 @@ assert changed.iloc[0].adjusted_minutes==d.iloc[0].adjusted_minutes+2
 print('PASS: reconciliation, injury exclusion, 4 legal lineups, evidence audit, accuracy, scenario')
 
 from model import norm
-from coverage import audit_pool,VERIFIED_ALIASES
+from pool_coverage import audit_pool,VERIFIED_ALIASES
 from historical import historical_minutes
-import zipfile,io
-z=zipfile.ZipFile('/mnt/data/files/DFS_Model_2_Nov20_Reconciliation_Research_Review.zip')
-contest=pd.read_csv(io.BytesIO(z.read('unmatched_players.csv')))
-matched=pd.read_csv(io.BytesIO(z.read('player_reconciliation.csv')))
-all_contest=pd.concat([matched[['fanduel_id','fanduel_name','salary','injury_flag']].rename(columns={'fanduel_name':'name'}),contest[['fanduel_id','name','salary','injury_flag']]],ignore_index=True)
+matched = b
+all_contest = pd.read_csv('data/nov20_research_v33_full.csv', low_memory=False)[
+    ['fanduel_id', 'fanduel_name', 'salary', 'injury_flag']
+]
 coverage=audit_pool(all_contest,matched)
 assert len(coverage)==247
 assert coverage.coverage_status.eq('matched_DAILY').sum()>0
