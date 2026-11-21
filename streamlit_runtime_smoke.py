@@ -52,6 +52,7 @@ def main():
 
     with patch.dict(os.environ, {'DFS_HISTORY_DB': str(DB)}):
         app = AppTest.from_file(str(APP), default_timeout=120).run()
+        app.radio(key='site_view').set_value('History and advanced').run()
         assert not app.exception
         metrics = {item.label: int(item.value) for item in app.metric}
         assert metrics['Research rows'] == metrics['Historical research rows'] == 247
@@ -86,6 +87,7 @@ def main():
 
     with patch.dict(os.environ, {'DFS_HISTORY_DB': str(DB.with_name('missing-history.sqlite'))}):
         app = AppTest.from_file(str(APP), default_timeout=120).run()
+        app.radio(key='site_view').set_value('History and advanced').run()
         assert not app.exception
         assert any('History database unavailable' in item.value for item in app.caption)
         assert not any(item.label == 'Historical research rows' for item in app.metric)

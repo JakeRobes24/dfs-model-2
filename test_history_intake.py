@@ -63,11 +63,13 @@ def test_only_verified_owner_can_submit_the_current_pool():
     with patch.dict('os.environ', environment, clear=True), patch('history_intake_ui.submit_reviewed_slate') as send:
         with patch.object(st, 'user', dict(owner, email_verified=False)):
             app = AppTest.from_file(str(ROOT / 'app_staging.py')).run()
+            app.radio(key='site_view').set_value('History and advanced').run()
             app.file_uploader(key='base').upload('pool.csv', csv, 'text/csv').run()
             assert all(button.label != 'Save slate and start backup' for button in app.button)
             send.assert_not_called()
         with patch.object(st, 'user', owner):
             app = AppTest.from_file(str(ROOT / 'app_staging.py')).run()
+            app.radio(key='site_view').set_value('History and advanced').run()
             app.file_uploader(key='base').upload('pool.csv', csv, 'text/csv').run()
             send.return_value = 'abcdef0'
             app.button(key='history_intake_save').click().run()

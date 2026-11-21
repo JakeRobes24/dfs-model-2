@@ -90,6 +90,7 @@ def test_streamlit_upload_to_adjusted_lineup_challenge():
         f"{proposed.iloc[0].fanduel_id},NBA injury report,nba,2026-11-21T17:59:00-05:00,true,out,,,\n"
     )
     app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
+    app.radio(key='site_view').set_value('History and advanced').run()
     app.file_uploader(key='base').upload('reconciled.csv', source.to_csv(index=False).encode(), 'text/csv').run()
     app.file_uploader(key='prelock_evidence').upload('prelock.csv', evidence.encode(), 'text/csv').run()
     app.text_input(key='prelock_as_of').set_value(AS_OF).run()

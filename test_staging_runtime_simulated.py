@@ -53,7 +53,7 @@ def run_app(history_path):
             try:
                 for key in ['history_panel']:
                     sys.modules.pop(key,None)
-                runpy.run_path(str(ROOT/'app_staging.py'),run_name='__main__')
+                runpy.run_path(str(ROOT/'history_panel.py'))['render_history_panel']()
             finally:
                 sys.path.remove(str(ROOT))
                 sys.modules.pop('history_panel',None)
