@@ -5,7 +5,7 @@ import sqlite3
 import streamlit as st
 
 from history_readonly import load_history
-from history_snapshot import load_snapshot
+from history_snapshot import load_latest_snapshot, load_snapshot
 
 
 # Upgrade the exact Nov. 20 preview pin while preserving custom snapshot settings.
@@ -22,6 +22,8 @@ NOV20_BACKFILL = (
 
 @st.cache_data(ttl=300, max_entries=2, show_spinner=False)
 def load_configured_snapshot(url, digest, token):
+    if (url, digest) in (NOV20_ORIGINAL, NOV20_BACKFILL):
+        return load_latest_snapshot(*NOV20_BACKFILL, token)
     return load_snapshot(url, digest, token)
 
 
@@ -56,9 +58,8 @@ def render_history_panel():
                 st.logout()
             try:
                 configured = (snapshot_url, os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', ''))
-                url, digest = NOV20_BACKFILL if configured == NOV20_ORIGINAL else configured
                 frame, status = load_configured_snapshot(
-                    url, digest, os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
+                    *configured, os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', ''),
                 )
             except (OSError, ValueError, sqlite3.Error):
                 st.warning('History snapshot could not be loaded or verified. Use the verified CSV fallback.')

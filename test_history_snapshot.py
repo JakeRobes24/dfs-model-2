@@ -1,15 +1,66 @@
 from io import BytesIO
+import json
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
-from history_backup import sha256
-from history_snapshot import load_snapshot
+from history_backup import inspect, sha256
+from history_snapshot import HISTORY_REPO_API, load_latest_snapshot, load_snapshot
 
 BACKUP = Path(__file__).resolve().parent.parent / 'nov20_player_history_verified_backup.sqlite'
 URL = 'https://history.example.org/snapshots/nov20.sqlite'
+COMMIT = 'a' * 40
+CHECKPOINT = 'checkpoints/2026-11-20-20261121T141506123456Z/history.sqlite'
+
+
+def test_latest_checkpoint_loads_in_fresh_sessions_from_one_pinned_commit():
+    manifest = {'sha256': sha256(BACKUP), 'tables': inspect(BACKUP)}
+    responses = [
+        json.dumps({'object': {'sha': COMMIT}}).encode(),
+        CHECKPOINT.encode(),
+        json.dumps(manifest).encode(),
+        BACKUP.read_bytes(),
+    ]
+    with patch('history_snapshot.build_opener') as opener:
+        opener.return_value.open.side_effect = [BytesIO(data) for data in responses * 2]
+        for _ in range(2):
+            rows, status = load_latest_snapshot(URL, sha256(BACKUP), 'read-token')
+            assert len(rows) == 247
+            assert 'Published backup aaaaaaa' in status
+        requests = [call.args[0] for call in opener.return_value.open.call_args_list[:4]]
+        assert [req.full_url for req in requests] == [
+            f'{HISTORY_REPO_API}/git/ref/heads/main',
+            f'{HISTORY_REPO_API}/contents/latest-history.txt?ref={COMMIT}',
+            f'{HISTORY_REPO_API}/contents/{CHECKPOINT}.manifest.json?ref={COMMIT}',
+            f'{HISTORY_REPO_API}/contents/{CHECKPOINT}?ref={COMMIT}',
+        ]
+        assert all(req.get_header('Authorization') == 'Bearer read-token' for req in requests)
+
+
+def test_missing_pointer_reads_pinned_fallback():
+    with patch('history_snapshot.build_opener') as opener:
+        opener.return_value.open.side_effect = [
+            BytesIO(json.dumps({'object': {'sha': COMMIT}}).encode()),
+            HTTPError(URL, 404, 'No pointer', {}, None),
+            BytesIO(BACKUP.read_bytes()),
+        ]
+        rows, status = load_latest_snapshot(URL, sha256(BACKUP), 'read-token')
+        assert len(rows) == 247
+        assert status == 'History loaded (read-only).'
+
+
+@pytest.mark.parametrize('bad_path', ['../../history.sqlite', 'recovery-tests/5/history.sqlite'])
+def test_latest_rejects_unpublished_paths_without_fetching_them(bad_path):
+    with patch('history_snapshot.build_opener') as opener:
+        opener.return_value.open.side_effect = [
+            BytesIO(json.dumps({'object': {'sha': COMMIT}}).encode()),
+            BytesIO(bad_path.encode()),
+        ]
+        with pytest.raises(ValueError, match='Invalid history checkpoint path'):
+            load_latest_snapshot(URL, sha256(BACKUP), 'read-token')
+        assert opener.return_value.open.call_count == 2
 
 
 def test_reopens_verified_snapshot_after_fresh_fetches():
