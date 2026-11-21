@@ -13,6 +13,14 @@ def load_configured_snapshot(url, digest, token):
     return load_snapshot(url, digest, token)
 
 
+def owner_can_view_history(owner_email, identity):
+    return bool(
+        identity.get('is_logged_in')
+        and identity.get('email_verified') is True
+        and (identity.get('email') or '').strip().casefold() == owner_email.strip().casefold()
+    )
+
+
 def render_history_panel():
     with st.expander('Historical player results (read-only)', expanded=False):
         path = os.environ.get('DFS_HISTORY_DB')
@@ -20,6 +28,20 @@ def render_history_panel():
         if path:
             frame, status = load_history(path)
         elif snapshot_url:
+            owner_email = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
+            if not owner_email:
+                st.info('Remote history is disabled until owner sign-in is configured.')
+                return
+            if not owner_can_view_history(owner_email, st.user):
+                st.info('Sign in with the authorized account to view historical results.')
+                if st.user.get('is_logged_in'):
+                    if st.button('Sign out', key='dfs_history_logout'):
+                        st.logout()
+                elif st.button('Sign in', key='dfs_history_login'):
+                    st.login()
+                return
+            if st.button('Sign out', key='dfs_history_logout'):
+                st.logout()
             try:
                 frame, status = load_configured_snapshot(
                     snapshot_url,

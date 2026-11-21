@@ -27,6 +27,8 @@ def load_snapshot(url, expected_sha256, token=''):
         raise ValueError('History snapshot requires a lowercase SHA-256 digest')
 
     headers = {'Authorization': f'Bearer {token}'} if token else {}
+    if parsed.hostname == 'api.github.com':
+        headers['Accept'] = 'application/vnd.github.raw+json'
     request = Request(url, headers=headers)
     opener = build_opener(NoRedirect())
     with TemporaryDirectory(prefix='dfs-history-') as directory:
