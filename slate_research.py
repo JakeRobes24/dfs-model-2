@@ -494,6 +494,81 @@ def fantasysportsedge_reference(slate, as_of):
     return records, stamp
 
 
+FTA_NBA_BOARD = 'https://fantasyteamadvisors.com/nba-dfs-draftkings-projections/?site=fd'
+FTA_NBA_PREVIEW = (
+    'https://fantasyteamadvisors.com/wp-admin/admin-ajax.php'
+    '?action=fta_data&tool=fta-nba-projections&f=nba-slate-data.json'
+)
+
+
+def fta_nba_reference(slate, as_of, contest_games):
+    """Read the same public preview as the NBA board and require an exact game set."""
+    data = json.loads(fetch(FTA_NBA_PREVIEW))
+    if data.get('date') != slate.isoformat() or data.get('preview') is not True:
+        raise ValueError('Fantasy Team Advisors public preview is unavailable for this date')
+    prefix = f'{slate:%b} {slate.day}, '
+    generated = data['generated']
+    if not generated.startswith(prefix) or not generated.endswith(' ET'):
+        raise ValueError('Fantasy Team Advisors update time unavailable')
+    clock = datetime.strptime(generated[len(prefix):-3], '%I:%M %p').time()
+    stamp = datetime.combine(slate, clock, ET)
+    if not as_of - timedelta(hours=6) <= stamp <= as_of:
+        raise ValueError('Fantasy Team Advisors estimates are stale')
+    columns = data['cols']
+    required = {'n', 'team', 'opp', 'sal', 'proj', 'min', 'own', 'p85'}
+    if not required.issubset(columns) or len(set(columns)) != len(columns):
+        raise ValueError('Fantasy Team Advisors preview format changed')
+    candidates = []
+    expected = {matchup_key(game) for game in contest_games}
+    for board in data['slates']:
+        if board.get('site') != 'FanDuel' or board.get('games') != len(expected):
+            continue
+        rows = [dict(zip(columns, row)) for row in board['rows'] if len(row) == len(columns)]
+        games = {matchup_key(f"{team_code(row['team'])}@{team_code(row['opp'])}") for row in rows}
+        if games == expected:
+            candidates.append((board, rows))
+    if len(candidates) != 1:
+        raise ValueError('No unique FanDuel slate matched the contest game set')
+    board, rows = candidates[0]
+    records = []
+    for row in rows:
+        def bounded(key, limit):
+            value = row[key]
+            return value if type(value) in (int, float) and 0 <= value <= limit else None
+
+        team, opponent = team_code(row['team']), team_code(row['opp'])
+        records.append(dict(player=row['n'], team=team, game=f'{team}@{opponent}',
+                            reference_salary=bounded('sal', 60000), reference_points=bounded('proj', 150),
+                            reference_minutes=bounded('min', 60),
+                            reference_ownership=bounded('own', 100) if board.get('hasOwn') is True else None,
+                            reference_ceiling=bounded('p85', 200)))
+    return records, stamp, board['label'], board.get('total', len(records))
+
+
+def compare_reference(pool, records):
+    matches = pd.DataFrame(match_public(pool, records))
+    if matches.empty:
+        return matches
+    columns = ['fanduel_id', 'fanduel_name', 'salary', 'eligible', 'projected_fd_points',
+               'adjusted_fd_points', 'adjusted_minutes']
+    compared = pool[columns].merge(matches.drop_duplicates('fanduel_id', keep=False),
+                                   on='fanduel_id', validate='one_to_one')
+    compared = compared.loc[compared.salary.eq(compared.reference_salary) & compared.eligible].copy()
+    compared['points_gap'] = (compared.reference_points - compared.adjusted_fd_points).round(2)
+    compared['research_check'] = ''
+    missing = ~compared.projected_fd_points.gt(0) & compared.reference_points.gt(0)
+    compared.loc[missing, 'research_check'] = 'Missing DAILY projection'
+    compared.loc[~missing & compared.points_gap.abs().ge(5), 'research_check'] = 'Review points gap'
+    compared.loc[~missing & compared.points_gap.abs().le(3) & compared.adjusted_fd_points.gt(0)
+                 & compared.reference_points.gt(0), 'research_check'] = 'Supports model estimate'
+    if 'reference_minutes' in compared:
+        compared['minutes_gap'] = (compared.reference_minutes - compared.adjusted_minutes).round(2)
+        minute_gap = compared.minutes_gap.abs().ge(4)
+        compared.loc[minute_gap, 'research_check'] = compared.loc[minute_gap, 'research_check'].apply(
+            lambda label: f'{label} · Review minutes gap' if label else 'Review minutes gap')
+    return compared
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),

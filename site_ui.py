@@ -16,7 +16,9 @@ from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
-    ET, LINEUPEXPERTS_TODAY, fantasysportsedge_reference, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
+    ET, FTA_NBA_BOARD, LINEUPEXPERTS_TODAY, compare_reference, fantasysportsedge_reference,
+    fta_nba_reference, get_public_research, historical_context, lineupexperts_reference,
+    match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
 
@@ -35,6 +37,28 @@ def public_rotations(slate, games):
 @st.cache_data(ttl=300, max_entries=4, show_spinner=False)
 def public_lineupexperts_reference(slate, today):
     return lineupexperts_reference(slate, today)
+
+
+def render_reference_board(scored, rows, stamp, source, context):
+    comparison = compare_reference(scored, rows)
+    if comparison.empty:
+        st.info(f'{source} has no eligible players matched by name, game and FanDuel salary.')
+        return
+    st.caption(f'{source} · {stamp:%b %d, %I:%M %p ET} · {len(comparison)} matched. {context}')
+    labels = {'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD',
+              'adjusted_fd_points': 'Model FD', 'reference_points': 'Source FD',
+              'points_gap': 'Points gap', 'adjusted_minutes': 'Model minutes',
+              'reference_minutes': 'Source minutes', 'minutes_gap': 'Minutes gap',
+              'reference_ownership': 'Projected ownership %', 'reference_ceiling': 'Simulated 85th percentile',
+              'research_check': 'Research check'}
+    columns = [key for key in labels if key in comparison]
+    flagged = comparison.research_check.str.contains('Missing|Review')
+    display = pd.concat([comparison.loc[flagged], comparison.loc[~flagged]])
+    st.dataframe(display[columns].rename(columns=labels), hide_index=True)
+    st.download_button(f'Download {source} comparison',
+                       display.assign(reference_provider=source, source_updated_at=stamp.isoformat())
+                       [['fanduel_id', *columns, 'reference_provider', 'source_updated_at']].to_csv(index=False),
+                       f"{source.lower().replace(' ', '_')}_comparison.csv", mime='text/csv')
 
 
 def read_optional(upload, required, *, id_column=None):
@@ -245,24 +269,22 @@ def render_slate(history_slot):
                 st.info('The free LineupExperts comparison is currently unavailable.')
         st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, Linemate and WalterPicks when a dated feed is unavailable.')
         st.markdown('[DraftEdge NBA projection board](https://draftedge.com/nba/nba-daily-projections/)')
-        if slate == now.date() and st.button('Compare with FantasySportsEdge'):
-            try:
-                rows, stamp = fantasysportsedge_reference(slate, now)
-                matches = pd.DataFrame(match_public(pool, rows))
-                if matches.empty:
-                    st.info('No unambiguous matches for this contest.')
-                else:
-                    matches = matches.drop_duplicates('fanduel_id', keep=False)
-                    comparison = pool[['fanduel_id', 'fanduel_name', 'salary', 'projected_fd_points']].merge(
-                        matches[['fanduel_id', 'reference_salary', 'reference_points']], on='fanduel_id',
-                        validate='one_to_one')
-                    comparison = comparison.loc[comparison.salary.eq(comparison.reference_salary)]
-                    st.caption(f'FantasySportsEdge board updated {stamp:%b %d, %I:%M %p ET}. Reference only. Its scoring and upstream source overlap are unverified.')
-                    st.dataframe(comparison[['fanduel_name', 'projected_fd_points', 'reference_points']].rename(
-                        columns={'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD',
-                                 'reference_points': 'FantasySportsEdge projection'}), hide_index=True)
-            except (OSError, TypeError, ValueError, KeyError):
-                st.info('FantasySportsEdge comparison is unavailable for this slate.')
+        if slate == now.date():
+            st.markdown(f'[Fantasy Team Advisors FanDuel board]({FTA_NBA_BOARD})')
+            if st.button('Check FantasySportsEdge'):
+                try:
+                    rows, stamp = fantasysportsedge_reference(slate, now)
+                    render_reference_board(scored, rows, stamp, 'FantasySportsEdge',
+                                           'FanDuel main-slate estimates. Upstream source overlap is unverified.')
+                except (OSError, TypeError, ValueError, KeyError):
+                    st.info('FantasySportsEdge comparison is unavailable for this slate.')
+            if st.button('Check Fantasy Team Advisors'):
+                try:
+                    rows, stamp, label, total = fta_nba_reference(slate, now, set(pool.game))
+                    render_reference_board(scored, rows, stamp, 'Fantasy Team Advisors',
+                                           f'{label} public preview covers {len(rows)} of {total} source players. Ownership and ceilings are provider estimates.')
+                except (OSError, TypeError, ValueError, KeyError):
+                    st.info('No current Fantasy Team Advisors FanDuel preview matched every game in this contest.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
