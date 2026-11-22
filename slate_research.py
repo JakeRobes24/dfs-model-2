@@ -459,6 +459,41 @@ def lineupexperts_reference(slate, today):
     return records
 
 
+FANTASY_SPORTS_EDGE = 'https://fantasysportsedge.com/nba/projections'
+
+
+def fantasysportsedge_reference(slate, as_of):
+    soup = BeautifulSoup(fetch(FANTASY_SPORTS_EDGE), 'html.parser')
+    match = re.search(r'Projections updated ([A-Za-z]+ \d{1,2}, \d{4}) at (\d{1,2}:\d{2} [AP]M) (E[DS]T)',
+                      soup.get_text(' ', strip=True))
+    if not match:
+        raise ValueError('FantasySportsEdge update time unavailable')
+    stamp = datetime.strptime(f'{match[1]} {match[2]}', '%B %d, %Y %I:%M %p').replace(tzinfo=ET)
+    if stamp.date() != slate or stamp > as_of or stamp.tzname() != match[3]:
+        raise ValueError('FantasySportsEdge is for a different slate date')
+    records = []
+    required = {'Player', 'Team', 'Opp', 'FD Salary', 'Projection'}
+    for table in soup.select('table'):
+        headers = [col.get_text(' ', strip=True) for col in table.select('thead th')]
+        if not required.issubset(headers):
+            continue
+        for row in table.select('tbody tr'):
+            cells = [c.get_text(' ', strip=True) for c in row.find_all('td', recursive=False)]
+            if len(cells) != len(headers):
+                continue
+            data = dict(zip(headers, cells))
+            team, opponent = map(team_code, (data['Team'], data['Opp']))
+            try:
+                salary = int(data['FD Salary'].replace('$', '').replace(',', ''))
+                points = float(data['Projection'])
+            except ValueError:
+                continue
+            if team and opponent and team != opponent and 0 < salary <= 60000 and 0 <= points <= 150:
+                records.append(dict(player=data['Player'], team=team, game=f'{team}@{opponent}',
+                                    reference_salary=salary, reference_points=points))
+    return records, stamp
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),

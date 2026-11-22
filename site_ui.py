@@ -16,7 +16,7 @@ from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
-    ET, LINEUPEXPERTS_TODAY, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
+    ET, LINEUPEXPERTS_TODAY, fantasysportsedge_reference, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
 
@@ -244,6 +244,25 @@ def render_slate(history_slot):
             except (OSError, ValueError, KeyError, TypeError):
                 st.info('The free LineupExperts comparison is currently unavailable.')
         st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, Linemate and WalterPicks when a dated feed is unavailable.')
+        st.markdown('[DraftEdge NBA projection board](https://draftedge.com/nba/nba-daily-projections/)')
+        if slate == now.date() and st.button('Compare with FantasySportsEdge'):
+            try:
+                rows, stamp = fantasysportsedge_reference(slate, now)
+                matches = pd.DataFrame(match_public(pool, rows))
+                if matches.empty:
+                    st.info('No unambiguous matches for this contest.')
+                else:
+                    matches = matches.drop_duplicates('fanduel_id', keep=False)
+                    comparison = pool[['fanduel_id', 'fanduel_name', 'salary', 'projected_fd_points']].merge(
+                        matches[['fanduel_id', 'reference_salary', 'reference_points']], on='fanduel_id',
+                        validate='one_to_one')
+                    comparison = comparison.loc[comparison.salary.eq(comparison.reference_salary)]
+                    st.caption(f'FantasySportsEdge board updated {stamp:%b %d, %I:%M %p ET}. Reference only. Its scoring and upstream source overlap are unverified.')
+                    st.dataframe(comparison[['fanduel_name', 'projected_fd_points', 'reference_points']].rename(
+                        columns={'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD',
+                                 'reference_points': 'FantasySportsEdge projection'}), hide_index=True)
+            except (OSError, TypeError, ValueError, KeyError):
+                st.info('FantasySportsEdge comparison is unavailable for this slate.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
