@@ -41,7 +41,7 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes):
     known = cutoffs.notna()
     full_slate_before_tip = bool(len(pool) and known.all() and (cutoffs > capture).all())
 
-    reviewed = defaultdict(list)
+    reviewed = {}
     if not audit.empty:
         notes = audit.loc[audit.review.eq('Reviewed') & audit.fanduel_id.isin(pool.fanduel_id)].copy()
         notes['observed_at'] = pd.to_datetime(notes.observed_at, utc=True, errors='coerce', format='mixed')
@@ -103,6 +103,7 @@ def build_replay_rows(pool, results, slate):
 
     rows = pool[sorted(projection_fields | replay_fields)].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
+    rows['replay_before_full_slate_tip'] = True
     official = results[['fanduel_id', 'outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source',
                         'recorded_fd_points']].copy()
     official['verified_outcome'] = official.outcome.map({'Played': 'played', 'Did not play': 'did_not_play'})

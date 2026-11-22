@@ -37,6 +37,7 @@ def test_replay_capture_round_trips_reviewed_evidence_and_fails_closed_on_timing
     assert captured.replay_timing.tolist() == ['before_scheduled_tip', 'at_or_after_cutoff', 'schedule_unverified']
     assert not captured.replay_before_full_slate_tip.any()
     assert captured.replay_daily_sha256.eq('b' * 64).all()
+    assert captured.replay_evidence_json.iloc[1] == '[]'
     pd.testing.assert_frame_equal(captured[pool.columns], pool)
     _, packet = make_submission(captured, slate)
     parsed = pd.read_csv(StringIO(json.loads(packet)['research_csv']))
@@ -61,12 +62,14 @@ def test_replay_export_rechecks_saved_timing_and_preserves_unresolved_results():
     schedule = [dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
                      gameTimeUtc='2026-11-21T00:00:00Z')]
     saved = capture_pool(pool, pd.DataFrame(), schedule, day, '2026-11-20T23:00:00Z',
-                         ('a' * 64, 'b' * 64)).astype(str)
+                         ('a' * 64, 'b' * 64))
     results = pd.DataFrame({'fanduel_id': ['123-1', '123-2'], 'outcome': ['Played', 'Did not play'],
                             'nba_actual_minutes': [24, None], 'nba_fd_points': [31, None],
                             'nba_source': ['NBA box', 'NBA final game roster'],
                             'recorded_fd_points': [29, None]})
     export = build_replay_rows(saved, results, day)
+    pd.testing.assert_frame_equal(export, build_replay_rows(
+        saved.astype({'replay_before_full_slate_tip': str, 'eligible': str}), results, day))
     assert export.verified_outcome.tolist() == ['played', 'did_not_play', 'needs_review']
     assert export.eligible.all()
     assert export.loc[0, 'actual_points'] == 31 and export.loc[0, 'recorded_fd_points'] == 29
