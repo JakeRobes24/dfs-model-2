@@ -34,12 +34,18 @@ def compare_opportunity(outcomes, rotations, absence_splits):
         sample = frame.loc[candidate.notna()]
         minutes = candidate.loc[sample.index].clip(0, 48)
         points = minutes * sample.daily_points / sample.daily_minutes
+        point_error = (points - sample.actual_points).abs()
+        point_gain = (sample.baseline_fd_error - point_error).round(2).dropna()
         results.append({
             'scenario': label, 'n': len(sample), 'played_with_baseline': len(played),
             'daily_minutes_mae': (sample.daily_minutes - sample.actual_minutes).abs().mean(),
             'scenario_minutes_mae': (minutes - sample.actual_minutes).abs().mean(),
-            'n_fd_points': int(sample.actual_points.notna().sum()),
+            'n_fd_points': len(point_gain),
             'daily_fd_mae': sample.baseline_fd_error.mean(),
-            'scenario_fd_mae': (points - sample.actual_points).abs().mean(),
+            'scenario_fd_mae': point_error.mean(),
+            'fd_closer': int(point_gain.gt(0).sum()),
+            'fd_tied': int(point_gain.eq(0).sum()),
+            'fd_farther': int(point_gain.lt(0).sum()),
+            'median_fd_error_reduction': point_gain.median() if not point_gain.empty else None,
         })
     return pd.DataFrame(results)
