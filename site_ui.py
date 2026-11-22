@@ -16,7 +16,7 @@ from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
-    ET, get_public_research, historical_context, match_public, recent_boxscores, score_slate,
+    ET, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
 
@@ -30,6 +30,11 @@ def public_research(slate, checked_at):
 @st.cache_data(ttl=1800, max_entries=16, show_spinner=False)
 def public_rotations(slate, games):
     return recent_boxscores(slate, set(games))
+
+
+@st.cache_data(ttl=300, max_entries=4, show_spinner=False)
+def public_lineupexperts_reference(slate, today):
+    return lineupexperts_reference(slate, today)
 
 
 def read_optional(upload, required, *, id_column=None):
@@ -207,6 +212,22 @@ def render_slate(history_slot):
                     '[LineupExperts](https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today) · '
                     '[NBA House](https://nbahouse.net/lab) · '
                     '[WalterPicks](https://www.walterpicks.com/)')
+        if slate == now.date() and st.button('Compare with free LineupExperts projections'):
+            try:
+                reference = pd.DataFrame(match_public(pool, public_lineupexperts_reference(slate, now.date())))
+                if reference.empty:
+                    st.info('No unambiguous team and matchup matches in the current LineupExperts view.')
+                else:
+                    reference = reference.drop_duplicates('fanduel_id', keep=False)
+                    compared = scored[['fanduel_id', 'fanduel_name', 'projected_fd_points']].merge(
+                        reference[['fanduel_id', 'reference_fd']], on='fanduel_id', validate='one_to_one')
+                    compared['Difference'] = (compared.reference_fd - compared.projected_fd_points).round(2)
+                    st.caption('FanDuel points calculated from public projected stats. The source does not publish a verified update time. Reference only.')
+                    st.dataframe(compared.drop(columns='fanduel_id').rename(columns={
+                        'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD', 'reference_fd': 'LineupExperts FD',
+                    }), hide_index=True)
+            except (OSError, ValueError, KeyError, TypeError):
+                st.info('The free LineupExperts comparison is currently unavailable.')
         st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, Linemate and WalterPicks when a dated feed is unavailable.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],

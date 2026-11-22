@@ -418,6 +418,47 @@ def nba_house_minutes(slate, as_of):
     return (notes, []), f'{len(notes)} pre-tip minutes estimates · observed {as_of:%I:%M %p ET}'
 
 
+LINEUPEXPERTS_TODAY = 'https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today'
+
+
+def lineupexperts_reference(slate, today):
+    """Read public reference estimates without treating the page as a dated feed."""
+    if slate != today:
+        return []
+    soup = BeautifulSoup(fetch(LINEUPEXPERTS_TODAY), 'html.parser')
+    if not soup.title or not soup.title.get_text(strip=True).lower().endswith('for today'):
+        raise ValueError('LineupExperts Today view unavailable')
+    weights = {'PTS': 1, 'RB': 1.2, 'AST': 1.5, 'STL': 3, 'BLK': 3, 'TO': -1}
+    records = []
+    for table in soup.select('table'):
+        headers = [col.get_text(' ', strip=True) for col in table.select('thead th')]
+        if not {'Player', 'Game Details', *weights}.issubset(headers):
+            continue
+        for row in table.select('tbody tr'):
+            name = row.select_one('.projectionsPlayerCell .hideForMobile')
+            club = row.select_one('.projectionsPlayerCell small')
+            cells = row.find_all('td', recursive=False)
+            if not name or not club or len(cells) != len(headers):
+                continue
+            fields = dict(zip(headers, cells))
+            matchup = fields['Game Details'].select_one('li')
+            team = team_code(club.get_text(strip=True).strip('()').split(' - ', 1)[0])
+            match = re.match(r'^(?:vs\.?|@|at)\s*([A-Z]{2,3})\b', matchup.get_text(' ', strip=True)) if matchup else None
+            opponent = team_code(match[1]) if match else ''
+            if not team or not opponent or team == opponent:
+                continue
+            try:
+                stats = {key: float(fields[key].get_text(strip=True)) for key in weights}
+            except ValueError:
+                continue
+            if all(0 <= value <= 150 for value in stats.values()):
+                records.append(dict(player=name.get_text(strip=True), team=team, game=f'{team}@{opponent}',
+                                    reference_fd=round(sum(stats[key] * weight for key, weight in weights.items()), 2)))
+    if not records:
+        raise ValueError('LineupExperts reference table unavailable')
+    return records
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
