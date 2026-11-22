@@ -46,3 +46,32 @@ def test_replay_capture_round_trips_reviewed_evidence_and_fails_closed_on_timing
     assert qualified.replay_before_full_slate_tip.all()
     duplicate = capture_pool(pool.iloc[:1], audit, schedule + [schedule[0]], slate, '2026-11-20T23:30:00Z', ('a', 'b'))
     assert duplicate.replay_timing.iloc[0] == 'schedule_unverified'
+
+
+def test_replay_export_rechecks_saved_timing_and_preserves_unresolved_results():
+    import pytest
+
+    from slate_replay_capture import build_replay_rows
+
+    day = date(2026, 11, 20)
+    pool = pd.DataFrame({'fanduel_id': ['123-1', '123-2', '123-3'], 'fanduel_name': ['A', 'B', 'C'],
+                         'team': 'BOS', 'game': 'BOS@NYK', 'eligible': True,
+                         'prelock_status': '', 'prelock_starter': '', 'projected_minutes': 21,
+                         'projected_fd_points': 24, 'adjusted_minutes': 22, 'adjusted_fd_points': 25})
+    schedule = [dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
+                     gameTimeUtc='2026-11-21T00:00:00Z')]
+    saved = capture_pool(pool, pd.DataFrame(), schedule, day, '2026-11-20T23:00:00Z',
+                         ('a' * 64, 'b' * 64)).astype(str)
+    results = pd.DataFrame({'fanduel_id': ['123-1', '123-2'], 'outcome': ['Played', 'Did not play'],
+                            'nba_actual_minutes': [24, None], 'nba_fd_points': [31, None],
+                            'nba_source': ['NBA box', 'NBA final game roster'],
+                            'recorded_fd_points': [29, None]})
+    export = build_replay_rows(saved, results, day)
+    assert export.verified_outcome.tolist() == ['played', 'did_not_play', 'needs_review']
+    assert export.eligible.all()
+    assert export.loc[0, 'actual_points'] == 31 and export.loc[0, 'recorded_fd_points'] == 29
+    assert export.loc[[1, 2], 'actual_points'].isna().all()
+    with pytest.raises(ValueError, match='predates'):
+        build_replay_rows(pool, results, day)
+    with pytest.raises(ValueError, match='before every game'):
+        build_replay_rows(saved.assign(replay_captured_at_utc='2026-11-21T00:00:00Z'), results, day)

@@ -9,6 +9,7 @@ from history_intake import list_slate_packets, load_slate_packet, make_submissio
 from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
 from slate_import import game_code, matchup_key
+from slate_replay_capture import build_replay_rows
 from slate_research import ET
 from slate_results import SOURCE_ERRORS, collect_final_boxes, compare_results
 
@@ -156,3 +157,14 @@ def render_post_slate():
         st.dataframe(results, hide_index=True)
     st.download_button('Download post-slate audit', results.to_csv(index=False),
                        f'{slate}_{contest}_post_slate_audit.csv', mime='text/csv')
+
+    with st.expander('Pre-lock replay data'):
+        try:
+            replay = build_replay_rows(pool, results, slate)
+        except ValueError as exc:
+            st.info(str(exc))
+        else:
+            resolved = replay.verified_outcome.ne('needs_review')
+            st.caption(f'{int(resolved.sum())}/{len(replay)} verified outcomes. The export keeps the full archived player pool.')
+            st.download_button('Download frozen replay data', replay.to_csv(index=False),
+                               f'{slate}_{contest}_{version[:12]}_frozen_replay.csv', mime='text/csv')
