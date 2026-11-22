@@ -10,7 +10,7 @@ from history_intake import MAX_PACKET, list_slate_packets, load_slate_packet, ma
 from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
 from nba_ownership import OWNERSHIP_FIELDS, compare_ownership
-from nba_projection_review import compare_frozen_projections
+from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
 from slate_research import ET
@@ -174,6 +174,10 @@ def render_post_slate():
                 st.info('Some games are pending. These errors cover currently verified results.')
             errors = compare_frozen_projections(replay)
             st.dataframe(errors.round(2), hide_index=True)
+            methods = compare_adjustment_methods(replay)
+            if not methods.empty:
+                st.caption('Error by recorded method among changed projections.')
+                st.dataframe(methods.round(2), hide_index=True)
             st.download_button('Download frozen replay data', replay.to_csv(index=False),
                                f'{slate}_{contest}_{version[:12]}_frozen_replay.csv', mime='text/csv')
 

@@ -12,7 +12,8 @@ from test_slate_results import DAY, box, pool
 def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeypatch):
     roster = pool().iloc[:1].assign(fanduel_name='Chris Cenac', fanduel_id='123-248943',
                                     eligible=True, prelock_status='', prelock_starter='',
-                                    projected_minutes=19, projected_fd_points=18)
+                                    projected_minutes=19, projected_fd_points=18,
+                                    minutes_method='consensus', projection_method='minutes')
     schedule = [dict(awayTeam={'teamTricode': 'DET'}, homeTeam={'teamTricode': 'NOP'},
                      gameTimeUtc='2026-11-19T00:00:00Z')]
     frozen = capture_pool(roster, pd.DataFrame(), schedule, DAY, '2026-11-18T23:00:00Z',
@@ -33,5 +34,7 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert replay.actual_points.iloc[0] == 20.3
         assert replay.daily_points.iloc[0] == 18
         assert 'projection_comparison.csv' in archive.namelist()
+        grouped = pd.read_csv(BytesIO(archive.read('adjustment_comparison.csv')))
+        assert grouped['Minutes method'].eq('consensus').all()
     with pytest.raises(FileExistsError, match='new output path'):
         run(source, DAY, output)
