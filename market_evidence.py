@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import timedelta
 from statistics import median
+import json
 import math
 
 import pandas as pd
@@ -85,6 +86,7 @@ def game_market_evidence(events, slate, as_of, games):
 
 
 PROP_MARKETS = {'player_points': 'Points', 'player_rebounds': 'Rebounds', 'player_assists': 'Assists'}
+PROP_BOX_STATS = {'Points': 'points', 'Rebounds': 'reboundsTotal', 'Assists': 'assists'}
 
 
 def player_market_evidence(events, slate, as_of, pool):
@@ -128,3 +130,51 @@ def player_market_evidence(events, slate, as_of, pool):
                             fair_over_pct=100 * fair_over_probability(prices['Over'], prices['Under'])))
     # Multiple main lines for the same player and book are ambiguous.
     return pd.DataFrame([quotes[0] for quotes in rows.values() if len(quotes) == 1])
+
+
+def review_player_props(replay, results):
+    """Score frozen thresholds only for unambiguously matched players who played."""
+    if 'replay_player_props_json' not in replay:
+        return pd.DataFrame()
+    actuals = results.loc[results.outcome.eq('Played') & results.nba_source.fillna('').ne('')]
+    archived = replay[['fanduel_id', 'replay_captured_at_utc', 'replay_player_props_json']]
+    players = archived.merge(actuals, on='fanduel_id', validate='one_to_one')
+    rows = []
+    for player in players.itertuples():
+        capture = pd.Timestamp(player.replay_captured_at_utc)
+        try:
+            quotes = json.loads(player.replay_player_props_json)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(quotes, list):
+            continue
+        for quote in quotes:
+            if not isinstance(quote, dict):
+                continue
+            stat = quote.get('stat')
+            if not isinstance(stat, str) or stat not in PROP_BOX_STATS:
+                continue
+            book, line, over = (quote.get(key) for key in ('bookmaker', 'line', 'fair_over_pct'))
+            quoted_at = quote.get('quoted_at')
+            stamp = pd.to_datetime(quoted_at, errors='coerce', utc=True) if isinstance(quoted_at, str) else pd.NaT
+            if (not isinstance(book, str) or not book.strip() or not pd.notna(stamp)
+                    or not capture - timedelta(hours=2) <= stamp <= capture
+                    or type(line) not in (int, float) or not 0 <= line <= 150
+                    or type(over) not in (int, float) or not 0 <= over <= 100):
+                continue
+            actual = getattr(player, 'nba_' + PROP_BOX_STATS[stat])
+            daily = quote.get('daily_stat')
+            if pd.isna(actual):
+                continue
+            if type(daily) not in (int, float) or not math.isfinite(daily) or daily < 0:
+                daily = None
+            outcome = 'Push' if actual == line else 'Over' if actual > line else 'Under'
+            rows.append(dict(
+                fanduel_id=player.fanduel_id, stat=stat, bookmaker=book, quoted_at=stamp.isoformat(),
+                line=line, daily_stat=daily, actual=actual, outcome=outcome, nba_source=player.nba_source,
+                fair_over_pct=over, line_distance=abs(actual - line),
+                daily_absolute_error=abs(actual - daily) if daily is not None else None,
+                brier=(over / 100 - (outcome == 'Over')) ** 2 if outcome != 'Push' else None,
+            ))
+    return (pd.DataFrame(rows).drop_duplicates(['fanduel_id', 'stat', 'bookmaker'], keep=False)
+            if rows else pd.DataFrame())

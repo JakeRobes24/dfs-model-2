@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pandas as pd
 
+from market_evidence import review_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
@@ -46,6 +47,7 @@ def run(pool_path, day, output_path):
     replay = build_replay_rows(pool, results, day)
     accuracy = compare_frozen_projections(replay)
     methods = compare_adjustment_methods(replay)
+    props = review_player_props(replay, results)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
     summary = dict(summary, status='reviewed', player_outcomes=counts)
     with TemporaryDirectory(dir=output_path.parent) as staging:
@@ -56,6 +58,8 @@ def run(pool_path, day, output_path):
             zipped.writestr('projection_comparison.csv', accuracy.to_csv(index=False))
             if not methods.empty:
                 zipped.writestr('adjustment_comparison.csv', methods.to_csv(index=False))
+            if not props.empty:
+                zipped.writestr('player_prop_review.csv', props.to_csv(index=False))
         output_path.hardlink_to(archive)
     return summary
 

@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 from zipfile import ZipFile
 
 import pandas as pd
@@ -18,6 +19,12 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
                      gameTimeUtc='2026-11-19T00:00:00Z')]
     frozen = capture_pool(roster, pd.DataFrame(), schedule, DAY, '2026-11-18T23:00:00Z',
                           ('a' * 64, 'b' * 64))
+    quote = dict(stat='Points', bookmaker='book', line=10, daily_stat=12,
+                 quoted_at='2026-11-18T22:55:00Z', fair_over_pct=55)
+    frozen['replay_player_props_json'] = json.dumps([
+        quote, dict(quote, stat='Rebounds', line=3.5, daily_stat=None),
+        dict(quote, stat='Assists', quoted_at='2026-11-18T23:05:00Z'),
+    ])
     source = tmp_path / 'pool.csv'
     output = tmp_path / 'review.zip'
     frozen.to_csv(source, index=False)
@@ -36,5 +43,13 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert 'projection_comparison.csv' in archive.namelist()
         grouped = pd.read_csv(BytesIO(archive.read('adjustment_comparison.csv')))
         assert grouped['Minutes method'].eq('consensus').all()
+        props = pd.read_csv(BytesIO(archive.read('player_prop_review.csv'))).set_index('stat')
+        assert list(props.index) == ['Points', 'Rebounds']
+        assert props.loc['Points', 'outcome'] == 'Push'
+        assert props.loc['Points', 'daily_absolute_error'] == 2
+        assert pd.isna(props.loc['Points', 'brier'])
+        assert props.loc['Rebounds', 'actual'] == 4
+        assert props.loc['Rebounds', 'brier'] == pytest.approx(0.45 ** 2)
+        assert pd.isna(props.loc['Rebounds', 'daily_absolute_error'])
     with pytest.raises(FileExistsError, match='new output path'):
         run(source, DAY, output)

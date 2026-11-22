@@ -9,6 +9,7 @@ import streamlit as st
 from history_intake import MAX_PACKET, list_slate_packets, load_slate_packet, make_submission, submit_reviewed_slate
 from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
+from market_evidence import review_player_props
 from nba_ownership import OWNERSHIP_FIELDS, compare_ownership
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from slate_import import game_code, matchup_key
@@ -191,6 +192,12 @@ def render_post_slate():
             if not methods.empty:
                 st.caption('Error by recorded method among changed projections.')
                 st.dataframe(methods.round(2), hide_index=True)
+            props = review_player_props(replay, results)
+            if not props.empty:
+                st.caption('Player props are scored as sportsbook thresholds against official stats. Pushes are excluded '
+                           'from probability error. Several books may quote the same player.')
+                st.download_button('Download player prop review', props.to_csv(index=False),
+                                   f'{slate}_{contest}_{version[:12]}_player_props.csv', mime='text/csv')
             st.download_button('Download frozen replay data', replay.to_csv(index=False),
                                f'{slate}_{contest}_{version[:12]}_frozen_replay.csv', mime='text/csv')
 
