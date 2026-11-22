@@ -190,3 +190,22 @@ def test_owner_live_slate_archive_keeps_replay_capture_stable_on_retry():
         rows = pd.read_csv(StringIO(payload['research_csv']))
         assert rows.replay_timing.eq('schedule_unverified').all()
         assert rows.replay_evidence_json.eq('[]').all()
+
+
+def test_verified_fanduel_suffix_alias_keeps_team_guard_and_rejects_duplicates():
+    contest, daily = uploads()
+    contest.loc[0, ['Id', 'Nickname']] = ['136961-15846', 'Tim Hardaway']
+    daily.loc[0, 'player'] = 'Tim Hardaway Jr.'
+
+    def imported(contest, daily):
+        return reconcile_exports(contest.to_csv(index=False).encode(), daily.to_csv(index=False).encode())[0].iloc[0]
+
+    assert imported(contest, daily).identity_match == 'known_alias'
+    other = contest.copy()
+    other.loc[0, 'Id'] = '136961-998877'
+    assert imported(other, daily).identity_match == 'unmatched'
+    wrong_team = daily.copy()
+    wrong_team.loc[0, 'team'] = 'New York Knicks'
+    assert imported(contest, wrong_team).identity_match == 'unmatched'
+    duplicate = pd.concat([daily, daily.iloc[[0]].assign(player='Tim Hardaway')])
+    assert imported(contest, duplicate).identity_match == 'ambiguous'

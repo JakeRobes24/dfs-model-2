@@ -70,6 +70,29 @@ def player_key(value):
     return VERIFIED_ALIASES.get(key, key)
 
 
+# These shortened FanDuel names were verified against the original Nov. 22
+# contest and DAILY exports. Require both the player suffix and the short name.
+VERIFIED_SUFFIX_ALIASES = {
+    '84676': ('wendellcarter', 'wendellcarterjr'),
+    '228120': ('walterclayton', 'walterclaytonjr'),
+    '248942': ('morezjohnson', 'morezjohnsonjr'),
+    '84679': ('marvinbagley', 'marvinbagleyiii'),
+    '58519': ('garypayton', 'garypaytonii'),
+    '20992': ('larrynance', 'larrynancejr'),
+    '248943': ('chriscenac', 'chriscenacjr'),
+    '171660': ('ronharper', 'ronharperjr'),
+    '84683': ('jarenjackson', 'jarenjacksonjr'),
+    '203732': ('daronholmes', 'daronholmesii'),
+    '15846': ('timhardaway', 'timhardawayjr'),
+}
+
+
+def contest_player_key(name, fanduel_id):
+    key = player_key(name)
+    alias = VERIFIED_SUFFIX_ALIASES.get(fanduel_id.rsplit('-', 1)[-1])
+    return alias[1] if alias and key == alias[0] else key
+
+
 def matchup_key(game):
     return '/'.join(sorted(game.split('@'))) if game else ''
 
@@ -112,10 +135,17 @@ def reconcile_exports(contest_raw, daily_raw):
             or set().union(*pool.roster_eligibility.map(allowed_slots)) != valid_slots):
         raise ValueError('Contest rows must have valid NBA teams, games, salary, names and complete FanDuel NBA classic roster eligibility.')
     pool['salary'] = pool.salary.astype(int)
-    pool['daily_key'] = list(zip(pool.fanduel_name.map(player_key), pool.team, pool.game.map(matchup_key)))
+    matchups = pool.game.map(matchup_key)
+    original_keys = list(zip(pool.fanduel_name.map(player_key), pool.team, matchups))
+    canonical = [contest_player_key(name, pid) for name, pid in zip(pool.fanduel_name, pool.fanduel_id)]
+    pool['daily_key'] = list(zip(canonical, pool.team, matchups))
+    scoped_aliases = {old: new for old, new in zip(original_keys, pool.daily_key) if old != new}
+    # A second contest player with the same short key makes the mapping ambiguous.
+    pool['daily_key'] = pool.daily_key.map(lambda key: scoped_aliases.get(key, key))
     daily['daily_name'] = field(daily, 'Player')
     daily['daily_key'] = list(zip(daily.daily_name.map(player_key), field(daily, 'Team').map(team_code),
                                  field(daily, 'GameInfo', 'Game').map(game_code).map(matchup_key)))
+    daily['daily_key'] = daily.daily_key.map(lambda key: scoped_aliases.get(key, key))
     daily['projected_minutes'] = number(field(daily, 'Minutes')).where(lambda x: x.gt(0) & x.le(48))
     daily['projected_fd_points'] = number(field(daily, 'Fantasy'))
     daily['daily_salary'] = number(field(daily, 'Salary', required=False))
