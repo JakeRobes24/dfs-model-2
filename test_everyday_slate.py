@@ -209,3 +209,25 @@ def test_verified_fanduel_suffix_alias_keeps_team_guard_and_rejects_duplicates()
     assert imported(contest, wrong_team).identity_match == 'unmatched'
     duplicate = pd.concat([daily, daily.iloc[[0]].assign(player='Tim Hardaway')])
     assert imported(contest, duplicate).identity_match == 'ambiguous'
+
+
+def test_verified_suffix_alias_matches_public_and_historical_research():
+    from datetime import timedelta
+
+    from slate_research import match_public
+
+    key = '136961-15846'
+    pool = pd.DataFrame([dict(fanduel_id=key, fanduel_name='Tim Hardaway', team='MIA', game='OKC@MIA')])
+    full = dict(player='Tim Hardaway Jr.', team='MIA', game='OKC@MIA')
+    assert match_public(pool, [full])[0]['fanduel_id'] == key
+    assert match_public(pool, [dict(full, team='OKC')]) == []
+    assert match_public(pool.assign(fanduel_id='136961-8877'), [full]) == []
+    conflict = pd.concat([pool, pool.assign(fanduel_id='136961-8877', fanduel_name='Tim Hardaway Jr.')])
+    assert match_public(conflict, [full]) == []
+    prior = pd.DataFrame([dict(fanduel_id='136886-15846', name='Tim Hardaway Jr.',
+                               slate_date='2026-11-18', actual_minutes=24)])
+    box = dict(full, game_date=AS_OF.date() - timedelta(days=1), nba_id='sample', minutes=22, started=True)
+    history = historical_context(pool, prior, [box], AS_OF.date())
+    assert history.iloc[0].history_games == 2
+    assert history.iloc[0].recent_mpg == 23
+    assert historical_context(conflict, prior, [box], AS_OF.date()).empty

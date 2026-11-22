@@ -93,6 +93,10 @@ def contest_player_key(name, fanduel_id):
     return alias[1] if alias and key == alias[0] else key
 
 
+def contest_player_keys(name, fanduel_id):
+    return {player_key(name), contest_player_key(name, fanduel_id)}
+
+
 def matchup_key(game):
     return '/'.join(sorted(game.split('@'))) if game else ''
 

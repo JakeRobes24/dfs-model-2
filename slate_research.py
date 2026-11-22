@@ -1,4 +1,5 @@
 """Point-in-time research for a reconciled NBA pool. Network sources fail independently."""
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -14,7 +15,7 @@ import pdfplumber
 
 from model import consensus, norm
 from prelock import REQUIRED, apply_prelock
-from slate_import import matchup_key, player_key, team_code
+from slate_import import contest_player_keys, matchup_key, player_key, team_code
 
 
 ET = ZoneInfo('America/New_York')
@@ -622,8 +623,9 @@ def get_public_research(slate, as_of):
 def match_public(pool, records):
     identities = {}
     for row in pool.itertuples():
-        key = (player_key(row.fanduel_name), row.team, matchup_key(row.game))
-        identities.setdefault(key, []).append(row.fanduel_id)
+        for name in contest_player_keys(row.fanduel_name, row.fanduel_id):
+            key = (name, row.team, matchup_key(row.game))
+            identities.setdefault(key, []).append(row.fanduel_id)
     matched = []
     for row in records:
         key = (player_key(row['player']), row['team'], matchup_key(row['game']))
@@ -640,14 +642,14 @@ def historical_context(pool, verified, rotations, slate):
         archive['minutes'] = pd.to_numeric(archive.get('official_minutes', archive.actual_minutes), errors='coerce')
         archive['minutes'] = archive.minutes.where(archive.minutes.notna(), pd.to_numeric(archive.actual_minutes, errors='coerce'))
         archive['suffix'] = archive.fanduel_id.str.extract(r'^\d+-(\d+)$')[0]
-        archive['name_key'] = archive.name.map(norm)
-    duplicate_names = set(pool.loc[pool.fanduel_name.map(norm).duplicated(keep=False), 'fanduel_name'].map(norm))
+        archive['name_key'] = archive.name.map(player_key)
+    identities = [contest_player_keys(row.fanduel_name, row.fanduel_id) for row in pool.itertuples()]
+    name_counts = Counter(name for keys in identities for name in keys)
     records = []
-    for player in pool.itertuples():
-        key = norm(player.fanduel_name)
-        if key in duplicate_names:
+    for player, keys in zip(pool.itertuples(), identities):
+        if any(name_counts[key] > 1 for key in keys):
             continue
-        logs = [row for row in rotations if norm(row['player']) == key and row['team'] == player.team
+        logs = [row for row in rotations if player_key(row['player']) in keys and row['team'] == player.team
                 and slate - timedelta(days=21) <= row['game_date'] < slate and row['nba_id']]
         if len({row['nba_id'] for row in logs}) > 1:
             logs = []
@@ -656,7 +658,7 @@ def historical_context(pool, verified, rotations, slate):
         if not archive.empty:
             same_suffix = archive[archive.suffix.eq(player.fanduel_id.rsplit('-', 1)[-1]) & archive.day.lt(slate)]
             # Reuse matching evidence only. Any conflicting archived name vetoes the suffix.
-            if len(same_suffix) and same_suffix.name_key.eq(key).all():
+            if len(same_suffix) and same_suffix.name_key.isin(keys).all():
                 verified_minutes = same_suffix[same_suffix.minutes.between(1, 60)]
                 for day, values in verified_minutes.groupby('day').minutes:
                     if day >= slate - timedelta(days=21) and values.nunique() == 1 and day not in samples:

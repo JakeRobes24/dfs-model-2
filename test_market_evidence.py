@@ -47,5 +47,11 @@ def test_props_require_verified_player_scope_and_two_way_same_line():
     assert matched.iloc[0].fair_over_pct == pytest.approx(100 * fair_over_probability(1.8, 2.1))
     assert player_market_evidence([event], now.date(), now, pd.concat([pool, pool])).empty
     assert player_market_evidence([event], now.date(), now, pool.assign(game='BOS@NYK')).empty
+    suffix_pool = pool.assign(fanduel_name='Tim Hardaway', fanduel_id='123-15846')
+    suffix_quotes = [dict(quote, description='Tim Hardaway Jr.') for quote in quotes]
+    suffix_event = dict(event, bookmakers=[dict(event['bookmakers'][0],
+                       markets=[dict(key='player_points', outcomes=suffix_quotes)])])
+    assert player_market_evidence([suffix_event], now.date(), now, suffix_pool).iloc[0].fanduel_id == '123-15846'
+    assert player_market_evidence([suffix_event], now.date(), now, suffix_pool.assign(fanduel_id='123-77')).empty
     quotes[1]['point'] = 20.5
     assert player_market_evidence([event], now.date(), now, pool).empty

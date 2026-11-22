@@ -6,7 +6,7 @@ import math
 
 import pandas as pd
 
-from slate_import import matchup_key, player_key, team_code
+from slate_import import contest_player_keys, matchup_key, player_key, team_code
 
 
 def fair_over_probability(over, under):
@@ -91,7 +91,8 @@ def player_market_evidence(events, slate, as_of, pool):
     """Return same-line two-way prop quotes keyed to unambiguous contest players."""
     identities = defaultdict(list)
     for player in pool.itertuples():
-        identities[matchup_key(player.game), player_key(player.fanduel_name)].append(player)
+        for name in contest_player_keys(player.fanduel_name, player.fanduel_id):
+            identities[matchup_key(player.game), name].append(player)
     rows = defaultdict(list)
     for game, event in upcoming_markets(events, slate, as_of, set(pool.game)):
         for book in event.get('bookmakers', []):
