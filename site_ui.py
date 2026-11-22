@@ -256,6 +256,7 @@ def render_slate(history_slot):
         st.warning(f'{missing} eligible players lack usable projections. Results are provisional until those players are reviewed.')
     st.caption(f'{len(historical)} players with recent minutes evidence · {starters} official starters matched')
     archived_ownership = None
+    archived_market_events = ()
     with st.expander('Sources and checks'):
         st.caption(f'Research checked {checked_at:%b %d, %I:%M %p ET}. Statuses and starters only count when sourced.')
         for name, status in source_status:
@@ -326,6 +327,7 @@ def render_slate(history_slot):
                     st.caption('Market-implied team totals are research estimates. Fair over probability uses matched decimal prices at the displayed total. Markets are shown for comparison.')
                     st.dataframe(market, hide_index=True)
                 if not player_markets.empty:
+                    archived_market_events = events
                     st.caption('Compare each DAILY stat forecast with its sportsbook threshold. A positive gap means '
                                'DAILY is above the line. Market thresholds and fair over probabilities are research '
                                'references. Gaps are blank when DAILY has no matching stat.')
@@ -405,7 +407,7 @@ def render_slate(history_slot):
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
-                         replay_inputs=(audit, hashes))
+                         replay_inputs=(audit, hashes), market_events=archived_market_events)
 
 
 def render_site():

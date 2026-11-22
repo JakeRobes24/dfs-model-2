@@ -28,7 +28,7 @@ def _intake_token():
     return ''
 
 
-def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, replay_inputs=None):
+def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, replay_inputs=None, market_events=()):
     owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
     if not owner or not owner_can_view_history(owner, st.user):
         return
@@ -40,6 +40,8 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
         st.caption('Saves the current full pool and projections. Include verified actuals or a final lineup CSV when available.')
         if replay_inputs is not None:
             st.caption('This save also records the capture time, scheduled tip coverage and reviewed source timestamps.')
+        if market_events:
+            st.caption('Fresh matched player props are included when the game is verified pre-tip at save time.')
         with st.form('history_intake'):
             slate = slate_date
             if slate is None:
@@ -68,7 +70,7 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                 path, raw = make_submission(pool, slate, **optional)
                 if replay_inputs is not None:
                     audit, input_hashes = replay_inputs
-                    retry_key = (path, input_hashes, audit.to_csv(index=False))
+                    retry_key = (path, input_hashes, audit.to_csv(index=False), market_events)
                     previous = st.session_state.get('history_replay_retry')
                     if previous is None or previous[0] != retry_key:
                         captured_at = datetime.now(timezone.utc)
@@ -76,7 +78,8 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                             schedule = games_for_date(slate)
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             schedule = []
-                        archived = capture_pool(pool, audit, schedule, slate, captured_at, input_hashes)
+                        archived = capture_pool(pool, audit, schedule, slate, captured_at, input_hashes,
+                                                market_events=market_events)
                         path, raw = make_submission(archived, slate, **optional)
                         st.session_state['history_replay_retry'] = (retry_key, path, raw)
                     else:

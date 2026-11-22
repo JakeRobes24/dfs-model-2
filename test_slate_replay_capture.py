@@ -61,8 +61,16 @@ def test_replay_export_rechecks_saved_timing_and_preserves_unresolved_results():
                          'projected_fd_points': 24, 'adjusted_minutes': 22, 'adjusted_fd_points': 25})
     schedule = [dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
                      gameTimeUtc='2026-11-21T00:00:00Z')]
-    saved = capture_pool(pool, pd.DataFrame(), schedule, day, '2026-11-20T23:00:00Z',
-                         ('a' * 64, 'b' * 64))
+    quotes = [dict(description='A', name=side, point=18.5, price=1.9) for side in ('Over', 'Under')]
+    market_events = [dict(
+        away_team='Boston Celtics', home_team='New York Knicks', commence_time='2026-11-21T00:00:00Z',
+        bookmakers=[
+            dict(key=key, last_update=stamp, markets=[dict(key='player_points', outcomes=quotes)])
+            for key, stamp in [('fresh', '2026-11-20T22:55:00Z'), ('future', '2026-11-20T23:05:00Z'),
+                               ('stale', '2026-11-20T20:55:00Z')]
+        ])]
+    saved = capture_pool(pool.assign(daily_points=21), pd.DataFrame(), schedule, day, '2026-11-20T23:00:00Z',
+                         ('a' * 64, 'b' * 64), market_events=market_events)
     results = pd.DataFrame({'fanduel_id': ['123-1', '123-2'], 'outcome': ['Played', 'Did not play'],
                             'nba_actual_minutes': [24, None], 'nba_fd_points': [31, None],
                             'nba_source': ['NBA box', 'NBA final game roster'],
@@ -74,6 +82,15 @@ def test_replay_export_rechecks_saved_timing_and_preserves_unresolved_results():
     assert export.eligible.all()
     assert export.loc[0, 'actual_points'] == 31 and export.loc[0, 'recorded_fd_points'] == 29
     assert export.loc[[1, 2], 'actual_points'].isna().all()
+    props = json.loads(export.loc[0, 'replay_player_props_json'])
+    assert len(props) == 1 and props[0]['bookmaker'] == 'fresh'
+    assert props[0]['daily_stat'] == 21 and props[0]['daily_minus_line'] == 2.5
+    assert props[0]['source'] == 'The Odds API snapshot'
+    assert export.loc[1, 'replay_player_props_json'] == '[]'
+    early_tip = [dict(schedule[0], actualStartTimeUTC='2026-11-20T22:59:00Z')]
+    already_started = capture_pool(pool, pd.DataFrame(), early_tip, day, '2026-11-20T23:00:00Z',
+                                   ('a' * 64, 'b' * 64), market_events=market_events)
+    assert 'replay_player_props_json' not in already_started
     with pytest.raises(ValueError, match='predates'):
         build_replay_rows(pool, results, day)
     with pytest.raises(ValueError, match='before every game'):

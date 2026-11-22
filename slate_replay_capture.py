@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import pandas as pd
 
+from market_evidence import player_market_evidence
 from nba_ownership import OWNERSHIP_FIELDS
 from nba_projection_review import METHOD_COLUMNS
 from slate_import import matchup_key, team_code
@@ -16,7 +17,7 @@ EVIDENCE_FIELDS = ('source', 'independent_group', 'observed_at', 'official',
 EVIDENCE_FIELDS_SET = set(EVIDENCE_FIELDS)
 
 
-def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes):
+def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, market_events=()):
     """Record verified schedule coverage and reviewed evidence without changing scores."""
     capture = pd.Timestamp(captured_at)
     if pd.isna(capture) or capture.tzinfo is None:
@@ -64,6 +65,16 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes):
     )
     archived.loc[known & cutoffs.gt(capture), 'replay_timing'] = 'before_scheduled_tip'
     archived.loc[known & cutoffs.le(capture), 'replay_timing'] = 'at_or_after_cutoff'
+    if market_events:
+        pretip = pool.loc[known & cutoffs.gt(capture)]
+        quotes = player_market_evidence(market_events, slate, capture, pretip)
+        if not quotes.empty:
+            quotes = quotes.assign(source='The Odds API snapshot').sort_values(['fanduel_id', 'stat', 'bookmaker'])
+            by_player = {
+                player: group.drop(columns=['fanduel_id', 'player', 'game']).to_json(orient='records')
+                for player, group in quotes.groupby('fanduel_id')
+            }
+            archived['replay_player_props_json'] = pool.fanduel_id.map(by_player).fillna('[]')
     return archived
 
 
@@ -103,7 +114,7 @@ def build_replay_rows(pool, results, slate):
                 for note in notes):
             raise ValueError('The saved replay evidence contains an invalid source timestamp.')
 
-    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS)
+    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | {'replay_player_props_json'}
     rows = pool[sorted(projection_fields | replay_fields | (optional_fields & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
     rows['replay_before_full_slate_tip'] = True
