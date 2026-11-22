@@ -160,3 +160,33 @@ def test_weighted_blend_requires_agreement_and_yields_to_late_news():
     result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [news], estimates, AS_OF)
     assert result.iloc[0].projection_source_count == 1
     assert pd.isna(result.iloc[0].blended_fd_points)
+
+
+def test_owner_live_slate_archive_keeps_replay_capture_stable_on_retry():
+    import json
+    from io import StringIO
+
+    import streamlit as st
+
+    contest, daily = (frame.to_csv(index=False).encode() for frame in uploads())
+    environment = {'DFS_HISTORY_OWNER_EMAIL': 'owner@example.org', 'DFS_HISTORY_INTAKE_TOKEN': 'test-only'}
+    owner = {'email': environment['DFS_HISTORY_OWNER_EMAIL'], 'email_verified': True, 'is_logged_in': True}
+    with (patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner),
+          patch('site_ui.public_research', return_value=([], [], [])),
+          patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('history_intake_ui.games_for_date', side_effect=OSError) as schedule,
+          patch('history_intake_ui.submit_reviewed_slate', side_effect=[OSError('Retry'), None]) as archive):
+        app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
+        app.file_uploader(key='slate_contest').upload('contest.csv', contest, 'text/csv').run()
+        app.file_uploader(key='slate_daily').upload('DAILY.csv', daily, 'text/csv').run()
+        app.checkbox(key='history_intake_reviewed').check()
+        app.button(key='history_intake_save').click().run()
+        app.button(key='history_intake_save').click().run()
+        assert not app.exception and not app.error
+        assert archive.call_count == 2
+        assert archive.call_args_list[0] == archive.call_args_list[1]
+        schedule.assert_called_once()
+        payload = json.loads(archive.call_args.args[2])
+        rows = pd.read_csv(StringIO(payload['research_csv']))
+        assert rows.replay_timing.eq('schedule_unverified').all()
+        assert rows.replay_evidence_json.eq('[]').all()

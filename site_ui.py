@@ -390,7 +390,9 @@ def render_slate(history_slot):
         show_results(scored, lineups, comparison, alternative)
     else:
         st.caption('Generated lineups and their alternatives appear here.')
-    render_slate_archive(scored, slate_date=slate, generated_lineups=lineups)
+    hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
+    render_slate_archive(scored, slate_date=slate, generated_lineups=lineups,
+                         replay_inputs=(audit, hashes))
 
 
 def render_site():
