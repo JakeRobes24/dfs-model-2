@@ -6,7 +6,7 @@ import math
 
 import pandas as pd
 
-from slate_import import matchup_key, team_code
+from slate_import import matchup_key, player_key, team_code
 
 
 def fair_over_probability(over, under):
@@ -16,8 +16,7 @@ def fair_over_probability(over, under):
     return (1 / over) / (1 / over + 1 / under)
 
 
-def game_market_evidence(events, slate, as_of, games):
-    """Summarize fresh same-book totals and spreads for upcoming contest games."""
+def upcoming_markets(events, slate, as_of, games):
     expected = {matchup_key(game) for game in games}
     by_game = defaultdict(list)
     for event in events:
@@ -27,20 +26,27 @@ def game_market_evidence(events, slate, as_of, games):
         if (not away or not home or away == home or matchup_key(game) not in expected
                 or pd.isna(tip) or tip <= as_of or tip.tz_convert('America/New_York').date() != slate):
             continue
-        by_game[game].append((event, home))
+        by_game[matchup_key(game)].append((game, event))
+    return [entries[0] for entries in by_game.values() if len(entries) == 1]
 
+
+def fresh_stamp(market, book, as_of):
+    stamp = pd.to_datetime(market.get('last_update') or book.get('last_update'),
+                           utc=True, errors='coerce')
+    return stamp if pd.notna(stamp) and as_of - timedelta(hours=2) <= stamp <= as_of else None
+
+
+def game_market_evidence(events, slate, as_of, games):
+    """Summarize fresh same-book totals and spreads for upcoming contest games."""
     result = []
-    for game, candidates in by_game.items():
-        if len(candidates) != 1:
-            continue
-        event, home = candidates[0]
+    for game, event in upcoming_markets(events, slate, as_of, games):
+        home = game.split('@')[1]
         books = {}
         for book in event.get('bookmakers', []):
             quotes = {}
             for market in book.get('markets', []):
-                stamp = pd.to_datetime(market.get('last_update') or book.get('last_update'),
-                                       utc=True, errors='coerce')
-                if pd.isna(stamp) or not as_of - timedelta(hours=2) <= stamp <= as_of:
+                stamp = fresh_stamp(market, book, as_of)
+                if stamp is None:
                     continue
                 quotes[market.get('key')] = (market.get('outcomes', []), stamp)
             if not book.get('key') or not {'totals', 'spreads'} <= quotes.keys():
@@ -76,3 +82,45 @@ def game_market_evidence(events, slate, as_of, games):
                                implied_away=(total + home_spread) / 2,
                                fair_over_pct=100 * median(fair) if fair else None, bookmakers=len(books), oldest_quote=min(q[0] for q in books.values()).isoformat()))
     return pd.DataFrame(result)
+
+
+PROP_MARKETS = {'player_points': 'Points', 'player_rebounds': 'Rebounds', 'player_assists': 'Assists'}
+
+
+def player_market_evidence(events, slate, as_of, pool):
+    """Return same-line two-way prop quotes keyed to unambiguous contest players."""
+    identities = defaultdict(list)
+    for player in pool.itertuples():
+        identities[matchup_key(player.game), player_key(player.fanduel_name)].append(player)
+    rows = defaultdict(list)
+    for game, event in upcoming_markets(events, slate, as_of, set(pool.game)):
+        for book in event.get('bookmakers', []):
+            if not book.get('key'):
+                continue
+            for market in book.get('markets', []):
+                key = market.get('key')
+                if key not in PROP_MARKETS:
+                    continue
+                stamp = fresh_stamp(market, book, as_of)
+                if stamp is None:
+                    continue
+                pairs = defaultdict(list)
+                for quote in market.get('outcomes', []):
+                    name = quote.get('description')
+                    side, line, price = (quote.get(k) for k in ('name', 'point', 'price'))
+                    if (isinstance(name, str) and name.strip() and side in ('Over', 'Under')
+                            and type(line) in (int, float) and 0 <= line <= 150
+                            and type(price) in (int, float) and math.isfinite(price) and price > 1):
+                        pairs[player_key(name), line].append((side, price))
+                for (name, line), outcomes in pairs.items():
+                    player = identities[matchup_key(game), name]
+                    prices = dict(outcomes)
+                    if len(player) == 1 and len(outcomes) == 2 and set(prices) == {'Over', 'Under'}:
+                        person = player[0]
+                        rows[person.fanduel_id, key, book['key']].append(dict(
+                            fanduel_id=person.fanduel_id, player=person.fanduel_name, game=game,
+                            stat=PROP_MARKETS[key], line=line, bookmaker=book['key'],
+                            quoted_at=stamp.isoformat(),
+                            fair_over_pct=100 * fair_over_probability(prices['Over'], prices['Under'])))
+    # Multiple main lines for the same player and book are ambiguous.
+    return pd.DataFrame([quotes[0] for quotes in rows.values() if len(quotes) == 1])

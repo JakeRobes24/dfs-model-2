@@ -13,7 +13,7 @@ from evidence import validate_sources
 from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
-from market_evidence import game_market_evidence
+from market_evidence import game_market_evidence, player_market_evidence
 from model import SLOTS, optimize
 from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
@@ -299,17 +299,27 @@ def render_slate(history_slot):
                 if market_file.size > 1024 * 1024:
                     raise ValueError('Market snapshot exceeds 1 MiB.')
                 events = json.loads(market_file.getvalue())
+                if isinstance(events, dict):
+                    events = events.get('data', [events])
+                    if isinstance(events, dict):
+                        events = [events]
                 if not isinstance(events, list) or any(not isinstance(event, dict) for event in events):
                     raise ValueError('Expected a list of market events.')
                 market = game_market_evidence(events, slate, now, set(pool.game))
+                player_markets = player_market_evidence(events, slate, now, pool)
             except (ValueError, TypeError, KeyError, AttributeError):
-                st.warning('Use a valid Odds API game-odds snapshot with decimal odds.')
+                st.warning('Use a valid Odds API snapshot with decimal odds.')
             else:
                 if market.empty:
                     st.info('No fresh, pre-tip totals and spreads matched the contest games.')
                 else:
                     st.caption('Market-implied team totals are research estimates. Fair over probability uses matched decimal prices at the displayed total. Markets are shown for comparison.')
                     st.dataframe(market, hide_index=True)
+                if not player_markets.empty:
+                    st.caption('Player prop lines describe market thresholds. They are shown beside the slate for research.')
+                    st.dataframe(player_markets.drop(columns='fanduel_id'), hide_index=True)
+                    st.download_button('Download matched player props', player_markets.to_csv(index=False),
+                                       'nba_player_props.csv', mime='text/csv')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
