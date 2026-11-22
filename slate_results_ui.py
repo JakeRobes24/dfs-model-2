@@ -1,13 +1,15 @@
 """Owner-only post-slate review of saved contest versions."""
 import os
 from datetime import datetime
+from io import StringIO
 
 import pandas as pd
 import streamlit as st
 
-from history_intake import list_slate_packets, load_slate_packet, make_submission, submit_reviewed_slate
+from history_intake import MAX_PACKET, list_slate_packets, load_slate_packet, make_submission, submit_reviewed_slate
 from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
+from nba_ownership import OWNERSHIP_FIELDS, compare_ownership
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
 from slate_research import ET
@@ -168,3 +170,26 @@ def render_post_slate():
             st.caption(f'{int(resolved.sum())}/{len(replay)} verified outcomes. The export keeps the full archived player pool.')
             st.download_button('Download frozen replay data', replay.to_csv(index=False),
                                f'{slate}_{contest}_{version[:12]}_frozen_replay.csv', mime='text/csv')
+
+            if set(OWNERSHIP_FIELDS) <= set(replay):
+                st.caption('Compare the slate-level forecast with reviewed ownership from one specific contest field.')
+                st.caption('CSV columns are fanduel_id, field_id, actual_ownership_pct, and source.')
+                ownership = st.file_uploader('Reviewed contest ownership CSV (optional)', type='csv',
+                                             key=f'ownership_{slate}_{contest}_{version[:12]}')
+                if ownership is not None:
+                    try:
+                        if ownership.size > MAX_PACKET:
+                            raise ValueError('Use an ownership file smaller than 8 MiB.')
+                        actual = pd.read_csv(StringIO(ownership.getvalue().decode('utf-8-sig')), dtype=str)
+                        comparison = compare_ownership(replay, actual)
+                    except (ValueError, pd.errors.ParserError) as exc:
+                        st.warning(str(exc))
+                    else:
+                        if comparison.empty:
+                            st.info('No archived projections matched the supplied ownership rows.')
+                        else:
+                            mae = comparison.error_pp.abs().mean()
+                            st.caption(f'{len(comparison)}/{len(actual)} supplied players matched · {mae:.1f} percentage points mean absolute error.')
+                            st.dataframe(comparison, hide_index=True)
+                            st.download_button('Download ownership comparison', comparison.to_csv(index=False),
+                                               f'{slate}_{contest}_{version[:12]}_ownership.csv', mime='text/csv')

@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import pandas as pd
 
+from nba_ownership import OWNERSHIP_FIELDS
 from slate_import import matchup_key, team_code
 
 
@@ -101,7 +102,7 @@ def build_replay_rows(pool, results, slate):
                 for note in notes):
             raise ValueError('The saved replay evidence contains an invalid source timestamp.')
 
-    rows = pool[sorted(projection_fields | replay_fields)].copy()
+    rows = pool[sorted(projection_fields | replay_fields | (set(OWNERSHIP_FIELDS) & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
     rows['replay_before_full_slate_tip'] = True
     official = results[['fanduel_id', 'outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source',

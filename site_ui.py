@@ -15,6 +15,7 @@ from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
 from model import SLOTS, optimize
+from nba_ownership import archive_ownership
 from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
 from slate_import import reconcile_exports
@@ -47,11 +48,16 @@ def public_lineupexperts_reference(slate, today):
     return lineupexperts_reference(slate, today)
 
 
+@st.cache_data(ttl=300, max_entries=8, show_spinner=False)
+def public_fta_reference(slate, as_of, games):
+    return fta_nba_reference(slate, as_of, games)
+
+
 def render_reference_board(scored, rows, stamp, source, context):
     comparison = compare_reference(scored, rows)
     if comparison.empty:
         st.info(f'{source} has no eligible players matched by name, game and FanDuel salary.')
-        return
+        return comparison
     st.caption(f'{source} · {stamp:%b %d, %I:%M %p ET} · {len(comparison)} matched. {context}')
     labels = {'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD',
               'adjusted_fd_points': 'Model FD', 'reference_points': 'Source FD',
@@ -67,6 +73,7 @@ def render_reference_board(scored, rows, stamp, source, context):
                        display.assign(reference_provider=source, source_updated_at=stamp.isoformat())
                        [['fanduel_id', *columns, 'reference_provider', 'source_updated_at']].to_csv(index=False),
                        f"{source.lower().replace(' ', '_')}_comparison.csv", mime='text/csv')
+    return comparison
 
 
 def read_optional(upload, required, *, id_column=None):
@@ -248,6 +255,7 @@ def render_slate(history_slot):
     if missing:
         st.warning(f'{missing} eligible players lack usable projections. Results are provisional until those players are reviewed.')
     st.caption(f'{len(historical)} players with recent minutes evidence · {starters} official starters matched')
+    archived_ownership = None
     with st.expander('Sources and checks'):
         st.caption(f'Research checked {checked_at:%b %d, %I:%M %p ET}. Statuses and starters only count when sourced.')
         for name, status in source_status:
@@ -286,11 +294,13 @@ def render_slate(history_slot):
                                            'FanDuel main-slate estimates. Upstream source overlap is unverified.')
                 except (OSError, TypeError, ValueError, KeyError):
                     st.info('FantasySportsEdge comparison is unavailable for this slate.')
-            if st.button('Check Fantasy Team Advisors'):
+            if st.checkbox('Include Fantasy Team Advisors estimates in the slate save', key=f'fta_{slate}_{contest_id}'):
                 try:
-                    rows, stamp, label, total = fta_nba_reference(slate, now, set(pool.game))
-                    render_reference_board(scored, rows, stamp, 'Fantasy Team Advisors',
-                                           f'{label} public preview covers {len(rows)} of {total} source players. Ownership and ceilings are provider estimates.')
+                    rows, stamp, label, total = public_fta_reference(slate, checked_at, tuple(sorted(set(pool.game))))
+                    matched = render_reference_board(scored, rows, stamp, 'Fantasy Team Advisors',
+                                                     f'{label} public preview covers {len(rows)} of {total} source players. Ownership and ceilings are provider estimates.')
+                    if not matched.empty and matched.reference_ownership.notna().any():
+                        archived_ownership = (matched, stamp, FTA_NBA_BOARD, label)
                 except (OSError, TypeError, ValueError, KeyError):
                     st.info('No current Fantasy Team Advisors FanDuel preview matched every game in this contest.')
         market_file = st.file_uploader('Optional NBA market snapshot (Odds API JSON)', type='json', key='nba_market')
@@ -391,7 +401,8 @@ def render_slate(history_slot):
     else:
         st.caption('Generated lineups and their alternatives appear here.')
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
-    render_slate_archive(scored, slate_date=slate, generated_lineups=lineups,
+    archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
+    render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes))
 
 
