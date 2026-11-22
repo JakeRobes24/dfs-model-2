@@ -118,9 +118,12 @@ def player_market_evidence(events, slate, as_of, pool):
                     prices = dict(outcomes)
                     if len(player) == 1 and len(outcomes) == 2 and set(prices) == {'Over', 'Under'}:
                         person = player[0]
+                        daily_stat = getattr(person, f'daily_{PROP_MARKETS[key].lower()}', None)
                         rows[person.fanduel_id, key, book['key']].append(dict(
                             fanduel_id=person.fanduel_id, player=person.fanduel_name, game=game,
                             stat=PROP_MARKETS[key], line=line, bookmaker=book['key'],
+                            daily_stat=daily_stat,
+                            daily_minus_line=round(daily_stat - line, 2) if pd.notna(daily_stat) else None,
                             quoted_at=stamp.isoformat(),
                             fair_over_pct=100 * fair_over_probability(prices['Over'], prices['Under'])))
     # Multiple main lines for the same player and book are ambiguous.

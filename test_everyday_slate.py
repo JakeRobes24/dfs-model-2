@@ -33,6 +33,7 @@ def uploads():
 
 def test_contest_authority_and_ambiguous_projection_matches():
     contest, daily = uploads()
+    daily = daily.assign(points=20, rebounds=0, assists=-1)
     daily = pd.concat([daily, daily.iloc[:1]], ignore_index=True)
     daily.loc[2, 'team'] = 'Knicks'
     manual_extra = daily.iloc[[3]].assign(gameInfo='IND @ ATL')
@@ -44,6 +45,9 @@ def test_contest_authority_and_ambiguous_projection_matches():
     assert pool.iloc[0].identity_match == 'ambiguous'
     assert pool.iloc[2].identity_match == 'unmatched'
     assert pd.isna(pool.iloc[0].projected_fd_points) and pd.isna(pool.iloc[2].projected_fd_points)
+    assert pd.isna(pool.iloc[0].daily_points) and pd.isna(pool.iloc[2].daily_points)
+    assert pool.iloc[1].daily_points == 20 and pool.iloc[1].daily_rebounds == 0
+    assert pd.isna(pool.iloc[1].daily_assists)
     assert pool.salary.tolist() == contest.Salary.tolist()
     with pytest.raises(ValueError, match='mixes FanDuel contest IDs'):
         mixed = contest.copy()

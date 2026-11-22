@@ -153,13 +153,17 @@ def reconcile_exports(contest_raw, daily_raw):
     daily['projected_minutes'] = number(field(daily, 'Minutes')).where(lambda x: x.gt(0) & x.le(48))
     daily['projected_fd_points'] = number(field(daily, 'Fantasy'))
     daily['daily_salary'] = number(field(daily, 'Salary', required=False))
+    stat_columns = ['daily_points', 'daily_rebounds', 'daily_assists']
+    for column in stat_columns:
+        values = number(field(daily, column.removeprefix('daily_'), required=False))
+        daily[column] = values.where(values.ge(0))
     daily['duplicate_daily'] = daily.daily_key.duplicated(keep=False) | daily.daily_key.isin(
         set(pool.loc[pool.daily_key.duplicated(keep=False), 'daily_key'])
     )
     duplicate_keys = set(daily.loc[daily.duplicate_daily, 'daily_key'])
     matched = pool.merge(
         daily.loc[~daily.duplicate_daily, ['daily_key', 'daily_name', 'projected_minutes',
-                                          'projected_fd_points', 'daily_salary']],
+                                          'projected_fd_points', 'daily_salary', *stat_columns]],
         on='daily_key', how='left', validate='many_to_one',
     )
     unmatched = matched.daily_name.isna()

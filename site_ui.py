@@ -326,7 +326,9 @@ def render_slate(history_slot):
                     st.caption('Market-implied team totals are research estimates. Fair over probability uses matched decimal prices at the displayed total. Markets are shown for comparison.')
                     st.dataframe(market, hide_index=True)
                 if not player_markets.empty:
-                    st.caption('Player prop lines describe market thresholds. They are shown beside the slate for research.')
+                    st.caption('Compare each DAILY stat forecast with its sportsbook threshold. A positive gap means '
+                               'DAILY is above the line. Market thresholds and fair over probabilities are research '
+                               'references. Gaps are blank when DAILY has no matching stat.')
                     st.dataframe(player_markets.drop(columns='fanduel_id'), hide_index=True)
                     st.download_button('Download matched player props', player_markets.to_csv(index=False),
                                        'nba_player_props.csv', mime='text/csv')
