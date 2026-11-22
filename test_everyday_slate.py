@@ -109,3 +109,26 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
                 eligibility = contest.loc[contest.Id.eq(row.fanduel_id), 'Roster Position'].iat[0]
                 assert row.slot in allowed_slots(eligibility)
         assert set(alternative.fanduel_id) != set(lineups[lineups.lineup.eq(1)].fanduel_id)
+
+
+def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):
+    from datetime import datetime
+    from slate_research import ET, rotogrinders_research
+
+    response = b"""
+    <span><b>FPTS Updated</b><span data-role="localtime" data-value="2026-11-22T00:41:25Z"></span></span>
+    <span data-field="schedule" data-value="1">2026-11-21 10:00pm (BOS @ SAC)</span>
+    <span data-field="schedule" data-value="2">2026-11-21 1:00pm (BOS @ SAC)</span>
+    <table><thead><tr><th>PLAYER</th><th>TEAM</th><th>OPP</th><th>MINUTES</th>
+    <th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th></tr></thead><tbody>
+    <tr data-schedule="1"><td><a data-role="modal">Sample Player</a></td>
+    <td>BOS</td><td>SAC</td><td>30</td><td>10</td><td>5</td><td>3</td><td>1</td><td>1</td><td>2</td></tr>
+    <tr data-schedule="2"><td><a data-role="modal">Already Started</a></td>
+    <td>BOS</td><td>SAC</td><td>30</td><td>10</td><td>5</td><td>3</td><td>1</td><td>1</td><td>2</td></tr>
+    </tbody></table>"""
+    monkeypatch.setattr('slate_research.fetch', lambda url: response)
+    now = datetime(2026, 11, 21, 19, 50, tzinfo=ET)
+    (notes, projections), _ = rotogrinders_research(now.date(), now)
+    assert [row['player'] for row in notes] == ['Sample Player']
+    assert notes[0]['minutes'] == 30
+    assert projections[0]['points'] == 24.5

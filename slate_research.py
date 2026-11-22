@@ -328,14 +328,69 @@ def propsims_research(slate, as_of):
     return (notes, projections), f'{len(projections)} minutes and FanDuel estimates · updated {stamp:%I:%M %p ET}'
 
 
+ROTOGRINDERS = 'https://rotogrinders.com/projected-stats/nba'
+
+
+def rotogrinders_research(slate, as_of):
+    soup = BeautifulSoup(fetch(ROTOGRINDERS), 'html.parser')
+    label = soup.find(string=lambda value: value and value.strip() == 'FPTS Updated')
+    clock = label.parent.parent.select_one('[data-role="localtime"][data-value]') if label else None
+    if clock is None:
+        raise ValueError('RotoGrinders update time unavailable')
+    stamp = datetime.fromisoformat(clock['data-value']).astimezone(ET)
+    if stamp.date() != slate or not as_of - timedelta(hours=6) <= stamp <= as_of:
+        raise ValueError('RotoGrinders estimates are stale')
+    games = {}
+    for item in soup.select('[data-field="schedule"][data-value]'):
+        match = re.fullmatch(r'(\d{4}-\d{2}-\d{2}) (\d{1,2}:\d{2}[ap]m) \(([A-Z]+) @ ([A-Z]+)\)',
+                             item.get_text(strip=True), re.I)
+        if not item['data-value'].isdigit() or not match or match[1] != slate.isoformat():
+            continue
+        tip = datetime.strptime(f'{match[1]} {match[2]}', '%Y-%m-%d %I:%M%p').replace(tzinfo=ET)
+        if as_of < tip:
+            games[item['data-value']] = tuple(map(team_code, match.groups()[2:]))
+    notes, projections = [], []
+    weights = {'PTS': 1, 'REB': 1.2, 'AST': 1.5, 'STL': 3, 'BLK': 3, 'TO': -1}
+    for table in soup.select('table'):
+        columns = [heading.get_text(strip=True) for heading in table.select('thead th')]
+        if not {'TEAM', 'OPP', 'MINUTES', *weights}.issubset(columns):
+            continue
+        for row in table.select('tbody tr[data-schedule]'):
+            matchup = games.get(row['data-schedule'])
+            cells = [cell.get_text(strip=True) for cell in row.find_all('td', recursive=False)]
+            name = row.select_one('a[data-role="modal"]')
+            if not matchup or not name or len(cells) != len(columns):
+                continue
+            fields = dict(zip(columns, cells))
+            team, opponent = map(team_code, (fields['TEAM'], fields['OPP']))
+            if not team or not opponent or {team, opponent} != set(matchup):
+                continue
+            try:
+                minutes = float(fields['MINUTES'])
+                stats = {key: float(fields[key]) for key in weights}
+            except ValueError:
+                continue
+            if not 0 <= minutes <= 48 or not all(0 <= value <= 150 for value in stats.values()):
+                continue
+            common = dict(player=name.get_text(strip=True), team=team, game='@'.join(matchup),
+                          source=ROTOGRINDERS, observed_at=stamp.isoformat())
+            notes.append(dict(common, independent_group='rotogrinders', official=False,
+                              status='', starter='', role='', minutes=minutes))
+            projections.append(dict(common, points=round(sum(stats[key] * weight for key, weight in weights.items()), 2)))
+    if not notes:
+        raise ValueError('No verifiable public RotoGrinders estimates for upcoming games')
+    return (notes, projections), f'{len(notes)} pre-tip estimates · updated {stamp:%I:%M %p ET}'
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
             ('RotoWire starters and minutes', lambda: rotowire_research(slate, as_of), []),
             ('Daily Fantasy Fuel', lambda: dff_projections(slate, as_of), []),
-            ('PropSims', lambda: propsims_research(slate, as_of), ([], []))]
+            ('PropSims', lambda: propsims_research(slate, as_of), ([], [])),
+            ('RotoGrinders', lambda: rotogrinders_research(slate, as_of), ([], []))]
     results, status = [], []
-    with ThreadPoolExecutor(max_workers=4) as workers:
+    with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
         futures = [workers.submit(job) for _, job, _ in jobs]
         for (label, _, empty), future in zip(jobs, futures):
             try:
@@ -344,8 +399,11 @@ def get_public_research(slate, as_of):
                 data, detail = empty, 'Unavailable for this slate or source format changed'
             results.append(data)
             status.append((label, detail))
-    injuries, starters, projections, (extra_minutes, extra_points) = results
-    return injuries + starters + extra_minutes, projections + extra_points, status
+    injuries, starters, projections, *additional = results
+    for minutes, points in additional:
+        starters.extend(minutes)
+        projections.extend(points)
+    return injuries + starters, projections, status
 
 
 def match_public(pool, records):
@@ -429,7 +487,7 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
     by_id = {}
     for note in evidence:
-        if note.get('source') in {RW_MINUTES, PROPSIMS}:
+        if note.get('source') in {RW_MINUTES, PROPSIMS, ROTOGRINDERS}:
             by_id.setdefault(note['fanduel_id'], []).append(note['minutes'])
     official_out = {note['fanduel_id'] for note in evidence if note.get('official') is True
                     and note.get('status') in {'out', 'doubtful', 'questionable'}}

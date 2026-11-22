@@ -203,7 +203,11 @@ def render_slate(history_slot):
             st.write(f'**{name}** · {status}')
         if extra:
             st.write(f'{extra} DAILY rows are outside the exact match to this contest or need identity review.')
-        st.caption('LineupExperts, RotoGrinders, FantasyProjections, NBA House, Linemate and WalterPicks are research references. Their current minutes and role updates require a reviewed input when a verified feed is unavailable.')
+        st.markdown('**Reviewed research references** · '
+                    '[LineupExperts](https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today) · '
+                    '[NBA House](https://nbahouse.net/lab) · '
+                    '[WalterPicks](https://www.walterpicks.com/)')
+        st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, NBA House, Linemate and WalterPicks when a dated feed is unavailable.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
