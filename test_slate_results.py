@@ -81,12 +81,24 @@ def test_content_addressed_packet_checks_bytes_and_metadata():
 def test_lineup_total_counts_confirmed_dnp_but_requires_all_other_results():
     ids = [f'123-{i}' for i in range(9)]
     lineups = pd.DataFrame({'lineup': 'A', 'fanduel_id': ids})
-    results = pd.DataFrame({'fanduel_id': ids, 'adjusted_fd_points': 10,
+    results = pd.DataFrame({'fanduel_id': ids, 'projected_fd_points': 11, 'adjusted_fd_points': 10,
                             'nba_fd_points': [10] * 8 + [None], 'outcome': ['Played'] * 8 + ['Did not play']})
-    assert lineup_review(lineups, results).iloc[0]['NBA box-score FD'] == 80
+    row = lineup_review(lineups, results).iloc[0]
+    assert row['NBA box-score FD'] == 80
+    assert row['DAILY projection'] == 99
+    assert row['Pre-lock projection'] == 90
+    assert row['DAILY absolute error'] == 19
+    assert row['Pre-lock absolute error'] == 10
+    results.loc[0, 'projected_fd_points'] = None
+    row = lineup_review(lineups, results).iloc[0]
+    assert pd.isna(row['DAILY projection'])
+    assert pd.isna(row['Pre-lock absolute error'])
+    results.loc[0, 'projected_fd_points'] = 11
+    results.loc[8, 'nba_fd_points'] = 5
     results.loc[8, 'outcome'] = 'Needs review'
     summary = lineup_review(lineups, results)
     assert pd.isna(summary.iloc[0]['NBA box-score FD'])
+    assert pd.isna(summary.iloc[0]['DAILY absolute error'])
     assert summary.iloc[0]['Players still unresolved'] == 1
 
 
