@@ -382,13 +382,50 @@ def rotogrinders_research(slate, as_of):
     return (notes, projections), f'{len(notes)} pre-tip estimates · updated {stamp:%I:%M %p ET}'
 
 
+NBA_HOUSE = 'https://nbahouse.net/minutes'
+
+
+def nba_house_minutes(slate, as_of):
+    soup = BeautifulSoup(fetch(NBA_HOUSE), 'html.parser')
+    heading = soup.select_one('.minutes-page h1')
+    if heading is None or datetime.strptime(heading.get_text(strip=True), '%A %d %B %Y').date() != slate:
+        raise ValueError('NBA House slate date unavailable')
+    notes = []
+    for card in soup.select('article.mins-card[id]'):
+        away, sep, home = card['id'].partition('-at-')
+        away, home = team_code(away), team_code(home)
+        clock = card.select_one('header time[datetime]')
+        if not sep or not away or not home or not clock:
+            continue
+        tip = datetime.fromisoformat(clock['datetime']).astimezone(ET)
+        if tip.date() != slate or not as_of < tip:
+            continue
+        for side in card.select('.mins-team[data-mins-side]'):
+            team = {'away': away, 'home': home}.get(side['data-mins-side'])
+            if not team:
+                continue
+            for row in side.select('table.mins-table tbody tr'):
+                player, estimate = row.select_one('.nm-t'), row.select_one('.mproj b')
+                if player is None or estimate is None or not estimate.get_text(strip=True).isdigit():
+                    continue
+                minutes = int(estimate.get_text(strip=True))
+                if 0 <= minutes <= 48:
+                    notes.append(dict(player=player.get_text(strip=True), team=team, game=f'{away}@{home}',
+                                      source=NBA_HOUSE, observed_at=as_of.isoformat(), independent_group='nba-house',
+                                      official=False, status='', starter='', role='', minutes=minutes))
+    if not notes:
+        raise ValueError('No NBA House minutes for upcoming games')
+    return (notes, []), f'{len(notes)} pre-tip minutes estimates · observed {as_of:%I:%M %p ET}'
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
             ('RotoWire starters and minutes', lambda: rotowire_research(slate, as_of), []),
             ('Daily Fantasy Fuel', lambda: dff_projections(slate, as_of), []),
             ('PropSims', lambda: propsims_research(slate, as_of), ([], [])),
-            ('RotoGrinders', lambda: rotogrinders_research(slate, as_of), ([], []))]
+            ('RotoGrinders', lambda: rotogrinders_research(slate, as_of), ([], [])),
+            ('NBA House projected minutes', lambda: nba_house_minutes(slate, as_of), ([], []))]
     results, status = [], []
     with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
         futures = [workers.submit(job) for _, job, _ in jobs]
@@ -487,7 +524,7 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
     by_id = {}
     for note in evidence:
-        if note.get('source') in {RW_MINUTES, PROPSIMS, ROTOGRINDERS}:
+        if note.get('source') in {RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE}:
             by_id.setdefault(note['fanduel_id'], []).append(note['minutes'])
     official_out = {note['fanduel_id'] for note in evidence if note.get('official') is True
                     and note.get('status') in {'out', 'doubtful', 'questionable'}}

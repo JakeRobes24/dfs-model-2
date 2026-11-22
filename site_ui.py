@@ -207,7 +207,7 @@ def render_slate(history_slot):
                     '[LineupExperts](https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today) · '
                     '[NBA House](https://nbahouse.net/lab) · '
                     '[WalterPicks](https://www.walterpicks.com/)')
-        st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, NBA House, Linemate and WalterPicks when a dated feed is unavailable.')
+        st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, Linemate and WalterPicks when a dated feed is unavailable.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
