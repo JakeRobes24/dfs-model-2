@@ -289,13 +289,53 @@ def dff_projections(slate, as_of):
     return rows, f'{len(rows)} public projections · updated {stamp:%I:%M %p ET}'
 
 
+PROPSIMS = 'https://propsims.com/nba/dfs/'
+
+
+def propsims_research(slate, as_of):
+    soup = BeautifulSoup(fetch(PROPSIMS), 'html.parser')
+    heading = soup.select_one('h1')
+    clock = soup.select_one('.updstamp time[datetime]')
+    if heading is None or clock is None or not heading.get_text(strip=True).endswith(
+        f'{slate:%A, %B} {slate.day}'
+    ):
+        raise ValueError('PropSims slate date unavailable')
+    stamp = datetime.fromisoformat(clock['datetime']).astimezone(ET)
+    if stamp.date() != slate or not as_of - timedelta(hours=6) <= stamp <= as_of:
+        raise ValueError('PropSims projections are stale')
+    notes, projections = [], []
+    for cell in soup.select('td[data-f="fd_p50"][data-v]'):
+        row = cell.find_parent('tr')
+        name = row.select_one('.player a')
+        matchup = row.select_one('.player .msub')
+        minutes_cell = row.select_one('td[data-f="min_p50"][data-v]')
+        if name is None or matchup is None or minutes_cell is None:
+            continue
+        match = re.fullmatch(r'([A-Z]{2,3})\s*·.*?\s+(?:vs|@)\s+([A-Z]{2,3})', matchup.get_text(strip=True).removesuffix(' · not on main slate'))
+        if not match:
+            continue
+        team, opponent = map(team_code, match.groups())
+        points, minutes = float(cell['data-v']), float(minutes_cell['data-v'])
+        if not team or not opponent or team == opponent or not (0 <= points <= 150 and 0 <= minutes <= 60):
+            continue
+        common = dict(player=name.get_text(strip=True), team=team, game=f'{team}@{opponent}',
+                      source=PROPSIMS, observed_at=stamp.isoformat())
+        projections.append(dict(common, points=points))
+        notes.append(dict(common, independent_group='propsims', official=False, status='',
+                          starter='', role='', minutes=minutes))
+    if not projections:
+        raise ValueError('PropSims FanDuel table unavailable')
+    return (notes, projections), f'{len(projections)} minutes and FanDuel estimates · updated {stamp:%I:%M %p ET}'
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
             ('RotoWire starters and minutes', lambda: rotowire_research(slate, as_of), []),
-            ('Daily Fantasy Fuel', lambda: dff_projections(slate, as_of), [])]
+            ('Daily Fantasy Fuel', lambda: dff_projections(slate, as_of), []),
+            ('PropSims', lambda: propsims_research(slate, as_of), ([], []))]
     results, status = [], []
-    with ThreadPoolExecutor(max_workers=3) as workers:
+    with ThreadPoolExecutor(max_workers=4) as workers:
         futures = [workers.submit(job) for _, job, _ in jobs]
         for (label, _, empty), future in zip(jobs, futures):
             try:
@@ -304,8 +344,8 @@ def get_public_research(slate, as_of):
                 data, detail = empty, 'Unavailable for this slate or source format changed'
             results.append(data)
             status.append((label, detail))
-    injuries, starters, projections = results
-    return injuries + starters, projections, status
+    injuries, starters, projections, (extra_minutes, extra_points) = results
+    return injuries + starters + extra_minutes, projections + extra_points, status
 
 
 def match_public(pool, records):
@@ -375,29 +415,35 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     # History alone is context. A moderate, same-direction discrepancy in an independent
     # points model can support a small, explicitly provisional minutes adjustment.
     projected = pd.DataFrame(projections)
-    independent = (projected.drop_duplicates('fanduel_id', keep=False).set_index('fanduel_id')
+    independent = (projected.drop_duplicates(['fanduel_id', 'source'], keep=False).drop_duplicates('fanduel_id').set_index('fanduel_id')
                    if not projected.empty else pd.DataFrame())
     result['independent_fd_points'] = result.fanduel_id.map(independent['points']) if len(independent) else float('nan')
     result['independent_projection_at'] = result.fanduel_id.map(independent['observed_at']) if len(independent) else ''
     result['independent_projection_source'] = result.fanduel_id.map(independent['source']) if len(independent) else ''
+    spread = (projected.groupby('fanduel_id').points.agg(lambda values: values.max() - values.min())
+              if not projected.empty else {})
+    result['projection_source_spread'] = result.fanduel_id.map(spread)
     result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
     baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
     minute_gap = historical - baseline
     counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
     by_id = {}
     for note in evidence:
-        if note.get('source') == RW_MINUTES:
+        if note.get('source') in {RW_MINUTES, PROPSIMS}:
             by_id.setdefault(note['fanduel_id'], []).append(note['minutes'])
     official_out = {note['fanduel_id'] for note in evidence if note.get('official') is True
                     and note.get('status') in {'out', 'doubtful', 'questionable'}}
     result['independent_minutes'] = result.fanduel_id.map(
-        {key: values[0] for key, values in by_id.items() if len(values) == 1}
+        {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
     )
     minutes_agree = ((result.independent_minutes - historical).abs().le(3)
                      & (result.independent_minutes - baseline).abs().between(2, 6))
     points_agree = (result.fd_disagreement.abs().between(2, 8)
                     & (minute_gap * result.fd_disagreement).gt(0))
-    corroborated = (~result.fanduel_id.isin(official_out) & result.eligible & result.minutes_method.eq('DAILY_only_unverified')
+    source_conflict = result.projection_source_spread.ge(5) | result.fanduel_id.isin(
+        key for key, values in by_id.items() if max(values) - min(values) > 3
+    )
+    corroborated = (~source_conflict & ~result.fanduel_id.isin(official_out) & result.eligible & result.minutes_method.eq('DAILY_only_unverified')
                     & counts.ge(3) & minute_gap.abs().between(2, 6) & result.fppm.gt(0)
                     & (minutes_agree | points_agree))
     result.loc[corroborated, 'adjusted_minutes'] = baseline + (minute_gap / 3).clip(-2, 2)
@@ -406,7 +452,7 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     result.loc[corroborated, 'projection_warning'] = 'Provisional adjustment based on recent rotations and independent estimates'
     result, audit = apply_prelock(result, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
     uncertain = result.prelock_status.isin(['questionable', 'doubtful']) | result.injury_flag.isin(['Q', 'D', 'GTD'])
-    disputes = (result.fd_disagreement.abs().ge(5) | minute_gap.abs().gt(5)
+    disputes = (source_conflict | result.fd_disagreement.abs().ge(5) | minute_gap.abs().gt(5)
                 | (result.independent_minutes - baseline).abs().gt(5))
     result['research_attention'] = ''
     result.loc[result.prelock_starter.eq(''), 'research_attention'] += 'Starter unconfirmed. '

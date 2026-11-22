@@ -5,7 +5,8 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from history_intake import list_slate_packets, load_slate_packet
+from history_intake import list_slate_packets, load_slate_packet, make_submission, submit_reviewed_slate
+from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
 from slate_import import game_code, matchup_key
 from slate_research import ET
@@ -38,6 +39,39 @@ def lineup_review(lineups, results):
                        'NBA box-score FD': players.result_for_total.sum(min_count=9),
                        'Players still unresolved': int(players.result_for_total.isna().sum())})
     return pd.DataFrame(scores)
+
+
+def new_actuals(results, history, slate):
+    """Preserve any prior result, including incomplete rows and disagreements."""
+    recorded = history.loc[history.slate_date.eq(slate.isoformat()) &
+                           history[['actual_minutes', 'actual_fd_points']].notna().any(axis=1), 'fanduel_id']
+    verified = results.outcome.isin(['Played', 'Did not play']) & results.nba_source.ne('')
+    fresh = results.loc[verified & ~results.fanduel_id.isin(recorded),
+                        ['fanduel_id', 'nba_actual_minutes', 'nba_fd_points', 'nba_source', 'outcome']].copy()
+    dnp = fresh.outcome.eq('Did not play')
+    fresh.loc[dnp, ['nba_actual_minutes', 'nba_fd_points']] = 0
+    fresh['actuals_source'] = 'NBA box-score calculation: ' + fresh.nba_source
+    fresh.loc[dnp, 'actuals_source'] = 'NBA confirmed did not play: ' + fresh.loc[dnp, 'nba_source']
+    fresh = fresh.rename(columns={'nba_actual_minutes': 'actual_minutes', 'nba_fd_points': 'actual_fd_points'})
+    return fresh[['fanduel_id', 'actual_minutes', 'actual_fd_points', 'actuals_source']]
+
+
+def render_actuals_save(results, history, slate, pool, lineups, token):
+    if not token or history is None or history.empty:
+        return
+    fresh = new_actuals(results, history, slate)
+    if fresh.empty:
+        return
+    st.caption(f'{len(fresh)} newly verified NBA results can be added to private history. Existing results are preserved.')
+    if st.button('Save reviewed NBA results and start backup', type='primary'):
+        try:
+            path, raw = make_submission(pool, slate, actuals=fresh.to_csv(index=False),
+                                        lineups=lineups.to_csv(index=False) if lineups is not None else None)
+            commit = submit_reviewed_slate(token, path, raw)
+        except (ValueError, OSError) as error:
+            st.error(str(error))
+        else:
+            st.success(f'Submitted for backup ({commit}).' if commit else 'These exact results were already submitted.')
 
 
 def render_post_slate():
@@ -106,6 +140,7 @@ def render_post_slate():
     if disagreements.any():
         st.warning(f'{int(disagreements.sum())} NBA-calculated results differ from recorded results. Both values are preserved.')
     st.caption('NBA box-score points use FanDuel scoring weights. Recorded contest scores are shown separately when available.')
+    render_actuals_save(results, history, slate, pool, lineups, _intake_token())
     summary = lineup_review(lineups, results)
     if not summary.empty:
         st.subheader('Saved lineups')
