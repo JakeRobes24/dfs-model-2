@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
 from model import norm
-from slate_import import game_code, matchup_key, player_key, team_code
+from slate_import import contest_player_keys, game_code, matchup_key, player_key, team_code
 from slate_research import ET, GAME_ID, NBA_WEB, games_for_date, nba_page, played_minutes
 
 SCORE_WEIGHTS = {'points': 10, 'reboundsTotal': 12, 'assists': 15, 'steals': 30,
@@ -104,19 +104,25 @@ def nba_outcomes(boxes):
 
 def compare_results(pool, day, boxes, prior_scores):
     outcomes, finals = nba_outcomes(boxes)
-    keys = [(matchup_key(game_code(row.game)), team_code(row.team), result_name(row.fanduel_name))
-            for row in pool.itertuples()]
-    counts = Counter(keys)
+    identities = [
+        {(matchup_key(game_code(row.game)), team_code(row.team), result_name(name))
+         for name in contest_player_keys(row.fanduel_name, row.fanduel_id)}
+        for row in pool.itertuples()
+    ]
+    counts = Counter(key for keys in identities for key in keys)
     comparisons = []
-    for key in keys:
-        candidates = outcomes.get(key, {})
-        proof = VERIFIED_ABSENCES.get((day.isoformat(), *key))
-        if counts[key] == 1 and len(candidates) == 1:
-            outcome = next(iter(candidates.values()))
-        elif counts[key] == 1 and not candidates and proof and key[0] in finals:
-            outcome = ('Did not play', None, None, proof)
+    for keys in identities:
+        matchup = next(iter(keys))[0]
+        unique = all(counts[key] == 1 for key in keys)
+        candidates = {(person, outcome) for key in keys for person, outcome in outcomes.get(key, {}).items()}
+        proof = {VERIFIED_ABSENCES[(day.isoformat(), *key)] for key in keys
+                 if (day.isoformat(), *key) in VERIFIED_ABSENCES}
+        if unique and len(candidates) == 1:
+            _, outcome = next(iter(candidates))
+        elif unique and not candidates and len(proof) == 1 and matchup in finals:
+            outcome = ('Did not play', None, None, next(iter(proof)))
         else:
-            status = 'Needs review' if key[0] in finals else 'Final box unavailable'
+            status = 'Needs review' if matchup in finals else 'Final box unavailable'
             outcome = (status, None, None, '')
         comparisons.append(outcome)
     columns = ['outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source']
