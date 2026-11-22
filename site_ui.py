@@ -16,7 +16,7 @@ from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
-    ET, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
+    ET, LINEUPEXPERTS_TODAY, get_public_research, historical_context, lineupexperts_reference, match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
 
@@ -54,6 +54,8 @@ def manual_inputs(as_of):
         minutes = st.file_uploader('Independent minutes CSV', type='csv', key='slate_manual_minutes')
         history = st.file_uploader('Historical minutes CSV', type='csv', key='slate_manual_history')
         prelock = st.file_uploader('Reviewed pre-lock CSV', type='csv', key='slate_manual_prelock')
+        reviewed_points = st.file_uploader('Verified LineupExperts points CSV', type='csv', key='slate_reviewed_points')
+        st.caption('Optional LineupExperts data requires fanduel_id, points, and observed_at with a timezone. Use a verified source update time.')
         ceiling = st.file_uploader('Researched GPP ceilings CSV', type='csv', key='slate_manual_ceiling')
         st.caption('For GPP upside, supply fanduel_id and ceiling_fd_points for each optimizable player.')
         st.caption('Minutes: player, source, minutes, observed_at, independent_group (optional). History: player, season_mpg, last5_mpg, last10_mpg.')
@@ -64,6 +66,12 @@ def manual_inputs(as_of):
             minutes = read_optional(minutes, {'player', 'source', 'minutes', 'observed_at'})
             history = read_optional(history, {'player', 'season_mpg', 'last5_mpg', 'last10_mpg'})
             prelock = read_optional(prelock, REQUIRED, id_column='fanduel_id')
+            reviewed_points = read_optional(reviewed_points, {'fanduel_id', 'points', 'observed_at'}, id_column='fanduel_id')
+            if reviewed_points is not None:
+                if reviewed_points.fanduel_id.duplicated().any() or not reviewed_points.observed_at.astype(str).str.contains(
+                    r'(?:Z|[+-][0-9]{2}:[0-9]{2})$', regex=True
+                ).all():
+                    raise ValueError('Verified LineupExperts rows need unique IDs and an update time with a timezone.')
             ceiling = read_optional(ceiling, {'fanduel_id', 'ceiling_fd_points'}, id_column='fanduel_id')
         except (ValueError, OSError) as exc:
             st.error(str(exc))
@@ -76,7 +84,7 @@ def manual_inputs(as_of):
             if not good.all():
                 st.warning(f'{int((~good).sum())} minutes estimates were stale, undated or invalid.')
             minutes = audited.loc[good].assign(observed_at=published[good])
-        return minutes, history, prelock, ceiling, exclude, overlap
+        return minutes, history, prelock, ceiling, exclude, overlap, reviewed_points
 
 
 def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points'):
@@ -184,12 +192,18 @@ def render_slate(history_slot):
     manual = manual_inputs(now)
     if manual is None:
         return
-    minutes, minutes_history, prelock, ceiling, exclude, overlap = manual
+    minutes, minutes_history, prelock, ceiling, exclude, overlap, reviewed_points = manual
     matched_notes = match_public(pool, notes)
     if prelock is not None:
         matched_notes += prelock.to_dict('records')
     historical = historical_context(pool, history, rotations, slate)
-    scored, audit = score_slate(pool, historical, matched_notes, match_public(pool, projections), now,
+    matched_points = match_public(pool, projections)
+    if reviewed_points is not None:
+        if not reviewed_points.fanduel_id.isin(pool.fanduel_id).all():
+            st.error('LineupExperts points must use player IDs from the loaded contest.')
+            return
+        matched_points += reviewed_points.assign(source=LINEUPEXPERTS_TODAY).to_dict('records')
+    scored, audit = score_slate(pool, historical, matched_notes, matched_points, now,
                               manual_minutes=minutes, manual_history=minutes_history)
     missing = int((scored.eligible & ~scored.adjusted_fd_points.gt(0)).sum())
     starters = int(scored.prelock_starter.eq('starter').sum())
@@ -206,6 +220,7 @@ def render_slate(history_slot):
         st.caption(f'Research checked {checked_at:%b %d, %I:%M %p ET}. Statuses and starters only count when sourced.')
         for name, status in source_status:
             st.write(f'**{name}** · {status}')
+        st.caption('With two agreeing independent sources, the projection uses 60% DAILY and 40% independent estimates weighted by recency. Confirmed status and verified minutes adjustments take priority.')
         if extra:
             st.write(f'{extra} DAILY rows are outside the exact match to this contest or need identity review.')
         st.markdown('**Reviewed research references** · '
@@ -238,10 +253,11 @@ def render_slate(history_slot):
                           'roster_eligibility', 'injury_flag',
                           'prelock_status', 'prelock_starter', 'prelock_role', 'projected_minutes', 'recent_mpg', 'independent_minutes',
                           'adjusted_minutes', 'projected_fd_points', 'independent_fd_points',
+                          'blended_fd_points', 'projection_source_estimates', 'projection_method',
                           'minutes_method', 'import_issue', 'identity_match']]
         st.dataframe(display.rename(columns={
             'fanduel_name':'Player', 'projected_fd_points':'DAILY FD', 'adjusted_fd_points':'Adjusted FD',
-            'independent_fd_points':'Independent FD', 'recent_mpg':'Recent minutes',
+            'independent_fd_points':'Independent FD', 'blended_fd_points':'Weighted blend FD', 'recent_mpg':'Recent minutes',
             'prelock_status':'Official status', 'prelock_starter':'Starter',
         }), hide_index=True)
         st.download_button('Download reviewed pool', scored.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
