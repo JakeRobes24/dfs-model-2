@@ -109,3 +109,54 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
                 eligibility = contest.loc[contest.Id.eq(row.fanduel_id), 'Roster Position'].iat[0]
                 assert row.slot in allowed_slots(eligibility)
         assert set(alternative.fanduel_id) != set(lineups[lineups.lineup.eq(1)].fanduel_id)
+
+
+def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):
+    from datetime import datetime
+    from slate_research import ET, rotogrinders_research
+
+    response = b"""
+    <span><b>FPTS Updated</b><span data-role="localtime" data-value="2026-11-22T00:41:25Z"></span></span>
+    <span data-field="schedule" data-value="1">2026-11-21 10:00pm (BOS @ SAC)</span>
+    <span data-field="schedule" data-value="2">2026-11-21 1:00pm (BOS @ SAC)</span>
+    <table><thead><tr><th>PLAYER</th><th>TEAM</th><th>OPP</th><th>MINUTES</th>
+    <th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th></tr></thead><tbody>
+    <tr data-schedule="1"><td><a data-role="modal">Sample Player</a></td>
+    <td>BOS</td><td>SAC</td><td>30</td><td>10</td><td>5</td><td>3</td><td>1</td><td>1</td><td>2</td></tr>
+    <tr data-schedule="2"><td><a data-role="modal">Already Started</a></td>
+    <td>BOS</td><td>SAC</td><td>30</td><td>10</td><td>5</td><td>3</td><td>1</td><td>1</td><td>2</td></tr>
+    </tbody></table>"""
+    monkeypatch.setattr('slate_research.fetch', lambda url: response)
+    now = datetime(2026, 11, 21, 19, 50, tzinfo=ET)
+    (notes, projections), _ = rotogrinders_research(now.date(), now)
+    assert [row['player'] for row in notes] == ['Sample Player']
+    assert notes[0]['minutes'] == 30
+    assert projections[0]['points'] == 24.5
+
+
+def test_weighted_blend_requires_agreement_and_yields_to_late_news():
+    from datetime import timedelta
+    from slate_research import DFF, PROPSIMS, LINEUPEXPERTS_TODAY
+
+    contest, daily = uploads()
+    pool, _, _ = reconcile_exports(contest.to_csv(index=False).encode(), daily.to_csv(index=False).encode())
+    player = pool.iloc[0]
+    baseline = player.projected_fd_points
+    estimates = [dict(fanduel_id=player.fanduel_id, source=source, points=baseline + delta,
+                      observed_at=(AS_OF - age).isoformat())
+                 for source, delta, age in [(DFF, 1, timedelta(hours=3)), (PROPSIMS, 3, timedelta())]]
+    result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [], estimates, AS_OF)
+    assert result.iloc[0].adjusted_fd_points == pytest.approx(baseline + .4 * (0.5 + 3) / 1.5)
+    reviewed = dict(estimates[1], source=LINEUPEXPERTS_TODAY, points=baseline + 2)
+    result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [], estimates + [reviewed], AS_OF)
+    assert result.iloc[0].projection_source_count == 3
+    assert result.iloc[0].blended_fd_points == pytest.approx(baseline + .4 * (0.5 + 3 + 2) / 2.5)
+    conflict = [estimates[0], dict(estimates[1], points=baseline + 10)]
+    result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [], conflict, AS_OF)
+    assert result.iloc[0].adjusted_fd_points == baseline
+    news = dict(fanduel_id=player.fanduel_id, source='NBA', independent_group='nba',
+                observed_at=(AS_OF - timedelta(minutes=15)).isoformat(), official=True,
+                status='available', starter='', role='', minutes=None)
+    result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [news], estimates, AS_OF)
+    assert result.iloc[0].projection_source_count == 1
+    assert pd.isna(result.iloc[0].blended_fd_points)

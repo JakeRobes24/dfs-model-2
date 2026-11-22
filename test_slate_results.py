@@ -88,3 +88,20 @@ def test_lineup_total_counts_confirmed_dnp_but_requires_all_other_results():
     summary = lineup_review(lineups, results)
     assert pd.isna(summary.iloc[0]['NBA box-score FD'])
     assert summary.iloc[0]['Players still unresolved'] == 1
+
+
+def test_new_actuals_preserves_recorded_and_unresolved_scores():
+    from slate_results_ui import new_actuals
+    results = pd.DataFrame({
+        'fanduel_id': ['123-1', '123-2', '123-3', '123-4'],
+        'outcome': ['Played', 'Did not play', 'Played', 'Needs review'],
+        'nba_source': ['box', 'box', 'box', 'box'],
+        'nba_actual_minutes': [20, None, 25, None],
+        'nba_fd_points': [22, None, 30, None],
+    })
+    history = pd.DataFrame({'slate_date': [DAY.isoformat()], 'fanduel_id': ['123-3'],
+                            'actual_minutes': [25], 'actual_fd_points': [33]})
+    fresh = new_actuals(results, history, DAY)
+    assert fresh.fanduel_id.tolist() == ['123-1', '123-2']
+    assert fresh.actual_fd_points.tolist() == [22, 0]
+    assert 'confirmed did not play' in fresh.actuals_source.iloc[1]

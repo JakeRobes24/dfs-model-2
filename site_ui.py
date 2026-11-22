@@ -16,7 +16,9 @@ from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
-    ET, get_public_research, historical_context, match_public, recent_boxscores, score_slate,
+    ET, FTA_NBA_BOARD, LINEUPEXPERTS_TODAY, compare_reference, fantasysportsedge_reference,
+    fta_nba_reference, get_public_research, historical_context, lineupexperts_reference,
+    match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
 
@@ -30,6 +32,33 @@ def public_research(slate, checked_at):
 @st.cache_data(ttl=1800, max_entries=16, show_spinner=False)
 def public_rotations(slate, games):
     return recent_boxscores(slate, set(games))
+
+
+@st.cache_data(ttl=300, max_entries=4, show_spinner=False)
+def public_lineupexperts_reference(slate, today):
+    return lineupexperts_reference(slate, today)
+
+
+def render_reference_board(scored, rows, stamp, source, context):
+    comparison = compare_reference(scored, rows)
+    if comparison.empty:
+        st.info(f'{source} has no eligible players matched by name, game and FanDuel salary.')
+        return
+    st.caption(f'{source} · {stamp:%b %d, %I:%M %p ET} · {len(comparison)} matched. {context}')
+    labels = {'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD',
+              'adjusted_fd_points': 'Model FD', 'reference_points': 'Source FD',
+              'points_gap': 'Points gap', 'adjusted_minutes': 'Model minutes',
+              'reference_minutes': 'Source minutes', 'minutes_gap': 'Minutes gap',
+              'reference_ownership': 'Projected ownership %', 'reference_ceiling': 'Simulated 85th percentile',
+              'research_check': 'Research check'}
+    columns = [key for key in labels if key in comparison]
+    flagged = comparison.research_check.str.contains('Missing|Review')
+    display = pd.concat([comparison.loc[flagged], comparison.loc[~flagged]])
+    st.dataframe(display[columns].rename(columns=labels), hide_index=True)
+    st.download_button(f'Download {source} comparison',
+                       display.assign(reference_provider=source, source_updated_at=stamp.isoformat())
+                       [['fanduel_id', *columns, 'reference_provider', 'source_updated_at']].to_csv(index=False),
+                       f"{source.lower().replace(' ', '_')}_comparison.csv", mime='text/csv')
 
 
 def read_optional(upload, required, *, id_column=None):
@@ -49,6 +78,8 @@ def manual_inputs(as_of):
         minutes = st.file_uploader('Independent minutes CSV', type='csv', key='slate_manual_minutes')
         history = st.file_uploader('Historical minutes CSV', type='csv', key='slate_manual_history')
         prelock = st.file_uploader('Reviewed pre-lock CSV', type='csv', key='slate_manual_prelock')
+        reviewed_points = st.file_uploader('Verified LineupExperts points CSV', type='csv', key='slate_reviewed_points')
+        st.caption('Optional LineupExperts data requires fanduel_id, points, and observed_at with a timezone. Use a verified source update time.')
         ceiling = st.file_uploader('Researched GPP ceilings CSV', type='csv', key='slate_manual_ceiling')
         st.caption('For GPP upside, supply fanduel_id and ceiling_fd_points for each optimizable player.')
         st.caption('Minutes: player, source, minutes, observed_at, independent_group (optional). History: player, season_mpg, last5_mpg, last10_mpg.')
@@ -59,6 +90,12 @@ def manual_inputs(as_of):
             minutes = read_optional(minutes, {'player', 'source', 'minutes', 'observed_at'})
             history = read_optional(history, {'player', 'season_mpg', 'last5_mpg', 'last10_mpg'})
             prelock = read_optional(prelock, REQUIRED, id_column='fanduel_id')
+            reviewed_points = read_optional(reviewed_points, {'fanduel_id', 'points', 'observed_at'}, id_column='fanduel_id')
+            if reviewed_points is not None:
+                if reviewed_points.fanduel_id.duplicated().any() or not reviewed_points.observed_at.astype(str).str.contains(
+                    r'(?:Z|[+-][0-9]{2}:[0-9]{2})$', regex=True
+                ).all():
+                    raise ValueError('Verified LineupExperts rows need unique IDs and an update time with a timezone.')
             ceiling = read_optional(ceiling, {'fanduel_id', 'ceiling_fd_points'}, id_column='fanduel_id')
         except (ValueError, OSError) as exc:
             st.error(str(exc))
@@ -71,7 +108,7 @@ def manual_inputs(as_of):
             if not good.all():
                 st.warning(f'{int((~good).sum())} minutes estimates were stale, undated or invalid.')
             minutes = audited.loc[good].assign(observed_at=published[good])
-        return minutes, history, prelock, ceiling, exclude, overlap
+        return minutes, history, prelock, ceiling, exclude, overlap, reviewed_points
 
 
 def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points'):
@@ -179,12 +216,18 @@ def render_slate(history_slot):
     manual = manual_inputs(now)
     if manual is None:
         return
-    minutes, minutes_history, prelock, ceiling, exclude, overlap = manual
+    minutes, minutes_history, prelock, ceiling, exclude, overlap, reviewed_points = manual
     matched_notes = match_public(pool, notes)
     if prelock is not None:
         matched_notes += prelock.to_dict('records')
     historical = historical_context(pool, history, rotations, slate)
-    scored, audit = score_slate(pool, historical, matched_notes, match_public(pool, projections), now,
+    matched_points = match_public(pool, projections)
+    if reviewed_points is not None:
+        if not reviewed_points.fanduel_id.isin(pool.fanduel_id).all():
+            st.error('LineupExperts points must use player IDs from the loaded contest.')
+            return
+        matched_points += reviewed_points.assign(source=LINEUPEXPERTS_TODAY).to_dict('records')
+    scored, audit = score_slate(pool, historical, matched_notes, matched_points, now,
                               manual_minutes=minutes, manual_history=minutes_history)
     missing = int((scored.eligible & ~scored.adjusted_fd_points.gt(0)).sum())
     starters = int(scored.prelock_starter.eq('starter').sum())
@@ -201,9 +244,47 @@ def render_slate(history_slot):
         st.caption(f'Research checked {checked_at:%b %d, %I:%M %p ET}. Statuses and starters only count when sourced.')
         for name, status in source_status:
             st.write(f'**{name}** · {status}')
+        st.caption('With two agreeing independent sources, the projection uses 60% DAILY and 40% independent estimates weighted by recency. Confirmed status and verified minutes adjustments take priority.')
         if extra:
             st.write(f'{extra} DAILY rows are outside the exact match to this contest or need identity review.')
-        st.caption('LineupExperts, RotoGrinders, FantasyProjections, NBA House, Linemate and WalterPicks are research references. Their current minutes and role updates require a reviewed input when a verified feed is unavailable.')
+        st.markdown('**Reviewed research references** · '
+                    '[LineupExperts](https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today) · '
+                    '[NBA House](https://nbahouse.net/lab) · '
+                    '[WalterPicks](https://www.walterpicks.com/)')
+        if slate == now.date() and st.button('Compare with free LineupExperts projections'):
+            try:
+                reference = pd.DataFrame(match_public(pool, public_lineupexperts_reference(slate, now.date())))
+                if reference.empty:
+                    st.info('No unambiguous team and matchup matches in the current LineupExperts view.')
+                else:
+                    reference = reference.drop_duplicates('fanduel_id', keep=False)
+                    compared = scored[['fanduel_id', 'fanduel_name', 'projected_fd_points']].merge(
+                        reference[['fanduel_id', 'reference_fd']], on='fanduel_id', validate='one_to_one')
+                    compared['Difference'] = (compared.reference_fd - compared.projected_fd_points).round(2)
+                    st.caption('FanDuel points calculated from public projected stats. The source does not publish a verified update time. Reference only.')
+                    st.dataframe(compared.drop(columns='fanduel_id').rename(columns={
+                        'fanduel_name': 'Player', 'projected_fd_points': 'DAILY FD', 'reference_fd': 'LineupExperts FD',
+                    }), hide_index=True)
+            except (OSError, ValueError, KeyError, TypeError):
+                st.info('The free LineupExperts comparison is currently unavailable.')
+        st.caption('Use optional reviewed inputs for LineupExperts, FantasyProjections, Linemate and WalterPicks when a dated feed is unavailable.')
+        st.markdown('[DraftEdge NBA projection board](https://draftedge.com/nba/nba-daily-projections/)')
+        if slate == now.date():
+            st.markdown(f'[Fantasy Team Advisors FanDuel board]({FTA_NBA_BOARD})')
+            if st.button('Check FantasySportsEdge'):
+                try:
+                    rows, stamp = fantasysportsedge_reference(slate, now)
+                    render_reference_board(scored, rows, stamp, 'FantasySportsEdge',
+                                           'FanDuel main-slate estimates. Upstream source overlap is unverified.')
+                except (OSError, TypeError, ValueError, KeyError):
+                    st.info('FantasySportsEdge comparison is unavailable for this slate.')
+            if st.button('Check Fantasy Team Advisors'):
+                try:
+                    rows, stamp, label, total = fta_nba_reference(slate, now, set(pool.game))
+                    render_reference_board(scored, rows, stamp, 'Fantasy Team Advisors',
+                                           f'{label} public preview covers {len(rows)} of {total} source players. Ownership and ceilings are provider estimates.')
+                except (OSError, TypeError, ValueError, KeyError):
+                    st.info('No current Fantasy Team Advisors FanDuel preview matched every game in this contest.')
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
@@ -213,10 +294,11 @@ def render_slate(history_slot):
                           'roster_eligibility', 'injury_flag',
                           'prelock_status', 'prelock_starter', 'prelock_role', 'projected_minutes', 'recent_mpg', 'independent_minutes',
                           'adjusted_minutes', 'projected_fd_points', 'independent_fd_points',
+                          'blended_fd_points', 'projection_source_estimates', 'projection_method',
                           'minutes_method', 'import_issue', 'identity_match']]
         st.dataframe(display.rename(columns={
             'fanduel_name':'Player', 'projected_fd_points':'DAILY FD', 'adjusted_fd_points':'Adjusted FD',
-            'independent_fd_points':'Independent FD', 'recent_mpg':'Recent minutes',
+            'independent_fd_points':'Independent FD', 'blended_fd_points':'Weighted blend FD', 'recent_mpg':'Recent minutes',
             'prelock_status':'Official status', 'prelock_starter':'Starter',
         }), hide_index=True)
         st.download_button('Download reviewed pool', scored.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
