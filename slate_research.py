@@ -135,6 +135,25 @@ def played_minutes(value):
     return minutes if 0 < minutes <= 60 else None
 
 
+def rotation_box_details(players, inactives):
+    """Capture only explicit participation and absences from a final team box."""
+    identities: dict[str, set[str]] = {}
+    played, absent = set(), set()
+    for roster, inactive in ((players, False), (inactives, True)):
+        for player in roster:
+            name = f"{player.get('firstName', '')} {player.get('familyName', '')}".strip()
+            if not name or not player.get('personId'):
+                continue
+            key = player_key(name)
+            identities.setdefault(key, set()).add(str(player['personId']))
+            if inactive or re.match(r'^DNP\b', str(player.get('comment', '')), re.I):
+                absent.add(key)
+            if not inactive and played_minutes((player.get('statistics') or {}).get('minutes')):
+                played.add(key)
+    ambiguous = {key for key, ids in identities.items() if len(ids) != 1}
+    return played - ambiguous, absent - played - ambiguous
+
+
 def read_box(game, url):
     away, home = (game[key] for key in ('awayTeam', 'homeTeam'))
     game_code = f"{team_code(away['teamTricode'])}@{team_code(home['teamTricode'])}"
@@ -144,18 +163,24 @@ def read_box(game, url):
         return rows
     for club in (away, home):
         team = team_code(club['teamTricode'])
-        for player in club.get('players', []):
+        players = club.get('players', [])
+        played, absent = rotation_box_details(players, club.get('inactives', []))
+        for player in players:
             name = f"{player.get('firstName', '')} {player.get('familyName', '')}".strip()
-            minutes = played_minutes(player.get('statistics', {}).get('minutes'))
+            stats = player.get('statistics') or {}
+            minutes = played_minutes(stats.get('minutes'))
             if name and minutes:
                 rows.append(dict(player=name, team=team, game=game_code, minutes=minutes,
                                  game_date=game_day.tz_convert(ET).date(),
                                  started=str(player['starter']) == '1' if 'starter' in player else None,
-                                 nba_id=str(player.get('personId') or ''), source=url))
+                                 nba_id=str(player.get('personId') or ''), source=url,
+                                 teammates_played=tuple(sorted(played)), teammates_absent=tuple(sorted(absent)),
+                                 **{key: stats.get(key) for key in ('points', 'reboundsTotal', 'assists',
+                                     'steals', 'blocks', 'turnovers', 'fieldGoalsAttempted', 'freeThrowsAttempted')}))
     return rows
 
 
-def recent_boxscores(slate, games):
+def recent_boxscores(slate, games, *, game_limit=3, days_back=7):
     teams = {team for game in games for team in game.split('@')}
     previous = {team: [] for team in teams}
     schedule_loaded = 0
@@ -178,7 +203,7 @@ def recent_boxscores(slate, games):
             return []
 
     with ThreadPoolExecutor(max_workers=12) as workers:
-        days = [slate - timedelta(days=index) for index in range(1, 8)]
+        days = [slate - timedelta(days=index) for index in range(1, days_back + 1)]
         for day, (entries, ok) in zip(days, workers.map(dates, days)):
             schedule_loaded += int(ok)
             for game in entries:
@@ -187,7 +212,7 @@ def recent_boxscores(slate, games):
                 if not away or not home or game.get('gameStatus') != 3 or not GAME_ID.fullmatch(game_id):
                     continue
                 for team in {away, home} & teams:
-                    if len(previous[team]) < 3:
+                    if len(previous[team]) < game_limit:
                         previous[team].append((day, game_id, away, home))
         scheduled = sorted({game for rows in previous.values() for game in rows})
         responses = list(workers.map(load, scheduled))

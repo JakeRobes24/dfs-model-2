@@ -2,6 +2,7 @@
 from datetime import date, datetime, timedelta
 from functools import partial
 from hashlib import sha256
+import json
 import re
 
 import pandas as pd
@@ -12,7 +13,9 @@ from evidence import validate_sources
 from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
+from market_evidence import game_market_evidence
 from model import SLOTS, optimize
+from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
 from slate_import import reconcile_exports
 from slate_research import (
@@ -32,6 +35,11 @@ def public_research(slate, checked_at):
 @st.cache_data(ttl=1800, max_entries=16, show_spinner=False)
 def public_rotations(slate, games):
     return recent_boxscores(slate, set(games))
+
+
+@st.cache_data(ttl=1800, max_entries=8, show_spinner=False)
+def extended_rotations(slate, games):
+    return recent_boxscores(slate, set(games), game_limit=10, days_back=24)
 
 
 @st.cache_data(ttl=300, max_entries=4, show_spinner=False)
@@ -285,9 +293,42 @@ def render_slate(history_slot):
                                            f'{label} public preview covers {len(rows)} of {total} source players. Ownership and ceilings are provider estimates.')
                 except (OSError, TypeError, ValueError, KeyError):
                     st.info('No current Fantasy Team Advisors FanDuel preview matched every game in this contest.')
+        market_file = st.file_uploader('Optional NBA market snapshot (Odds API JSON)', type='json', key='nba_market')
+        if market_file is not None:
+            try:
+                if market_file.size > 1024 * 1024:
+                    raise ValueError('Market snapshot exceeds 1 MiB.')
+                events = json.loads(market_file.getvalue())
+                if not isinstance(events, list) or any(not isinstance(event, dict) for event in events):
+                    raise ValueError('Expected a list of market events.')
+                market = game_market_evidence(events, slate, now, set(pool.game))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                st.warning('Use a valid Odds API game-odds snapshot with decimal odds.')
+            else:
+                if market.empty:
+                    st.info('No fresh, pre-tip totals and spreads matched the contest games.')
+                else:
+                    st.caption('Market-implied team totals are research estimates. Fair over probability uses matched decimal prices at the displayed total. Markets are shown for comparison.')
+                    st.dataframe(market, hide_index=True)
         if len(audit):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
+    with st.expander('Rotation and injury opportunity evidence'):
+        rotation_rows, coverage = rotations, rotation_status
+        if st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}'):
+            with st.spinner('Checking up to ten recent team games…'):
+                rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
+        rotation_summary, absence_splits = opportunity_evidence(scored, rotation_rows, slate)
+        st.caption(coverage)
+        if rotation_summary.empty:
+            st.info('No verified prior box scores matched this player pool.')
+        else:
+            st.dataframe(rotation_summary.drop(columns=['fanduel_id', 'Box-score sources']), hide_index=True)
+        if not absence_splits.empty:
+            st.caption('These comparisons use explicit box-score absences for teammates currently ruled out. Small samples are shrunk toward zero. The estimates do not change projections.')
+            st.dataframe(absence_splits.drop(columns=['fanduel_id', 'Box-score sources']), hide_index=True)
+            st.download_button('Download rotation evidence', absence_splits.to_csv(index=False),
+                               'rotation_absences.csv', mime='text/csv')
     issue_count = int(scored.import_issue.ne('').sum())
     with st.expander(f'Full player pool · {len(scored)} players · {issue_count} import flags'):
         display = scored[['fanduel_name', 'adjusted_fd_points', 'research_attention', 'team', 'salary',
