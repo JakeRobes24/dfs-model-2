@@ -113,3 +113,52 @@ def submit_reviewed_slate(token, path, raw):
     except (URLError, TimeoutError):
         pass
     raise OSError('The private archive did not confirm the save. Retry with the same inputs.')
+
+
+def list_slate_packets(token, slate_date, contest):
+    """Pin the archive to one commit and list immutable inputs for an exact contest."""
+    from history_snapshot import history_head, _request
+
+    if type(slate_date) is not date or re.fullmatch(r'[0-9]{1,12}', contest) is None:
+        raise ValueError('Select a valid date and contest ID.')
+    commit = history_head(token)
+    folder = f'incoming-app/{slate_date}/{contest}'
+    try:
+        with _request(f'{PRIVATE_API}{folder}?ref={commit}', token) as response:
+            content = response.read(MAX_PACKET + 1)
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+        return commit, folder, []
+    if len(content) > MAX_PACKET:
+        raise ValueError('Slate archive listing exceeds the size limit.')
+    records = json.loads(content)
+    if not isinstance(records, list) or len(records) >= 1000:
+        raise ValueError('Slate archive listing could not be verified.')
+    versions = [entry['name'] for entry in records if entry.get('type') == 'file'
+                and re.fullmatch(r'[0-9a-f]{64}\.json', entry.get('name', ''))]
+    return commit, folder, sorted(versions)
+
+
+def load_slate_packet(token, commit, folder, filename):
+    """Verify the bytes using the archive's content-addressed filename."""
+    from history_snapshot import _request
+
+    if (not re.fullmatch(r'[0-9a-f]{40}', commit)
+            or not re.fullmatch(r'incoming-app/\d{4}-\d{2}-\d{2}/\d{1,12}', folder)
+            or not re.fullmatch(r'[0-9a-f]{64}\.json', filename)):
+        raise ValueError('Invalid slate archive reference.')
+    with _request(f'{PRIVATE_API}{folder}/{filename}?ref={commit}', token, raw=True) as response:
+        data = response.read(MAX_PACKET + 1)
+    if len(data) > MAX_PACKET or hashlib.sha256(data).hexdigest() != filename[:-5]:
+        raise ValueError('Saved slate checksum mismatch.')
+    record = json.loads(data)
+    _, slate, contest = folder.split('/')
+    if record.get('version') != 1 or record.get('slate_date') != slate or record.get('contest_id') != contest:
+        raise ValueError('Saved slate metadata mismatch.')
+    pool = _csv(record['research_csv'])
+    required = {'fanduel_id', 'fanduel_name', 'game', 'team', 'adjusted_fd_points'}
+    if (pool.empty or not required <= set(pool) or pool.fanduel_id.duplicated().any()
+            or not pool.fanduel_id.str.fullmatch(fr'{contest}-\d+').fillna(False).all()):
+        raise ValueError('Saved slate does not contain a verified contest pool.')
+    return pool, _csv(record['lineups_csv']) if record.get('lineups_csv') else None

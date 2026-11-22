@@ -39,13 +39,19 @@ def _read_metadata(url, token, *, raw=False):
     return content.decode('utf-8')
 
 
-def load_latest_snapshot(fallback_url, fallback_sha256, token):
-    """Read one immutable history commit, including its pointer, manifest and SQLite bytes."""
+def history_head(token):
+    """Resolve the history branch to a validated immutable Git commit."""
     ref = json.loads(_read_metadata(f'{HISTORY_REPO_API}/git/ref/heads/main', token))
     ref_object = ref.get('object') if isinstance(ref, dict) else None
     commit = ref_object.get('sha') if isinstance(ref_object, dict) else None
     if not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('Invalid history commit')
+    return commit
+
+
+def load_latest_snapshot(fallback_url, fallback_sha256, token):
+    """Read one immutable history commit, including its pointer, manifest and SQLite bytes."""
+    commit = history_head(token)
     contents = f'{HISTORY_REPO_API}/contents'
     try:
         path = _read_metadata(f'{contents}/latest-history.txt?ref={commit}', token, raw=True).strip()

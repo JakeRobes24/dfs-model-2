@@ -11,6 +11,7 @@ from advanced_ui import render_advanced
 from evidence import validate_sources
 from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
+from slate_results_ui import render_post_slate
 from model import SLOTS, optimize
 from prelock import REQUIRED
 from slate_import import reconcile_exports
@@ -262,13 +263,15 @@ def render_slate(history_slot):
 def render_site():
     st.set_page_config(page_title='DFS Model 2.0', layout='centered')
     st.title('DFS Model 2.0')
-    view = st.radio('Workspace', ('Build a slate', 'History and advanced'), horizontal=True,
+    view = st.radio('Workspace', ('Build a slate', 'Post-slate review', 'History and advanced'), horizontal=True,
                     label_visibility='collapsed', key='site_view')
     if view == 'Build a slate':
         workflow = st.container()
         history = st.container()
         with workflow:
             render_slate(history)
+    elif view == 'Post-slate review':
+        render_post_slate()
     else:
         render_history_panel()
         render_advanced()
