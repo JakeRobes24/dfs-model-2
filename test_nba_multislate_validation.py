@@ -64,6 +64,18 @@ def test_rejects_duplicate_player_ids(tmp_path):
         evaluate_archives([path])
 
 
+def test_unresolved_outcomes_never_enter_error_metrics(tmp_path):
+    path = archive(tmp_path, 'unresolved.zip', '100', rows=[
+        dict(fanduel_id='100-1', eligible=True, verified_outcome='needs_review',
+             daily_minutes=30, adjusted_minutes=30, actual_minutes=30,
+             daily_points=20, adjusted_fd_points=24, actual_points=25),
+    ])
+    _, summary = evaluate_archives([path])
+    assert summary.paired_players.eq(0).all()
+    assert summary.weighted_daily_mae.isna().all()
+    assert summary.slates_adjusted_better.eq(0).all()
+
+
 def test_rejects_no_archives():
     with pytest.raises(ValueError, match='at least one'):
         evaluate_archives([])
