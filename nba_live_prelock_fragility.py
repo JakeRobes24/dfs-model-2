@@ -28,8 +28,6 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
         if len(ids)!=9 or len(set(ids))!=9:
             raise ValueError("Lineups require nine unique IDs")
         candidates[str(name)]=set(ids)
-    if len(candidates)<2:
-        return {"fragile":False,"rows":[],"reason":"At least two candidates required"}
     pool=scored.set_index("fanduel_id")
     if any(pid not in pool.index for ids in candidates.values() for pid in ids):
         raise ValueError("Candidate player absent from scored pool")
@@ -57,6 +55,8 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
             raise ValueError(f"Invalid minutes/projections for candidate player {pid}") from exc
         if not math.isfinite(minutes) or not math.isfinite(points) or minutes <= 0 or points < 0:
             raise ValueError(f"Invalid minutes/projections for candidate player {pid}")
+    if len(candidates)<2:
+        return {"fragile":False,"rows":[],"reason":"At least two candidates required"}
     ordered=sorted(base,key=lambda name:(-base[name],name))
     leader=ordered[0]
     exposure=set().union(*candidates.values())
