@@ -64,6 +64,16 @@ def test_rejects_duplicate_player_ids(tmp_path):
         evaluate_archives([path])
 
 
+def test_rejects_player_from_another_contest(tmp_path):
+    path = archive(tmp_path, 'wrong_contest.zip', '100', rows=[
+        dict(fanduel_id='101-1', eligible=True, verified_outcome='played',
+             daily_minutes=30, adjusted_minutes=30, actual_minutes=30,
+             daily_points=20, adjusted_fd_points=24, actual_points=25),
+    ])
+    with pytest.raises(ValueError, match='archived contest'):
+        evaluate_archives([path])
+
+
 def test_unresolved_outcomes_never_enter_error_metrics(tmp_path):
     path = archive(tmp_path, 'unresolved.zip', '100', rows=[
         dict(fanduel_id='100-1', eligible=True, verified_outcome='needs_review',
