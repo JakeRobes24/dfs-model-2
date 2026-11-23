@@ -67,9 +67,13 @@ def diagnostic_coverage(replay, details):
     """Count eligible participation and paired forecast coverage without imputing DNPs."""
     if not set(REQUIRED).issubset(replay.columns):
         raise ValueError('Missing frozen replay columns')
+    if replay.fanduel_id.isna().any() or not replay.fanduel_id.is_unique:
+        raise ValueError('Replay must contain unique, nonmissing FanDuel IDs')
     eligible = replay.loc[replay.eligible.eq(True)]
     played = eligible.loc[eligible.verified_outcome.eq('played')]
     paired = int(details.loc[details.forecast.eq('DAILY'), 'fanduel_id'].nunique()) if not details.empty else 0
+    if paired > len(played):
+        raise ValueError('Diagnostic coverage exceeds verified eligible played players')
     return pd.DataFrame([{
         'eligible_players': len(eligible),
         'verified_played': len(played),
