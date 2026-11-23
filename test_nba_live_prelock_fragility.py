@@ -41,6 +41,12 @@ class LiveFragilityTests(unittest.TestCase):
         result=rank_fragility(self.pool,self.lineups,max_players=2)
         self.assertEqual(result["tested_differential_players"],2)
         self.assertFalse(result["coverage_complete"])
+    def test_capped_selection_is_deterministic(self):
+        first=rank_fragility(self.pool,self.lineups,max_players=1)
+        second=rank_fragility(self.pool.sample(frac=1,random_state=17),
+                             self.lineups.sample(frac=1,random_state=23),max_players=1)
+        self.assertEqual(first["rows"],second["rows"])
+        self.assertEqual(first["tested_differential_players"],1)
     def test_invalid_cap(self):
         with self.assertRaises(ValueError):
             rank_fragility(self.pool,self.lineups,max_players=0)
