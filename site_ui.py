@@ -14,7 +14,7 @@ from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
-from model import SLOTS, optimize
+from model import SLOTS, optimize, optimize_late_swap
 from nba_ownership import archive_ownership
 from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
@@ -39,6 +39,7 @@ def started_contest_games(schedule, games, now):
     """Match exact contest games and detect reported starts or elapsed tip times."""
     remaining = {matchup_key(game) for game in games}
     started = set()
+    complete = False
     matched = set()
     for entry in schedule:
         away, home = (team_code((entry.get(side) or {}).get('teamTricode', ''))
@@ -417,7 +418,9 @@ def render_slate(history_slot):
     if slate == now.date():
         started, complete = started_contest_games(public_slate_schedule(slate), pool.game, now)
         if started:
-            st.warning(f'{len(started)} contest games have reached tip. New lineups and swaps are unavailable here.')
+            st.warning(f'{len(started)} contest games have reached tip. Fresh lineup generation is closed.')
+            if not complete:
+                st.info('Late swap requires verified NBA tip times for every contest game.')
         elif not complete:
             st.info('NBA tip times could not be verified for every contest game. Confirm the contest lock in FanDuel.')
     if research_replay:
@@ -425,6 +428,27 @@ def render_slate(history_slot):
     if not started:
         render_challenger(scored, exclude_uncertain=exclude)
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
+    if started and complete and len(started) < pool.game.map(matchup_key).nunique():
+        with st.expander('Find a late swap'):
+            st.caption('Upload one entered lineup with slot and fanduel_id columns. Keep the two UTIL rows in entry order. '
+                       'Verify locks and apply any changes in FanDuel.')
+            entered = st.file_uploader('Entered lineup CSV', type='csv', key='slate_late_swap')
+            if entered is not None:
+                swap_key = (signature, sha256(entered.getvalue()).hexdigest(), tuple(sorted(started)))
+                if st.button('Find strongest legal lineup', key='slate_late_swap_run'):
+                    try:
+                        roster = read_optional(entered, {'slot', 'fanduel_id'}, id_column='fanduel_id')
+                        locked_ids = scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id']
+                        swap = optimize_late_swap(scored, roster, locked_ids, exclude_uncertain=exclude)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state['late_swap_result'] = (swap_key, swap)
+                saved_swap = st.session_state.get('late_swap_result')
+                if saved_swap is not None and saved_swap[0] == swap_key:
+                    st.dataframe(saved_swap[1], hide_index=True)
+                    st.download_button('Download late-swap candidate', saved_swap[1].to_csv(index=False),
+                                       'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
         try:

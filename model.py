@@ -1,6 +1,7 @@
 """DFS Model 2.0: auditable minutes consensus, confidence and legal FanDuel optimizer."""
 import re
 import unicodedata
+from collections import Counter
 import numpy as np
 import pandas as pd
 from scipy.optimize import milp, Bounds, LinearConstraint
@@ -75,16 +76,29 @@ def allowed_slots(eligibility):
     return slots
 
 
-def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pairs=(), *, exclude_rosters=(), objective_column="adjusted_fd_points"):
+def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pairs=(), *,
+             exclude_rosters=(), objective_column="adjusted_fd_points", fixed_slots=None, closed_players=()):
     """Optimize full defensibly projected pool; preserve low-confidence labels, don't silently exclude."""
     a=pool[pool.eligible & pool.adjusted_fd_points.notna() & (pool.adjusted_fd_points>0)].copy()
     if exclude_uncertain:a=a[~a.confidence.isin(['low','missing'])]
-    if a.fanduel_id.isna().any() or a.fanduel_id.duplicated().any():
-        raise ValueError('Optimizer requires unique FanDuel IDs')
+    fixed_slots = fixed_slots or {}
+    pinned = pool.loc[pool.fanduel_id.isin(fixed_slots.values())]
+    if len(pinned) != len(fixed_slots) or not pinned.fanduel_id.is_unique:
+        raise ValueError('Locked players must exist exactly once in the contest pool.')
+    a = a.loc[~a.fanduel_id.isin(set(closed_players) | set(fixed_slots.values()))]
     if not np.isfinite(a[objective_column]).all():
         raise ValueError('Objective requires finite scores for all optimizable players')
+    if fixed_slots:
+        a = pd.concat([a, pinned], ignore_index=True)
+    if a.fanduel_id.isna().any() or a.fanduel_id.duplicated().any():
+        raise ValueError('Optimizer requires unique FanDuel IDs')
     a=a.reset_index(drop=True)
-    pairs=[(i,j) for i,r in a.iterrows() for j,slot in enumerate(SLOTS) if slot in allowed_slots(r.roster_eligibility)]
+    pinned_ids = set(fixed_slots.values())
+    pairs = [
+        (i, j) for i, row in a.iterrows() for j, slot in enumerate(SLOTS)
+        if slot in allowed_slots(row.roster_eligibility)
+        and (fixed_slots[j] == row.fanduel_id if j in fixed_slots else row.fanduel_id not in pinned_ids)
+    ]
     n=len(pairs)
     if not n:raise ValueError('No projected eligible players')
     A=lil_matrix((9+len(a)+1,n))
@@ -105,12 +119,38 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
             if len(inds)==2:extra.append([1 if i in inds else 0 for i,j in pairs]);elow.append(0);ehigh.append(1)
         if extra:
             mat=vstack([mat,lil_matrix(np.array(extra)).tocsr()]);lo=np.r_[lo,elow];hi=np.r_[hi,ehigh]
-        c=np.array([-float(a.iloc[i][objective_column]) for i,j in pairs])
+        c=np.array([0 if j in fixed_slots else -float(a.iloc[i][objective_column]) for i,j in pairs])
         sol=milp(c,integrality=np.ones(n),bounds=Bounds(np.zeros(n),np.ones(n)),constraints=LinearConstraint(mat,lo,hi),options={'time_limit':35})
         if sol.x is None:break
-        selected=[(SLOTS[j],a.iloc[i]) for k,(i,j) in enumerate(pairs) if sol.x[k]>.5]
+        assignments = [(i, j) for k, (i, j) in enumerate(pairs) if sol.x[k] > .5]
+        if fixed_slots or closed_players:
+            assignments.sort(key=lambda pair: pair[1])
+        selected = [(SLOTS[j], a.iloc[i]) for i, j in assignments]
         ids={i for k,(i,j) in enumerate(pairs) if sol.x[k]>.5};sets.append(ids)
         assert len(selected)==9 and len({r.fanduel_id for _,r in selected})==9
         assert sum(int(r.salary) for _,r in selected)<=60000
         for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id,'solver_optimal':sol.status==0})
     return pd.DataFrame(out)
+
+
+def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False):
+    """Rebuild one entered lineup with started players fixed in their original slots."""
+    if not {'slot', 'fanduel_id'} <= set(lineup) or Counter(lineup.slot) != Counter(SLOTS):
+        raise ValueError('Provide one lineup with all nine FanDuel slots in entry order.')
+    if not lineup.fanduel_id.is_unique or not lineup.fanduel_id.isin(pool.fanduel_id).all():
+        raise ValueError('The lineup must have nine unique players from this contest.')
+    entries = lineup[['slot', 'fanduel_id']].merge(
+        pool[['fanduel_id', 'salary', 'roster_eligibility']], on='fanduel_id', validate='one_to_one',
+    )
+    if (entries.salary.sum() > 60000
+            or any(row.slot not in allowed_slots(row.roster_eligibility) for row in entries.itertuples())):
+        raise ValueError('The entered lineup exceeds the salary cap or has an invalid slot.')
+    # Stable ordering keeps the first and second UTIL rows distinct.
+    entries = entries.sort_values('slot', key=lambda slots: slots.map(SLOTS.index), kind='stable').reset_index(drop=True)
+    closed_players = set(closed_players)
+    fixed = entries.loc[entries.fanduel_id.isin(closed_players), 'fanduel_id'].to_dict()
+    replacement = optimize(pool, number=1, fixed_slots=fixed, closed_players=closed_players,
+                           exclude_uncertain=exclude_uncertain)
+    if replacement.empty:
+        raise ValueError('No legal late-swap lineup fits the locked slots and remaining projected pool.')
+    return replacement.assign(locked=replacement.fanduel_id.isin(fixed.values()))

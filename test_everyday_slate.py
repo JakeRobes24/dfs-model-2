@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from model import SLOTS, allowed_slots
+from model import SLOTS, allowed_slots, optimize_late_swap
 from slate_import import reconcile_exports
 from slate_research import ET, RW_MINUTES, historical_context, score_slate
 
@@ -134,6 +134,27 @@ def test_contest_tip_checks_scope_date_and_early_start():
     assert started_contest_games([wrong_day], ['NYK@BOS'], AS_OF) == (set(), False)
     assert started_contest_games([early], ['NYK@BOS'], AS_OF) == ({'BOS/NYK'}, True)
     assert started_contest_games([early], ['LAL@LAC'], AS_OF) == (set(), False)
+
+
+def test_late_swap_preserves_second_util_and_ignores_other_closed_players():
+    ids = [f'123-{i}' for i in range(11)]
+    pool = pd.DataFrame({
+        'fanduel_id': ids, 'fanduel_name': ids, 'eligible': True, 'salary': 6500,
+        'roster_eligibility': 'PG/SG/SF/PF/G/F/F/C/UTIL/C', 'adjusted_minutes': 30,
+        'adjusted_fd_points': [25] * 7 + [1, float('nan'), 50, 100],
+        'confidence': 'high', 'minutes_method': 'DAILY', 'injury_flag': '',
+    })
+    pool.loc[8, 'eligible'] = False
+    original = pd.DataFrame({'slot': SLOTS, 'fanduel_id': ids[:9]})
+    result = optimize_late_swap(pool, original, [ids[8], ids[10]])
+    assert result.slot.tolist() == SLOTS
+    assert result.iloc[8].fanduel_id == ids[8] and result.iloc[8].locked
+    assert pd.isna(result.iloc[8].adjusted_fd_points)
+    assert ids[10] not in result.fanduel_id.values and ids[9] in result.fanduel_id.values
+    assert ids[7] not in result.fanduel_id.values
+    assert result.salary.sum() == 58500
+    with pytest.raises(ValueError, match='No legal late-swap'):
+        optimize_late_swap(pool.assign(eligible=False), original, [ids[8], ids[10]])
 
 
 def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):
