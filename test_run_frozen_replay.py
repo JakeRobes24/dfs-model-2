@@ -38,6 +38,10 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
     monkeypatch.setattr('run_frozen_replay.collect_final_boxes', lambda day, games: [(final, 'NBA box')])
     assert run(source, DAY, output)['player_outcomes'] == {'played': 1}
     with ZipFile(output) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        assert manifest['diagnostic_coverage']['verified_played'] == 1
+        assert manifest['diagnostic_coverage']['paired_played_diagnostics'] == 1
+        assert manifest['diagnostic_coverage']['paired_played_coverage_pct'] == 100
         replay = pd.read_csv(BytesIO(archive.read('player_replay.csv')))
         assert replay.actual_points.iloc[0] == 20.3
         assert replay.daily_points.iloc[0] == 18
