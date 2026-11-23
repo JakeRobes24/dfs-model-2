@@ -58,6 +58,38 @@ class OptimizerIntegrationTests(unittest.TestCase):
         self.assertIn("C", allowed_slots("PF/C/UTIL"))
         self.assertIn("PF", allowed_slots("PF/C/UTIL"))
 
+    def test_salary_cap_changes_optimum(self):
+        pool = fixture_pool()
+        pool.loc[0, "salary"] = 15000
+        result = optimize(pool, number=1)
+        self.assertEqual(len(result), 9)
+        self.assertLessEqual(int(result.salary.sum()), 60000)
+        # Selecting the expensive top scorer alongside eight $6k players
+        # would cost $63k; the solver must reject that tempting combination.
+        self.assertNotIn("fixture-0", set(result.fanduel_id))
+
+    def test_position_restrictions_are_enforced(self):
+        pool = fixture_pool()
+        pool["roster_eligibility"] = "UTIL"
+        pool.loc[0:6, "roster_eligibility"] = "PG/G/UTIL"
+        pool.loc[7:13, "roster_eligibility"] = "SG/G/UTIL"
+        pool.loc[14:20, "roster_eligibility"] = "SF/F/UTIL"
+        pool.loc[21:27, "roster_eligibility"] = "PF/F/UTIL"
+        pool.loc[28:35, "roster_eligibility"] = "C/F/UTIL"
+        result = optimize(pool, number=1)
+        self.assertEqual(len(result), 9)
+        self.assertEqual(sorted(result.slot), sorted(SLOTS))
+        for player in result.itertuples():
+            eligibility = pool.loc[pool.fanduel_id.eq(player.fanduel_id), "roster_eligibility"].iloc[0]
+            self.assertIn(player.slot, allowed_slots(eligibility))
+
+    def test_alternative_objective_is_respected(self):
+        pool = fixture_pool()
+        pool["ceiling_fd_points"] = pool.adjusted_fd_points
+        pool.loc[35, "ceiling_fd_points"] = 200.0
+        result = optimize(pool, number=1, objective_column="ceiling_fd_points")
+        self.assertIn("fixture-35", set(result.fanduel_id))
+
     def test_out_players_never_selected(self):
         pool = fixture_pool()
         pool.loc[0, "eligible"] = False
