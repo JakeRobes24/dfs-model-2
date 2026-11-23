@@ -98,8 +98,20 @@ class OptimizerIntegrationTests(unittest.TestCase):
         pool = fixture_pool()
         pool.loc[0, "eligible"] = False
         pool.loc[0, "injury_flag"] = "O"
-        with self.assertRaisesRegex(ValueError, "Locked players require"):
+        with self.assertRaisesRegex(ValueError, "Open-game pinned players require"):
             optimize(pool, number=1, fixed_slots={0: "fixture-0"})
+
+    def test_started_out_player_remains_locked(self):
+        pool = fixture_pool()
+        pool.loc[0, "eligible"] = False
+        pool.loc[0, "injury_flag"] = "O"
+        pool.loc[0, "adjusted_fd_points"] = 0.0
+        result = optimize(pool, number=1, fixed_slots={0: "fixture-0"},
+                          closed_players={"fixture-0"})
+        locked = result.loc[result.fanduel_id.eq("fixture-0")]
+        self.assertEqual(len(result), 9)
+        self.assertEqual(len(locked), 1)
+        self.assertEqual(locked.iloc[0].slot, "PG")
 
     def test_insufficient_players_does_not_return_invalid_roster(self):
         pool = fixture_pool().head(8)
