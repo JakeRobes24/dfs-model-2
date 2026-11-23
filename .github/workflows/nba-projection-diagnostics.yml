@@ -13,6 +13,8 @@ on:
   pull_request:
     paths:
       - 'nba_projection_diagnostics.py'
+      - 'nba_multislate_validation.py'
+      - 'test_nba_multislate_validation.py'
       - 'test_nba_projection_diagnostics.py'
       - 'run_frozen_replay.py'
       - 'test_run_frozen_replay.py'
