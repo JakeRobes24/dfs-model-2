@@ -83,6 +83,24 @@ class OptimizerIntegrationTests(unittest.TestCase):
             eligibility = pool.loc[pool.fanduel_id.eq(player.fanduel_id), "roster_eligibility"].iloc[0]
             self.assertIn(player.slot, allowed_slots(eligibility))
 
+    def test_invalid_locked_slot_is_rejected(self):
+        pool = fixture_pool()
+        with self.assertRaisesRegex(ValueError, "Locked slots"):
+            optimize(pool, number=1, fixed_slots={9: "fixture-0"})
+
+    def test_ineligible_locked_position_is_rejected(self):
+        pool = fixture_pool()
+        pool.loc[0, "roster_eligibility"] = "C/UTIL"
+        with self.assertRaisesRegex(ValueError, "not eligible"):
+            optimize(pool, number=1, fixed_slots={0: "fixture-0"})
+
+    def test_out_locked_player_is_rejected(self):
+        pool = fixture_pool()
+        pool.loc[0, "eligible"] = False
+        pool.loc[0, "injury_flag"] = "O"
+        with self.assertRaisesRegex(ValueError, "Locked players require"):
+            optimize(pool, number=1, fixed_slots={0: "fixture-0"})
+
     def test_insufficient_players_does_not_return_invalid_roster(self):
         pool = fixture_pool().head(8)
         result = optimize(pool, number=1)
