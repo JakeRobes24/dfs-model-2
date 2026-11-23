@@ -61,3 +61,25 @@ The six common players are Giddey, Hart, Queta, Gordon, Jokić, Murray and Georg
 - Do not modify production weights based on one slate or these screenshots alone.
 
 **Engineering:** This note records user evidence and hypotheses; no model tuning, live deployment, or private history database changes.
+
+## Recovered original model lineup identities (user screenshots supplied later)
+
+User provided four screenshots of the earlier ChatGPT message titled **Sunday's four model-scenario lineups**. This is direct contemporaneous-looking conversation evidence of four **provisional reconstructed** optimizer candidates, not an independently verified pre-tip source timestamp or a final certification. The original message explicitly said independent ownership, ceiling and full-pool projection verification had not been completed, and players marked questionable in the uploaded contest file were excluded.
+
+| Original model ID | Archived research scenario projection | Salary | Entry outcome |
+| --- | ---: | ---: | --- |
+| Model Lineup 1 | 336.8 FD | $59,800 | **Entered**, screenshot actual **387.1** |
+| Model Lineup 2 | 336.6 FD | $59,800 | **Not entered** |
+| Model Lineup 3 | 335.6 FD | $60,000 | **Entered**, screenshot actual **419.9** |
+| Model Lineup 4 | 335.3 FD | $60,000 | **Not entered** |
+
+**Identity mapping:** The earlier audit's “entered lineup 1” (Klay Thompson and Matas Buzelis) is **original model Lineup 3**. The earlier audit's “entered lineup 2” (Mikal Bridges and Jalen Suggs) is **original model Lineup 1**. The 32.8-point actual difference favors original model Lineup 3. The research-scenario estimates favor original model Lineup 1 by approximately 1.2 points. No entry outcome is assigned to original model Lineups 2 or 4.
+
+### Four original provisional roster snapshots
+
+- **Model 1:** PG Josh Giddey; SG Mikal Bridges; SF Josh Hart; PF Aaron Gordon; C Neemias Queta; G/F Jalen Suggs; F/C Nikola Jokić; UTIL Jamal Murray; UTIL Keyonte George.
+- **Model 2:** PG Josh Giddey; SG Desmond Bane; SF Matas Buzelis; PF Josh Hart; C Aaron Gordon; G/F Jamal Murray; F/C Nikola Jokić; UTIL Jalen Suggs; UTIL Neemias Queta.
+- **Model 3:** PG Josh Giddey; SG Klay Thompson; SF Matas Buzelis; PF Josh Hart; C Neemias Queta; G/F Aaron Gordon; F/C Nikola Jokić; UTIL Jamal Murray; UTIL Keyonte George.
+- **Model 4:** PG Josh Giddey; SG Kyshawn George; SF Josh Hart; PF Aaron Gordon; C Nikola Jokić; G/F Desmond Bane; F/C Neemias Queta; UTIL Jalen Brunson; UTIL Jalen Suggs.
+
+**Source limits:** These screenshots establish the four displayed rosters and model scenario aggregate projections. They do not establish the complete frozen pre-lock contest pool, independent source timestamp, official final player outcomes for unentered lineups, or a complete certification of salary/position eligibility against original FanDuel IDs. Do not use screenshot device clock as the historical model timestamp.
