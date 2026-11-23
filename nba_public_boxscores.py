@@ -32,10 +32,8 @@ def export():
         comp = event["competitions"][0]
         teams = {c["homeAway"]: c["team"]["abbreviation"] for c in comp["competitors"]}
         code = teams["away"] + "@" + teams["home"]
-        if code == "DAL@UTAH":
-            code = "DAL@UTA"
-        if code == "IND@NY":
-            code = "IND@NYK"
+        aliases = {"UTAH": "UTA", "NY": "NYK", "GS": "GSW", "WSH": "WAS"}
+        code = aliases.get(teams["away"], teams["away"]) + "@" + aliases.get(teams["home"], teams["home"])
         if code not in GAMES:
             continue
         if comp.get("status", {}).get("type", {}).get("completed") is not True:
