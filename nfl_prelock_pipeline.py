@@ -17,10 +17,22 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
     excluded = [p["player_id"] for p in reconciled if p["status"] == "out"]
     active = [p for p in reconciled if p["status"] != "out"]
     missing = [p["player_id"] for p in active if p["projection_fd"] is None or not p["asof_utc"]]
+    # A named projection version alone is not evidence of an independently
+    # traceable source. Keep legacy readiness separate from certification.
+    projection_by_id = {p["player_id"]: p for p in projections}
+    unverified = [
+        p["player_id"] for p in active
+        if not projection_by_id.get(p["player_id"], {}).get("source")
+        or not projection_by_id.get(p["player_id"], {}).get("source_version")
+    ]
+    uncertain_status = [p["player_id"] for p in active
+                        if p["status"] not in {"available", "active", "probable"}]
     report = {"contest_id": str(contest_id), "slate_date": slate_date,
               "contest_players": len(contest), "excluded_out_ids": excluded,
               "eligible_players": len(active), "missing_projection_ids": missing,
-              "ready": False, "rankings": []}
+              "ready": False, "certified": False, "rankings": [],
+              "unverified_projection_ids": unverified,
+              "uncertain_status_ids": uncertain_status}
     if missing:
         report["block_reason"] = "Missing individually timestamped projections"
         return report
@@ -33,4 +45,10 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
         expected_player_ids=[p["player_id"] for p in active])
     report["rankings"] = compare_prelock_candidates(snapshot, candidates)
     report["ready"] = True
+    report["certified"] = not unverified and not uncertain_status
+    if not report["certified"]:
+        report["certification_warning"] = (
+            "Preliminary comparison only: projection provenance or player status "
+            "is not independently verified"
+        )
     return report
