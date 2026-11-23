@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "slate_date": "2026-11-22",
+  "contest_id": "136799",
+  "platform": "FanDuel",
+  "contest": "$30K Sun NFL Pooch Punt",
+  "slate_games": 10,
+  "salary_cap": 60000,
+  "lineup_status": "original preliminary candidate; user confirms same roster entered",
+  "projection_status": "preliminary DAILY offense + provisional D/ST; not certified final prelock",
+  "projected_total_fd": 137.1,
+  "actual_total_fd": 161.6,
+  "lineup": [
+    {
+      "slot": "QB",
+      "player": "Dak Prescott",
+      "salary": 8200,
+      "prelock_fd": 20.8,
+      "actual_fd": 38.9,
+      "projection_provenance": "original screenshot DAILY"
+    },
+    {
+      "slot": "RB",
+      "player": "Emmett Johnson",
+      "salary": 6200,
+      "prelock_fd": 19.3,
+      "actual_fd": 25.3,
+      "projection_provenance": "original screenshot DAILY"
+    },
+    {
+      "slot": "RB",
+      "player": "Bucky Irving",
+      "salary": 7600,
+      "prelock_fd": null,
+      "actual_fd": 17.5,
+      "projection_provenance": "unrecovered"
+    },
+    {
+      "slot": "WR",
+      "player": "CeeDee Lamb",
+      "salary": 9100,
+      "prelock_fd": 17,
+      "actual_fd": 27.7,
+      "projection_provenance": "original screenshot DAILY"
+    },
+    {
+      "slot": "WR",
+      "player": "Parker Washington",
+      "salary": 7200,
+      "prelock_fd": null,
+      "actual_fd": 17.3,
+      "projection_provenance": "unrecovered"
+    },
+    {
+      "slot": "WR",
+      "player": "Jalen Coker",
+      "salary": 5400,
+      "prelock_fd": null,
+      "actual_fd": 6.7,
+      "projection_provenance": "unrecovered"
+    },
+    {
+      "slot": "TE",
+      "player": "Colston Loveland",
+      "salary": 5700,
+      "prelock_fd": null,
+      "actual_fd": 10.4,
+      "projection_provenance": "unrecovered"
+    },
+    {
+      "slot": "FLEX",
+      "player": "Omarion Hampton",
+      "salary": 5700,
+      "prelock_fd": null,
+      "actual_fd": 9.8,
+      "projection_provenance": "unrecovered"
+    },
+    {
+      "slot": "DEF",
+      "player": "Buffalo Bills",
+      "salary": 4900,
+      "prelock_fd": null,
+      "actual_fd": 8,
+      "projection_provenance": "unrecovered"
+    }
+  ],
+  "recovered_projection_count": 3,
+  "missing_individual_projection_count": 6,
+  "known_projected_subtotal": 57.1,
+  "known_actual_subtotal": 91.9,
+  "remaining_projected_subtotal": 80,
+  "remaining_actual_subtotal": 69.7,
+  "difference_total_fd": 24.5,
+  "missing_data": [
+    "6 individual preliminary projections including D/ST",
+    "final prelock projections and late news reruns",
+    "ownership estimates",
+    "original alternatives complete player pool and their projections",
+    "contest payout/field distribution"
+  ],
+  "methodology": [
+    "do not treat actual-point-driven alternative as prelock optimizer evidence",
+    "compare alternatives only using timestamped prelock available inputs",
+    "do not infer source accuracy from a single lineup",
+    "do not equate preliminary 137.1 with certified final forecast"
+  ],
+  "source": "user screenshots of original conversation and FanDuel results; transcribed historical data"
+}
