@@ -1,6 +1,8 @@
 """Replay descriptive NBA rotation signals against completed, archived outcomes."""
 import pandas as pd
 
+from nba_simulation import MINUTE_BANDS
+
 
 def compare_opportunity(outcomes, rotations, absence_splits):
     """Return paired errors for fixed, research-only minutes scenarios.
@@ -49,3 +51,16 @@ def compare_opportunity(outcomes, rotations, absence_splits):
             'median_fd_error_reduction': point_gain.median() if not point_gain.empty else None,
         })
     return pd.DataFrame(results)
+
+
+def compare_opportunity_by_minutes(outcomes, rotations, absence_splits):
+    """Audit scenarios by roles inferred from the frozen DAILY minutes forecast."""
+    low, high = MINUTE_BANDS
+    bands = pd.cut(outcomes.daily_minutes, [-float('inf'), low, high, float('inf')],
+                   labels=[f'Under {low}', f'{low} to under {high}', f'{high} or more'], right=False)
+    reports = []
+    for band, players in outcomes.groupby(bands, observed=True):
+        report = compare_opportunity(players, rotations, absence_splits)
+        if not report.empty:
+            reports.append(report.assign(projected_minutes_band=band))
+    return pd.concat(reports, ignore_index=True) if reports else pd.DataFrame()
