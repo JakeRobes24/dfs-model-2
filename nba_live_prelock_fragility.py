@@ -5,7 +5,9 @@ Uses the existing adjusted fantasy-point and minute columns. Does not replace th
 import math
 
 
-def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=12):
+def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
+    if max_players is not None and (not isinstance(max_players, int) or max_players < 1):
+        raise ValueError("max_players must be a positive integer or None")
     if minute_spread <= 0 or not math.isfinite(minute_spread):
         raise ValueError("Minute spread must be positive and finite")
     required_pool={"fanduel_id","adjusted_fd_points","adjusted_minutes"}
@@ -45,7 +47,8 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=12):
         return abs(p/m)*minute_spread if m>0 and math.isfinite(m) and math.isfinite(p) else 0
     exposed.sort(key=impact,reverse=True)
     results=[]
-    for pid in exposed[:max_players]:
+    checked = exposed if max_players is None else exposed[:max_players]
+    for pid in checked:
         minutes=float(pool.loc[pid,"adjusted_minutes"])
         points=float(pool.loc[pid,"adjusted_fd_points"])
         if not all(math.isfinite(x) for x in (minutes,points)) or minutes<=0 or points<0:
@@ -66,5 +69,7 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=12):
                             "low_winner":endpoint_winners[0],"high_winner":endpoint_winners[1],
                             "baseline_leader":leader})
     return {"fragile":bool(results),"rows":results,
-            "baseline_leader":leader,"tested_differential_players":min(len(exposed),max_players),
+            "baseline_leader":leader,"tested_differential_players":len(checked),
+            "differential_players_total":len(exposed),
+            "coverage_complete":len(checked)==len(exposed),
             "reason":"Linear one-player ±minutes sensitivity, not a new optimization or certified ceiling"}
