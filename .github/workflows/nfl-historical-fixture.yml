@@ -12,6 +12,8 @@ on:
       - 'test_nfl_prelock_challenger.py'
       - 'nfl_pool_adapter.py'
       - 'test_nfl_pool_adapter.py'
+      - 'nfl_contest_import.py'
+      - 'test_nfl_contest_import.py'
       - 'tests/fixtures/nov22_2026_nfl_fd_preliminary.json'
       - 'tests/fixtures/nov22_2026_nfl_four_preliminary_candidates.json'
       - '.github/workflows/nfl-historical-fixture.yml'
@@ -29,7 +31,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run isolated NFL fixture regression tests
-        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates test_nfl_candidate_report test_nfl_prelock_challenger test_nfl_pool_adapter
+        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates test_nfl_candidate_report test_nfl_prelock_challenger test_nfl_pool_adapter test_nfl_contest_import
       - name: Verify fixture CLI
         run: python nfl_fixture_validation.py
       - name: Generate descriptive candidate report
