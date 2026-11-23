@@ -18,6 +18,10 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
         raise ValueError("Missing contest player IDs")
     if scored.fanduel_id.duplicated().any():
         raise ValueError("Duplicate contest player IDs")
+    if lineups.lineup.isna().any() or lineups.lineup.astype(str).str.strip().eq("").any():
+        raise ValueError("Missing lineup labels")
+    if lineups.lineup.astype(str).nunique() != lineups.lineup.nunique():
+        raise ValueError("Ambiguous lineup labels after string conversion")
     candidates={}
     for name, group in lineups.groupby("lineup"):
         ids=list(group.fanduel_id)
