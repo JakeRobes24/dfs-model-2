@@ -22,14 +22,14 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
         raise ValueError('Evidence age must be positive')
 
     notes = evidence.copy()
-    dated = notes.observed_at.fillna('').astype(str).str.strip()
+    dated = notes.observed_at.astype('string').fillna('').astype(str).str.strip()
     has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
     notes['observed_at'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
-    notes['source'] = notes.source.fillna('').astype(str).str.strip()
-    notes['independent_group'] = notes.independent_group.fillna('').astype(str).str.strip().str.casefold()
-    notes['official'] = notes.official.fillna('').astype(str).str.casefold().isin({'true', '1'})
+    notes['source'] = notes.source.astype('string').fillna('').astype(str).str.strip()
+    notes['independent_group'] = notes.independent_group.astype('string').fillna('').astype(str).str.strip().str.casefold()
+    notes['official'] = notes.official.astype('string').fillna('').astype(str).str.casefold().isin({'true', '1'})
     for col in ('status', 'starter', 'role'):
-        notes[col] = notes[col].fillna('').astype(str).str.strip()
+        notes[col] = notes[col].astype('string').fillna('').astype(str).str.strip()
     notes['minutes'] = pd.to_numeric(notes.minutes, errors='coerce').where(lambda x: x.between(0, 48))
     notes['review'] = np.select(
         [~notes.fanduel_id.isin(pool.fanduel_id), notes.source.eq(''), notes.observed_at.isna(),
