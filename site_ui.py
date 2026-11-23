@@ -512,6 +512,8 @@ def render_slate(history_slot):
                 with st.expander('Inspect ranking-sensitive players'):
                     st.dataframe(pd.DataFrame(fragility['rows']), hide_index=True)
                     st.caption(fragility['reason'])
+            elif fragility.get('differential_players_total') is None:
+                st.info('Pre-lock ranking comparison unavailable: at least two candidate lineups are required.')
             else:
                 st.caption('Pre-lock ±2-minute differential-player check: no candidate ranking reversal detected in the tested scenarios. This does not certify projections or lock status.')
         except (ValueError, KeyError, TypeError) as exc:
