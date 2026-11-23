@@ -22,9 +22,22 @@ def audit_archived_exports(coverage, projections, actuals, *, projection_points=
     ids = coverage.fanduel_id.astype("string")
     if ids.isna().any() or ids.str.strip().eq("").any() or ids.duplicated().any():
         raise ValueError("Contest coverage requires unique nonblank player IDs.")
+    actual_ids = actuals.fanduel_id.astype("string")
+    if (actual_ids.isna().any() or actual_ids.str.strip().eq("").any()
+            or actual_ids.duplicated().any()):
+        raise ValueError("Actuals must contain unique nonblank contest player IDs.")
+    if not set(actual_ids) <= set(ids):
+        raise ValueError("Actuals contain players outside the authoritative contest.")
     actual_status = actuals.status.astype("string").str.lower().str.strip()
     if not actual_status.isin(["played", "dnp", "inactive", "did_not_play"]).all():
         raise ValueError("Unknown actuals status; do not infer played/DNP.")
+    # Explicit DNP rows are availability outcomes, not observed zero-point games.
+    nonplayed_values = actuals.loc[~actual_status.eq("played"),
+                                   ["actual_fd_points", "actual_minutes"]]
+    for col in nonplayed_values:
+        numeric = pd.to_numeric(nonplayed_values[col], errors="coerce")
+        if numeric.notna().any():
+            raise ValueError("DNP/inactive rows must not contain scored actuals.")
     played = actuals.loc[actual_status.eq("played")].copy()
     nonplayed = actuals.loc[~actual_status.eq("played")].copy()
     scored = projections[["fanduel_id", projection_points, projection_minutes]].rename(columns={
@@ -34,6 +47,8 @@ def audit_archived_exports(coverage, projections, actuals, *, projection_points=
     report.update({
         "played_count": int(len(played)),
         "dnp_inactive_count": int(len(nonplayed)),
+        "availability_classified_count": int(len(actuals)),
+        "availability_coverage_rate": float(len(actuals) / len(ids)) if len(ids) else 0.0,
         "actuals_missing_contest_ids": int(len(set(ids) - set(actuals.fanduel_id))),
         "retrospective_only": not timestamp_verified,
         "projection_source": projection_points,
