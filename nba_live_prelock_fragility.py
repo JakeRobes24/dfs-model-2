@@ -42,9 +42,14 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
     # Only player-specific differences can change relative rankings.
     exposed=[pid for pid in exposure if len({pid in ids for ids in candidates.values()})>1]
     def impact(pid):
-        m=float(pool.loc[pid,"adjusted_minutes"])
-        p=float(pool.loc[pid,"adjusted_fd_points"])
-        return abs(p/m)*minute_spread if m>0 and math.isfinite(m) and math.isfinite(p) else 0
+        try:
+            m=float(pool.loc[pid,"adjusted_minutes"])
+            p=float(pool.loc[pid,"adjusted_fd_points"])
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid minutes/projections for differential player {pid}") from exc
+        if not math.isfinite(m) or not math.isfinite(p) or m <= 0 or p < 0:
+            raise ValueError(f"Invalid minutes/projections for differential player {pid}")
+        return abs(p/m)*minute_spread
     # Deterministic priority when a caller explicitly limits the number examined.
     exposed.sort(key=lambda pid: (-impact(pid), str(pid)))
     results=[]
