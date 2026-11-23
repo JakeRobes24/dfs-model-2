@@ -64,6 +64,8 @@ def compare_minutes_bounds(pool_csv, lineup_csv, player_id, low_minutes, high_mi
             if exposure[a] == exposure[b]:
                 continue
             slope = (exposure[a] - exposure[b]) * baseline_fd / baseline_minutes
+            if slope == 0:
+                continue  # Zero projected points cannot change the relative ranking.
             crossing = baseline_minutes - (baselines[a]-baselines[b]) / slope
             if bounds[0] <= crossing <= bounds[1]:
                 crossings.append({"lineups": [a,b], "minutes": round(crossing,4)})
