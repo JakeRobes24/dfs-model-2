@@ -15,7 +15,7 @@ def fixture_pool():
             "fanduel_id": f"fixture-{i}",
             "fanduel_name": f"Fixture Player {i}",
             "salary": 6000,
-            "roster_eligibility": "PG/SG/SF/PF/C/G/F/UTIL",
+            "roster_eligibility": "C/PG/SG/SF/PF/F/G/UTIL",
             "eligible": True,
             "adjusted_fd_points": float(50 - i),
             "adjusted_minutes": 30.0,
@@ -53,6 +53,10 @@ class OptimizerIntegrationTests(unittest.TestCase):
         self.assertEqual(len(result), 9)
         self.assertEqual(set(result.fanduel_id), set(pool.nlargest(9, "adjusted_fd_points").fanduel_id))
         self.assertAlmostEqual(float(result.adjusted_fd_points.sum()), sum(range(42, 51)))
+
+    def test_center_slot_survives_pf_slash_c(self):
+        self.assertIn("C", allowed_slots("PF/C/UTIL"))
+        self.assertIn("PF", allowed_slots("PF/C/UTIL"))
 
     def test_out_players_never_selected(self):
         pool = fixture_pool()
