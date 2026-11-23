@@ -26,6 +26,19 @@ class ArchivedSlateAuditTests(unittest.TestCase):
         self.assertAlmostEqual(result["fd_bias"], 2.5)
         self.assertAlmostEqual(result["minutes_mae"], 3.5)
 
+    def test_missing_prelock_player_reduces_authoritative_coverage(self):
+        result = audit_archived_slate(self.pre.head(2), self.actual,
+                                      contest_ids=["contest-1", "contest-2", "contest-3"])
+        self.assertEqual(result["contest_players"], 3)
+        self.assertEqual(result["missing_prelock_rows"], 1)
+        self.assertEqual(result["fully_comparable_players"], 2)
+        self.assertAlmostEqual(result["coverage_rate"], 2 / 3)
+
+    def test_prelock_outside_contest_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "outside the contest"):
+            audit_archived_slate(self.pre, self.actual,
+                                 contest_ids=["contest-1", "contest-2"])
+
     def test_extra_actuals_flagged_without_expanding_contest(self):
         self.actual.loc[2] = ["different-contest-4", 100, 40]
         result = audit_archived_slate(self.pre, self.actual)
