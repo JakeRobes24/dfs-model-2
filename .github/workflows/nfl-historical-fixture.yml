@@ -5,7 +5,9 @@ on:
     paths:
       - 'nfl_fixture_validation.py'
       - 'test_nfl_fixture_validation.py'
+      - 'test_nfl_original_candidates.py'
       - 'tests/fixtures/nov22_2026_nfl_fd_preliminary.json'
+      - 'tests/fixtures/nov22_2026_nfl_four_preliminary_candidates.json'
       - '.github/workflows/nfl-historical-fixture.yml'
   workflow_dispatch:
 
@@ -21,6 +23,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run isolated NFL fixture regression tests
-        run: python -m unittest -v test_nfl_fixture_validation
+        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates
       - name: Verify fixture CLI
         run: python nfl_fixture_validation.py
