@@ -502,6 +502,11 @@ def render_slate(history_slot):
         try:
             from nba_live_prelock_fragility import rank_fragility
             fragility = rank_fragility(scored, lineups, minute_spread=2.0)
+            if fragility.get('differential_players_total') is not None:
+                st.caption(
+                    f"Pre-lock sensitivity coverage: {fragility['tested_differential_players']}/"
+                    f"{fragility['differential_players_total']} differential players checked."
+                )
             if fragility.get('fragile'):
                 st.warning('Pre-lock ranking sensitivity: a ±2-minute player scenario changes the leading candidate. Review minutes sources before entry.')
                 with st.expander('Inspect ranking-sensitive players'):
