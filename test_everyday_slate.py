@@ -175,6 +175,18 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
         entered = lineups.loc[lineups.lineup.eq(1), ['slot', 'fanduel_id']]
         game_state.return_value = ({'BOS/CHI'}, True)
         app.run()
+        assert app.radio(key='slate_swap_entry_method').value == 'Select players'
+        assert not any(button.key == 'slate_late_swap_run' for button in app.button)
+        ordered = entered.sort_values('slot', key=lambda slots: slots.map(SLOTS.index), kind='stable')
+        for picker, player in zip((item for item in app.selectbox if (item.key or '').startswith('slate_swap_')),
+                                  ordered.fanduel_id, strict=True):
+            picker.select(player)
+        app.run()
+        app.button(key='slate_late_swap_run').click().run()
+        assert not app.exception and not app.error
+        manual_swap = app.session_state['late_swap_result'][1]
+        assert manual_swap.entered_fanduel_id.tolist() == ordered.fanduel_id.tolist()
+        app.radio(key='slate_swap_entry_method').set_value('Upload CSV').run()
         app.file_uploader(key='slate_late_swap').upload('entered.csv', entered.to_csv(index=False).encode(),
                                                       'text/csv').run()
         app.button(key='slate_late_swap_run').click().run()

@@ -14,7 +14,7 @@ from history_intake_ui import render_slate_archive
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
-from model import SLOTS, optimize, optimize_late_swap
+from model import SLOTS, allowed_slots, optimize, optimize_late_swap
 from nba_ownership import archive_ownership
 from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
@@ -429,15 +429,36 @@ def render_slate(history_slot):
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
     if started and complete and len(started) < pool.game.map(matchup_key).nunique():
         with st.expander('Find a late swap'):
-            st.caption('Upload one entered lineup with slot and fanduel_id columns. Keep the two UTIL rows in entry order. '
-                       'Verify locks and apply any changes in FanDuel.')
-            entered = st.file_uploader('Entered lineup CSV', type='csv', key='slate_late_swap')
-            if entered is not None:
-                swap_key = (signature, sha256(entered.getvalue()).hexdigest(), tuple(sorted(started)))
+            locked_ids = set(scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id'])
+            st.caption('Match the players and slots in your FanDuel entry. Verify locks in FanDuel before applying a swap.')
+            method = st.radio('How to enter your lineup', ['Select players', 'Upload CSV'], key='slate_swap_entry_method')
+            roster = None
+            if method == 'Upload CSV':
+                st.caption('Include slot and fanduel_id columns. Keep the two UTIL rows in entry order.')
+                entered = st.file_uploader('Entered lineup CSV', type='csv', key='slate_late_swap')
+                try:
+                    roster = read_optional(entered, {'slot', 'fanduel_id'}, id_column='fanduel_id')
+                except ValueError as exc:
+                    st.error(str(exc))
+            else:
+                sorted_pool = scored.sort_values(['fanduel_name', 'fanduel_id'], kind='stable')
+                labels = {row.fanduel_id: f'{row.fanduel_name} · {row.team}'
+                          + (' · Locked' if row.fanduel_id in locked_ids else '')
+                          for row in sorted_pool.itertuples()}
+                eligibility = sorted_pool.roster_eligibility.map(allowed_slots)
+                choices = []
+                for index, slot in enumerate(SLOTS):
+                    label = f'UTIL {index - 6}' if slot == 'UTIL' else slot
+                    players = sorted_pool.loc[eligibility.map(lambda positions: slot in positions), 'fanduel_id']
+                    choices.append(st.selectbox(label, players.tolist(), index=None, format_func=labels.__getitem__,
+                                                key=f'slate_swap_{contest_id}_{slate}_{index}'))
+                if all(choices):
+                    roster = pd.DataFrame({'slot': SLOTS, 'fanduel_id': choices})
+            if roster is not None:
+                roster_hash = sha256(roster[['slot', 'fanduel_id']].to_csv(index=False).encode()).hexdigest()
+                swap_key = (signature, roster_hash, tuple(sorted(started)))
                 if st.button('Find strongest legal lineup', key='slate_late_swap_run'):
                     try:
-                        roster = read_optional(entered, {'slot', 'fanduel_id'}, id_column='fanduel_id')
-                        locked_ids = scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id']
                         swap = optimize_late_swap(scored, roster, locked_ids, exclude_uncertain=exclude)
                     except ValueError as exc:
                         st.error(str(exc))
