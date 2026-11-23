@@ -114,6 +114,16 @@ class LiveFragilityTests(unittest.TestCase):
         result=rank_fragility(self.pool,self.lineups)
         self.assertEqual(result["baseline_leader"],"2")
         self.assertTrue(result["fragile"])
+    def test_shared_player_invalid_minutes_fails_closed(self):
+        self.lineups.loc[self.lineups.fanduel_id.eq("9"),"fanduel_id"]="0"
+        self.lineups.loc[self.lineups.lineup.eq(2) & self.lineups.fanduel_id.eq("0"),"adjusted_fd_points"]=30.0
+        self.pool.loc[0,"adjusted_minutes"]=0
+        with self.assertRaisesRegex(ValueError,"Invalid minutes"):
+            rank_fragility(self.pool,self.lineups)
+    def test_single_candidate_invalid_minutes_fails_closed(self):
+        self.pool.loc[0,"adjusted_minutes"]=0
+        with self.assertRaisesRegex(ValueError,"Invalid minutes"):
+            rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
