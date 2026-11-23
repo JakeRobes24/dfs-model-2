@@ -47,6 +47,16 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
                 raise ValueError("Candidate and scored pool projection mismatch")
             total += points
         base[name]=total
+    # Shared players cannot flip a ranking, but malformed shared inputs still
+    # invalidate the advertised full-candidate sensitivity audit.
+    for pid in set().union(*candidates.values()):
+        try:
+            minutes=float(pool.loc[pid,"adjusted_minutes"])
+            points=float(pool.loc[pid,"adjusted_fd_points"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid minutes/projections for candidate player {pid}") from exc
+        if not math.isfinite(minutes) or not math.isfinite(points) or minutes <= 0 or points < 0:
+            raise ValueError(f"Invalid minutes/projections for candidate player {pid}")
     ordered=sorted(base,key=lambda name:(-base[name],name))
     leader=ordered[0]
     exposure=set().union(*candidates.values())
