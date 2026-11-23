@@ -153,8 +153,39 @@ def test_late_swap_preserves_second_util_and_ignores_other_closed_players():
     assert ids[10] not in result.fanduel_id.values and ids[9] in result.fanduel_id.values
     assert ids[7] not in result.fanduel_id.values
     assert result.salary.sum() == 58500
+    assert result.iloc[8].fd_points_delta == 0 and not result.iloc[8].changed
+    assert result.fd_points_delta.sum() == 49
     with pytest.raises(ValueError, match='No legal late-swap'):
         optimize_late_swap(pool.assign(eligible=False), original, [ids[8], ids[10]])
+
+
+def test_streamlit_late_swap_compares_entered_and_candidate_slots():
+    contest, daily = uploads()
+    contest.loc[:6, 'Game'] = 'BOS@CHI'
+    daily.loc[:6, 'gameInfo'] = 'BOS @ CHI'
+    with (patch('site_ui.public_research', return_value=([], [], [])),
+          patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('site_ui.public_slate_schedule', return_value=[]),
+          patch('site_ui.started_contest_games', return_value=(set(), True)) as game_state):
+        app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
+        app.file_uploader(key='slate_contest').upload('contest.csv', contest.to_csv(index=False).encode(), 'text/csv')
+        app.file_uploader(key='slate_daily').upload('DAILY.csv', daily.to_csv(index=False).encode(), 'text/csv').run()
+        app.button(key='slate_optimize').click().run()
+        lineups = app.session_state['slate_results'][1][0]
+        entered = lineups.loc[lineups.lineup.eq(1), ['slot', 'fanduel_id']]
+        game_state.return_value = ({'BOS/CHI'}, True)
+        app.run()
+        app.file_uploader(key='slate_late_swap').upload('entered.csv', entered.to_csv(index=False).encode(),
+                                                      'text/csv').run()
+        app.button(key='slate_late_swap_run').click().run()
+        assert not app.exception and not app.error
+        assert app.button(key='slate_optimize').disabled
+        swap = app.session_state['late_swap_result'][1]
+        locked = set(entered.fanduel_id) & set(contest.loc[:6, 'Id'])
+        assert locked and set(swap.loc[swap.locked, 'fanduel_id']) == locked
+        assert swap.loc[swap.locked, 'changed'].eq(False).all()
+        assert any('Projected points change' in caption.value for caption in app.caption)
+        assert any('UTIL 2' in frame.value.get('slot', []).tolist() for frame in app.dataframe if 'slot' in frame.value)
 
 
 def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):

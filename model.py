@@ -140,7 +140,8 @@ def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False)
     if not lineup.fanduel_id.is_unique or not lineup.fanduel_id.isin(pool.fanduel_id).all():
         raise ValueError('The lineup must have nine unique players from this contest.')
     entries = lineup[['slot', 'fanduel_id']].merge(
-        pool[['fanduel_id', 'salary', 'roster_eligibility']], on='fanduel_id', validate='one_to_one',
+        pool[['fanduel_id', 'fanduel_name', 'salary', 'roster_eligibility', 'adjusted_fd_points']],
+        on='fanduel_id', validate='one_to_one',
     )
     if (entries.salary.sum() > 60000
             or any(row.slot not in allowed_slots(row.roster_eligibility) for row in entries.itertuples())):
@@ -148,9 +149,19 @@ def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False)
     # Stable ordering keeps the first and second UTIL rows distinct.
     entries = entries.sort_values('slot', key=lambda slots: slots.map(SLOTS.index), kind='stable').reset_index(drop=True)
     closed_players = set(closed_players)
+    if not closed_players:
+        raise ValueError('Late swap requires at least one closed contest game.')
     fixed = entries.loc[entries.fanduel_id.isin(closed_players), 'fanduel_id'].to_dict()
     replacement = optimize(pool, number=1, fixed_slots=fixed, closed_players=closed_players,
                            exclude_uncertain=exclude_uncertain)
     if replacement.empty:
         raise ValueError('No legal late-swap lineup fits the locked slots and remaining projected pool.')
-    return replacement.assign(locked=replacement.fanduel_id.isin(fixed.values()))
+    locked = replacement.fanduel_id.isin(fixed.values())
+    changed = replacement.fanduel_id.ne(entries.fanduel_id)
+    original_points = entries.adjusted_fd_points.round(2)
+    points_delta = (replacement.adjusted_fd_points - original_points).round(2)
+    return replacement.assign(
+        locked=locked, changed=changed, entered_player=entries.fanduel_name,
+        entered_fanduel_id=entries.fanduel_id, entered_salary=entries.salary, entered_fd_points=original_points,
+        fd_points_delta=points_delta.where(changed, 0),
+    )

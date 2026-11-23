@@ -39,7 +39,6 @@ def started_contest_games(schedule, games, now):
     """Match exact contest games and detect reported starts or elapsed tip times."""
     remaining = {matchup_key(game) for game in games}
     started = set()
-    complete = False
     matched = set()
     for entry in schedule:
         away, home = (team_code((entry.get(side) or {}).get('teamTricode', ''))
@@ -446,8 +445,20 @@ def render_slate(history_slot):
                         st.session_state['late_swap_result'] = (swap_key, swap)
                 saved_swap = st.session_state.get('late_swap_result')
                 if saved_swap is not None and saved_swap[0] == swap_key:
-                    st.dataframe(saved_swap[1], hide_index=True)
-                    st.download_button('Download late-swap candidate', saved_swap[1].to_csv(index=False),
+                    swap = saved_swap[1]
+                    if not swap.solver_optimal.all():
+                        st.warning('The solver found a legal candidate. Its optimality is unverified.')
+                    st.caption(f'{int(swap.locked.sum())} locked · {int(swap.changed.sum())} slots change · '
+                               f'${int(swap.entered_salary.sum()):,} before · ${int(swap.salary.sum()):,} after')
+                    if swap.fd_points_delta.notna().all():
+                        st.caption(f'Projected points change {swap.fd_points_delta.sum():+.2f}')
+                    else:
+                        st.caption('Projected change is unavailable because an affected player lacks a projection.')
+                    comparison = swap[['slot', 'entered_player', 'player', 'locked', 'fd_points_delta']].copy()
+                    comparison.loc[comparison.slot.eq('UTIL'), 'slot'] = ['UTIL 1', 'UTIL 2']
+                    st.dataframe(comparison.rename(columns={'entered_player': 'Entered', 'player': 'Candidate',
+                                                           'fd_points_delta': 'Projected change'}), hide_index=True)
+                    st.download_button('Download late-swap candidate', swap.to_csv(index=False),
                                        'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
