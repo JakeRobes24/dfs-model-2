@@ -41,6 +41,9 @@ def test_paired_multislate_weighted_mae_without_retraining(tmp_path):
     assert points.paired_players == 3
     assert points.weighted_daily_mae == pytest.approx(5 / 3)
     assert points.weighted_adjusted_mae == pytest.approx(21 / 3)
+    assert points.equal_slate_mae_improvement == pytest.approx(-3)
+    assert points.slates_with_missing_paired_predictions == 0
+    assert points.verified_outcomes_without_pairs == 0
     assert points.slates_adjusted_better == 1
     assert points.slates_adjusted_worse == 1
     assert points.evidence_status == 'descriptive_only_no_release_authorization'
