@@ -44,6 +44,10 @@ class LiveFragilityTests(unittest.TestCase):
     def test_invalid_cap(self):
         with self.assertRaises(ValueError):
             rank_fragility(self.pool,self.lineups,max_players=0)
+    def test_invalid_differential_minutes_fails_closed(self):
+        self.pool.loc[9,"adjusted_minutes"]=0
+        with self.assertRaisesRegex(ValueError,"Invalid minutes"):
+            rank_fragility(self.pool,self.lineups)
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
