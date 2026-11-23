@@ -43,3 +43,13 @@ Seven players were shared. Only two differed:
 - Compare the full pool and investigate Buzelis minutes assumption and Bridges/Suggs downside, with an explicit distinction between prelock decision quality and realized variance.
 
 **No production merge, weight change, or database mutation.**
+
+## Additional recovered pre-tip archive evidence (project index)
+
+The saved `DFS_Model_2_Project_Index.md` contains a November 22 **3:10 p.m. ET** development validation entry for contest **137037**, linking an archived full pool/source audit/script/manifest at [development validation archive](https://chatgpt.com/library?file_id=libfile_e3e86fe52b4081918ff022eedb9096a8&account_id=personal). Its recorded scope: **210 contest IDs**, **six games**, **180 DAILY point matches**, **19 eligible players lacking usable point projections**, **377 reviewed source rows**, **31 rotation boxes**, **15 public ownership estimates**, and **zero officially confirmed starters matched at capture**. The index says all **66 tests passed** for that earlier development revision. These are historical project-index statements, **not a new execution or verification of the archive's raw contents**.
+
+The index separately documents a **3:17 p.m. ET** research alias check with 155 independent projection matches and a preserved 210-player pool, and later development work on the frozen replay runner. The 3:10 capture is pre-tip, but **not the same as a certified 6:58 p.m. final lineup version**. At 6:58 p.m., the 6 p.m. OKC–MIA game had already been scheduled to start; thus a complete-slate before-tip replay cannot be newly reconstructed from a 6:58 timestamp. We must distinguish before-full-slate-tip captures from later-game late-swap decisions.
+
+The user's subsequently provided original four-lineup screenshots establish the model scenario rankings **336.8, 336.6, 335.6, 335.3 FD**. Original **model Lineup 1** is the entered **387.1** result, while original **model Lineup 3** is the entered **419.9** result. These are descriptive scenario comparisons, not certified full-pool GPP simulation results.
+
+**Next evidence action:** retrieve the linked archive bytes, verify manifest/hashes and capture times against the exact source files, compare the 3:10 frozen pool to the 6:58 model-scenario candidates, and use official final boxes for complete-slate actuals only after provenance validation. The project index and screenshots do not authorize inventing the missing 19 player forecasts or asserting full-slate prelock certification.
