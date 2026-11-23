@@ -90,6 +90,36 @@ class NFLPipelineTests(unittest.TestCase):
         self.assertTrue(result["ready"])
         self.assertFalse(result["certified"])
 
+    def test_reverse_official_conflict_blocks(self):
+        csv, projections, candidates, kw = inputs()
+        evidence = [{"player_id": "136799-10", "status": "active",
+                     "official": True, "source": "Official active list",
+                     "source_record_id": "report-10", "observed_at": TIME}]
+        result = run_nfl_prelock_pipeline(
+            csv, projections, candidates, official_status_evidence=evidence, **kw)
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["contest_out_conflict_ids"], ["136799-10"])
+
+    def test_late_active_report_cannot_override_contest_out(self):
+        csv, projections, candidates, kw = inputs()
+        evidence = [{"player_id": "136799-10", "status": "active",
+                     "official": True, "source": "Official active list",
+                     "source_record_id": "late-report",
+                     "observed_at": "2026-11-22T18:00:00Z"}]
+        result = run_nfl_prelock_pipeline(
+            csv, projections, candidates, official_status_evidence=evidence, **kw)
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["contest_out_conflict_ids"], [])
+
+    def test_late_projection_cannot_certify_historical_replay(self):
+        csv, projections, candidates, kw = inputs()
+        for p in projections:
+            p.update(source="Provider", source_version="v1",
+                     source_record_id="record-" + p["player_id"])
+        projections[0]["asof_utc"] = "2026-11-22T18:00:00Z"
+        with self.assertRaises(ValueError):
+            run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+
     def test_end_to_end(self):
         csv,projections,candidates,kw=inputs()
         result=run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
