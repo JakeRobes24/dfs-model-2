@@ -93,10 +93,18 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
            for slot, row in ((slot, pinned.loc[pinned.fanduel_id.eq(pid)].iloc[0])
                              for slot, pid in fixed_slots.items())):
         raise ValueError('Locked player is not eligible for the assigned slot.')
-    if (not pinned.eligible.all() or pinned.adjusted_fd_points.isna().any()
+    # A started player is immutable even if later ruled out. A newly pinned
+    # player in an open game must still pass the ordinary eligibility checks.
+    truly_closed = pinned.fanduel_id.isin(set(closed_players))
+    invalid_open = pinned.loc[~truly_closed]
+    if (not invalid_open.eligible.all() or invalid_open.adjusted_fd_points.isna().any()
+            or not np.isfinite(invalid_open.adjusted_fd_points).all()
+            or (invalid_open.adjusted_fd_points <= 0).any()):
+        raise ValueError('Open-game pinned players require eligible, finite positive projections.')
+    if (pinned.adjusted_fd_points.isna().any()
             or not np.isfinite(pinned.adjusted_fd_points).all()
-            or (pinned.adjusted_fd_points <= 0).any()):
-        raise ValueError('Locked players require eligible, finite positive projections.')
+            or (pinned.adjusted_fd_points < 0).any()):
+        raise ValueError('Locked players require finite nonnegative projections.')
     a = a.loc[~a.fanduel_id.isin(set(closed_players) | set(fixed_slots.values()))]
     if not np.isfinite(a[objective_column]).all():
         raise ValueError('Objective requires finite scores for all optimizable players')
