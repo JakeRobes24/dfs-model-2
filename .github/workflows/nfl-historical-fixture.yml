@@ -1,0 +1,26 @@
+name: NFL historical fixture regression
+
+on:
+  pull_request:
+    paths:
+      - 'nfl_fixture_validation.py'
+      - 'test_nfl_fixture_validation.py'
+      - 'tests/fixtures/nov22_2026_nfl_fd_preliminary.json'
+      - '.github/workflows/nfl-historical-fixture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-nfl-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run isolated NFL fixture regression tests
+        run: python -m unittest -v test_nfl_fixture_validation
+      - name: Verify fixture CLI
+        run: python nfl_fixture_validation.py
