@@ -22,7 +22,8 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
     quote = dict(stat='Points', bookmaker='book', line=10, daily_stat=12,
                  quoted_at='2026-11-18T22:55:00Z', fair_over_pct=55)
     frozen['replay_player_props_json'] = json.dumps([
-        quote, dict(quote, stat='Rebounds', line=3.5, daily_stat=None),
+        quote, dict(quote, bookmaker='second', line=11),
+        dict(quote, stat='Rebounds', line=3.5, daily_stat=None),
         dict(quote, stat='Assists', quoted_at='2026-11-18T23:05:00Z'),
     ])
     source = tmp_path / 'pool.csv'
@@ -43,7 +44,9 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert 'projection_comparison.csv' in archive.namelist()
         grouped = pd.read_csv(BytesIO(archive.read('adjustment_comparison.csv')))
         assert grouped['Minutes method'].eq('consensus').all()
-        props = pd.read_csv(BytesIO(archive.read('player_prop_review.csv'))).set_index('stat')
+        props = pd.read_csv(BytesIO(archive.read('player_prop_review.csv')))
+        assert len(props) == 3
+        props = props.loc[props.bookmaker.eq('book')].set_index('stat')
         assert list(props.index) == ['Points', 'Rebounds']
         assert props.loc['Points', 'outcome'] == 'Push'
         assert props.loc['Points', 'daily_absolute_error'] == 2
@@ -51,5 +54,8 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert props.loc['Rebounds', 'actual'] == 4
         assert props.loc['Rebounds', 'brier'] == pytest.approx(0.45 ** 2)
         assert pd.isna(props.loc['Rebounds', 'daily_absolute_error'])
+        summary = pd.read_csv(BytesIO(archive.read('player_prop_summary.csv'))).iloc[0]
+        assert summary.stat == 'Points' and summary.paired_players == 1 and summary.median_books == 2
+        assert summary.daily_mae == 2 and summary.mean_threshold_distance == 0.5
     with pytest.raises(FileExistsError, match='new output path'):
         run(source, DAY, output)

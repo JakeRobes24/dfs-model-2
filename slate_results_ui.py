@@ -9,7 +9,7 @@ import streamlit as st
 from history_intake import MAX_PACKET, list_slate_packets, load_slate_packet, make_submission, submit_reviewed_slate
 from history_intake_ui import _intake_token
 from history_panel import owner_can_view_history, render_history_panel
-from market_evidence import review_player_props
+from market_evidence import review_player_props, summarize_player_props
 from nba_ownership import OWNERSHIP_FIELDS, compare_ownership
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from slate_import import game_code, matchup_key
@@ -196,6 +196,10 @@ def render_post_slate():
             if not props.empty:
                 st.caption('Player props are scored as sportsbook thresholds against official stats. Pushes are excluded '
                            'from probability error. Several books may quote the same player.')
+                prop_summary = summarize_player_props(props)
+                if not prop_summary.empty:
+                    st.caption('The paired comparison counts each player once per stat and uses the median threshold across books.')
+                    st.dataframe(prop_summary.round(2), hide_index=True)
                 st.download_button('Download player prop review', props.to_csv(index=False),
                                    f'{slate}_{contest}_{version[:12]}_player_props.csv', mime='text/csv')
             st.download_button('Download frozen replay data', replay.to_csv(index=False),

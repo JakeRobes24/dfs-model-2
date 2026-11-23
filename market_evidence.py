@@ -178,3 +178,25 @@ def review_player_props(replay, results):
             ))
     return (pd.DataFrame(rows).drop_duplicates(['fanduel_id', 'stat', 'bookmaker'], keep=False)
             if rows else pd.DataFrame())
+
+
+def summarize_player_props(quotes):
+    """Compare medians of book thresholds and DAILY on equal player-stat samples."""
+    if quotes.empty:
+        return pd.DataFrame()
+    players = quotes.groupby(['stat', 'fanduel_id'], sort=True).agg(
+        market_threshold=('line', 'median'), books=('bookmaker', 'nunique'),
+        actual=('actual', 'first'), daily_stat=('daily_stat', 'first'),
+        daily_versions=('daily_stat', 'nunique'),
+    )
+    paired = players.loc[players.daily_versions.eq(1)].copy()
+    if paired.empty:
+        return pd.DataFrame()
+    paired['daily_error'] = (paired.daily_stat - paired.actual).abs()
+    paired['threshold_distance'] = (paired.market_threshold - paired.actual).abs()
+    paired['threshold_closer'] = (paired.daily_error - paired.threshold_distance).round(2).gt(0)
+    return paired.groupby('stat').agg(
+        paired_players=('actual', 'size'), median_books=('books', 'median'),
+        daily_mae=('daily_error', 'mean'), mean_threshold_distance=('threshold_distance', 'mean'),
+        threshold_closer_players=('threshold_closer', 'sum'),
+    ).reset_index()
