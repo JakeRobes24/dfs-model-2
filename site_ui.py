@@ -498,6 +498,20 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        # Informational guard: rank fragility never changes the selected optimizer lineups.
+        try:
+            from nba_live_prelock_fragility import rank_fragility
+            fragility = rank_fragility(scored, lineups, minute_spread=2.0)
+            if fragility.get('fragile'):
+                st.warning('Pre-lock ranking sensitivity: a ±2-minute player scenario changes the leading candidate. Review minutes sources before entry.')
+                with st.expander('Inspect ranking-sensitive players'):
+                    st.dataframe(pd.DataFrame(fragility['rows']), hide_index=True)
+                    st.caption(fragility['reason'])
+            else:
+                st.caption('Pre-lock ±2-minute differential-player check: no candidate ranking reversal detected in the tested scenarios. This does not certify projections or lock status.')
+        except (ValueError, KeyError, TypeError) as exc:
+            st.info(f'Pre-lock fragility audit unavailable: {exc}')
+
     else:
         st.caption('Generated lineups and their alternatives appear here.')
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
