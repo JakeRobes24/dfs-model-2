@@ -8,12 +8,14 @@ import math
 def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
     if max_players is not None and (not isinstance(max_players, int) or max_players < 1):
         raise ValueError("max_players must be a positive integer or None")
-    if minute_spread <= 0 or not math.isfinite(minute_spread):
+    if not isinstance(minute_spread, (int, float)) or not math.isfinite(minute_spread) or minute_spread <= 0:
         raise ValueError("Minute spread must be positive and finite")
     required_pool={"fanduel_id","adjusted_fd_points","adjusted_minutes"}
     required_lineups={"lineup","fanduel_id","adjusted_fd_points"}
     if not required_pool.issubset(scored.columns) or not required_lineups.issubset(lineups.columns):
         raise ValueError("Missing columns for prelock fragility audit")
+    if scored.fanduel_id.isna().any() or lineups.fanduel_id.isna().any():
+        raise ValueError("Missing contest player IDs")
     if scored.fanduel_id.duplicated().any():
         raise ValueError("Duplicate contest player IDs")
     candidates={}
@@ -31,8 +33,11 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
     for name, group in lineups.groupby("lineup"):
         name=str(name)
         for r in group.itertuples():
-            points=float(r.adjusted_fd_points)
-            source=float(pool.loc[r.fanduel_id,"adjusted_fd_points"])
+            try:
+                points=float(r.adjusted_fd_points)
+                source=float(pool.loc[r.fanduel_id,"adjusted_fd_points"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Non-numeric candidate or pool projection") from exc
             if not math.isfinite(points) or abs(points-source)>1e-4:
                 raise ValueError("Candidate and scored pool projection mismatch")
         base[name]=float(group.adjusted_fd_points.sum())
