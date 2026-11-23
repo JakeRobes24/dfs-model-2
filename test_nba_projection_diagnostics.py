@@ -1,6 +1,6 @@
 import unittest
 import pandas as pd
-from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition
+from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
 
 
 def row(pid='a', outcome='played', eligible=True, dm=20, am=25, actualm=30,
@@ -27,6 +27,18 @@ class DiagnosticsTests(unittest.TestCase):
                              row('d', eligible=False), row('e', actualm=0),
                              row('f', dp=None)])
         self.assertEqual(set(decompose_played_errors(data).fanduel_id), {'a'})
+
+    def test_coverage_does_not_hide_unresolved_or_missing_predictions(self):
+        replay = pd.DataFrame([row(), row('b', outcome='did_not_play'),
+                               row('c', outcome='needs_review'), row('d', dp=None),
+                               row('e', eligible=False)])
+        coverage = diagnostic_coverage(replay, decompose_played_errors(replay)).iloc[0]
+        self.assertEqual(coverage.eligible_players, 4)
+        self.assertEqual(coverage.verified_played, 2)
+        self.assertEqual(coverage.verified_did_not_play, 1)
+        self.assertEqual(coverage.unresolved_outcome, 1)
+        self.assertEqual(coverage.played_without_paired_diagnostics, 1)
+        self.assertEqual(coverage.paired_played_coverage_pct, 50)
 
     def test_missing_and_duplicate_ids_rejected(self):
         with self.assertRaises(ValueError):
