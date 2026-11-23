@@ -21,6 +21,24 @@ def inputs():
 
 
 class NFLPipelineTests(unittest.TestCase):
+    def test_uncertified_without_source_provenance(self):
+        csv, projections, candidates, kw = inputs()
+        result = run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+        self.assertTrue(result["ready"])
+        self.assertFalse(result["certified"])
+        self.assertEqual(len(result["unverified_projection_ids"]), 9)
+        self.assertEqual(len(result["uncertain_status_ids"]), 9)
+
+    def test_certified_with_traceable_projections_and_status(self):
+        csv, projections, candidates, kw = inputs()
+        csv = csv.replace("DAL@NYG,\\n", "DAL@NYG,PROBABLE\\n")
+        for p in projections:
+            p["source"] = "Archived independent provider"
+            p["source_version"] = "v1"
+        result = run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+        self.assertTrue(result["ready"])
+        self.assertTrue(result["certified"])
+
     def test_end_to_end(self):
         csv,projections,candidates,kw=inputs()
         result=run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
