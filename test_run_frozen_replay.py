@@ -42,6 +42,12 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert replay.actual_points.iloc[0] == 20.3
         assert replay.daily_points.iloc[0] == 18
         assert 'projection_comparison.csv' in archive.namelist()
+        diagnostic = pd.read_csv(BytesIO(archive.read('projection_error_decomposition.csv')))
+        assert set(diagnostic.forecast) == {'DAILY', 'Adjusted'}
+        assert set(diagnostic.fanduel_id.astype(str)) == {'123-248943'}
+        assert (diagnostic.minutes_contribution + diagnostic.rate_contribution - diagnostic.point_error).abs().max() < 1e-8
+        diagnostic_summary = pd.read_csv(BytesIO(archive.read('projection_error_decomposition_summary.csv')))
+        assert diagnostic_summary.players.eq(1).all()
         grouped = pd.read_csv(BytesIO(archive.read('adjustment_comparison.csv')))
         assert grouped['Minutes method'].eq('consensus').all()
         props = pd.read_csv(BytesIO(archive.read('player_prop_review.csv')))
