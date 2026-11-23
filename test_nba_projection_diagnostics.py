@@ -40,6 +40,11 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(coverage.played_without_paired_diagnostics, 1)
         self.assertEqual(coverage.paired_played_coverage_pct, 50)
 
+    def test_coverage_rejects_duplicate_replay_ids(self):
+        replay = pd.DataFrame([row(), row()])
+        with self.assertRaises(ValueError):
+            diagnostic_coverage(replay, pd.DataFrame())
+
     def test_missing_and_duplicate_ids_rejected(self):
         with self.assertRaises(ValueError):
             decompose_played_errors(pd.DataFrame([row(), row()]))
