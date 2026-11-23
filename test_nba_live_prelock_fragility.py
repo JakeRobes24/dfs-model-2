@@ -33,6 +33,17 @@ class LiveFragilityTests(unittest.TestCase):
         self.lineups.loc[0,"fanduel_id"]="missing"
         with self.assertRaises(ValueError):
             rank_fragility(self.pool,self.lineups)
+    def test_all_differential_players_checked(self):
+        result=rank_fragility(self.pool,self.lineups)
+        self.assertEqual(result["tested_differential_players"],18)
+        self.assertTrue(result["coverage_complete"])
+    def test_explicit_cap_discloses_partial_coverage(self):
+        result=rank_fragility(self.pool,self.lineups,max_players=2)
+        self.assertEqual(result["tested_differential_players"],2)
+        self.assertFalse(result["coverage_complete"])
+    def test_invalid_cap(self):
+        with self.assertRaises(ValueError):
+            rank_fragility(self.pool,self.lineups,max_players=0)
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
