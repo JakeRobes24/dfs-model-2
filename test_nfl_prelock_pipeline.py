@@ -31,7 +31,7 @@ class NFLPipelineTests(unittest.TestCase):
 
     def test_certified_with_traceable_projections_and_status(self):
         csv, projections, candidates, kw = inputs()
-        csv = csv.replace("DAL@NYG,\\n", "DAL@NYG,PROBABLE\\n")
+        csv = csv.replace("DAL@NYG,\n", "DAL@NYG,PROBABLE\n")
         for p in projections:
             p["source"] = "Archived independent provider"
             p["source_version"] = "v1"
