@@ -83,3 +83,9 @@ User provided four screenshots of the earlier ChatGPT message titled **Sunday's 
 - **Model 4:** PG Josh Giddey; SG Kyshawn George; SF Josh Hart; PF Aaron Gordon; C Nikola Jokić; G/F Desmond Bane; F/C Neemias Queta; UTIL Jalen Brunson; UTIL Jalen Suggs.
 
 **Source limits:** These screenshots establish the four displayed rosters and model scenario aggregate projections. They do not establish the complete frozen pre-lock contest pool, independent source timestamp, official final player outcomes for unentered lineups, or a complete certification of salary/position eligibility against original FanDuel IDs. Do not use screenshot device clock as the historical model timestamp.
+
+## User-confirmed final pre-slate chronology (subsequent clarification)
+
+The user confirmed the intended final check-in was **5:40 PM ET**, they returned late, and the four displayed model-scenario lineups were **the final lineups provided approximately 5:52–5:58 PM ET before the slate's scheduled 6:00 PM first game**. Only original model Lineups **1** and **3** were entered; original model Lineups **2** and **4** were not entered. The user regarded the builds as tests but entered two anyway. These are user-reported chronology and entry facts; the precise message timestamps and archived immutable projection input version remain to be independently verified.
+
+**Interpretation correction:** Earlier descriptions of these four as merely hypothetical early candidates were incomplete. They were the final four **presented** pre-slate lineup choices, while their original message explicitly cautioned they were provisional reconstructed scenarios lacking full independent ownership, ceiling, and pool verification. “Final presented” must not be conflated with “fully research-certified.” Retain all four for prelock decision-quality assessment; score actual contest outcomes only for the two entered.
