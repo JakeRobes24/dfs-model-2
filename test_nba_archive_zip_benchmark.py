@@ -26,12 +26,25 @@ class ArchiveZipBenchmarkTests(unittest.TestCase):
                 z.writestr("backup/nov20_complete_247_player_coverage.csv", coverage.to_csv(index=False))
                 z.writestr("backup/nov20_consensus_audit.csv", projection.to_csv(index=False))
             result = benchmark_nov20(actual_path, session_path)
+            checked = benchmark_nov20(
+                actual_path, session_path,
+                snapshot_at="2026-11-20T18:00:00-05:00",
+                lock_at="2026-11-20T19:00:00-05:00",
+                source_groups=["daily"],
+            )
+            self.assertTrue(checked["provenance"]["chronology_valid"])
+            self.assertFalse(checked["provenance"]["authenticity_verified"])
+            self.assertTrue(checked["retrospective_only"])
+            with self.assertRaisesRegex(ValueError, "required together"):
+                benchmark_nov20(actual_path, session_path,
+                                snapshot_at="2026-11-20T18:00:00-05:00")
         self.assertEqual(result["contest_players"], 2)
         self.assertEqual(result["played_count"], 1)
         self.assertEqual(result["dnp_inactive_count"], 1)
         self.assertEqual(result["fully_comparable_players"], 1)
         self.assertEqual(result["fd_mae"], 4)
         self.assertTrue(result["retrospective_only"])
+        self.assertFalse(result["provenance"]["authenticity_verified"])
         self.assertNotIn("player_errors", result)
 
 
