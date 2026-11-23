@@ -1,0 +1,31 @@
+name: DFS Model 2 full regression gate
+on:
+  push:
+    branches: [dev/streamlit-runtime-validation]
+    paths:
+      - '*.py'
+      - 'requirements.txt'
+      - '.github/workflows/dfs-full-regression.yml'
+  pull_request:
+    paths:
+      - '*.py'
+      - 'requirements.txt'
+      - '.github/workflows/dfs-full-regression.yml'
+  workflow_dispatch:
+jobs:
+  full-python-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install application and test dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Compile all tracked Python files
+        run: git ls-files '*.py' | xargs -r python -m py_compile
+      - name: Run complete Python regression suite
+        run: python -m pytest -q
