@@ -30,13 +30,15 @@ def evaluate_archives(paths):
                 raise ValueError(f'{path}: replay is not fully verified and final.')
             day = str(manifest.get('slate_date', ''))
             contest = str(manifest.get('contest_id', ''))
-            if not day or not contest or (day, contest) in seen:
+            if (not day or not contest.isdigit() or pd.isna(pd.to_datetime(day, errors='coerce'))
+                    or (day, contest) in seen):
                 raise ValueError(f'{path}: missing or repeated slate identity.')
             seen.add((day, contest))
             replay = pd.read_csv(archive.open('player_replay.csv'),
                                  dtype={'fanduel_id': str})
-        if replay.empty or replay.fanduel_id.isna().any() or not replay.fanduel_id.is_unique:
-            raise ValueError(f'{path}: replay player IDs must be distinct and present.')
+        if (replay.empty or replay.fanduel_id.isna().any() or not replay.fanduel_id.is_unique
+                or not replay.fanduel_id.str.fullmatch(contest + r'-[0-9]+').all()):
+            raise ValueError(f'{path}: replay player IDs must be distinct and belong to the archived contest.')
         comparison = compare_frozen_projections(replay)
         for _, metric in comparison.loc[comparison['Sample'].eq('All paired players')].iterrows():
             count = int(metric['Paired players'])
