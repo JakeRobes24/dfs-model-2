@@ -35,7 +35,14 @@ class NFLPipelineTests(unittest.TestCase):
         for p in projections:
             p["source"] = "Archived independent provider"
             p["source_version"] = "v1"
-        result = run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+        for p in projections:
+            p["source_record_id"] = "record-" + p["player_id"]
+        evidence = [{"player_id": p["player_id"], "status": "active",
+                     "official": True, "source": "Official team report",
+                     "source_record_id": "status-" + p["player_id"],
+                     "observed_at": TIME} for p in projections]
+        result = run_nfl_prelock_pipeline(csv, projections, candidates,
+                                          official_status_evidence=evidence, **kw)
         self.assertTrue(result["ready"])
         self.assertTrue(result["certified"])
 
