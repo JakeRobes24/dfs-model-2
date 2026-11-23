@@ -110,6 +110,31 @@ class CsvToLineupsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mixes FanDuel contest IDs"):
             reconcile_exports(contest, daily)
 
+    def test_invalid_daily_minutes_flagged_and_excluded(self):
+        contest, daily = synthetic_exports()
+        rows = list(csv.DictReader(io.StringIO(daily.decode("utf-8"))))
+        rows[0]["minutes"] = "0"
+        daily = export_bytes(list(rows[0]), rows)
+        matched, _, _ = reconcile_exports(contest, daily)
+        player = matched.loc[matched.fanduel_id.eq("99999-1000")].iloc[0]
+        self.assertIn("Missing or invalid DAILY minutes/points", player.import_issue)
+        self.assertTrue(pd.isna(player.projected_minutes))
+        lineup = optimize(consensus(matched), number=1)
+        self.assertNotIn("99999-1000", set(lineup.fanduel_id))
+
+    def test_extra_daily_player_count_does_not_expand_contest(self):
+        contest, daily = synthetic_exports()
+        rows = list(csv.DictReader(io.StringIO(daily.decode("utf-8"))))
+        extra = dict(rows[0])
+        extra["player"] = "Outside Contest"
+        rows.append(extra)
+        daily = export_bytes(list(rows[0]), rows)
+        matched, contest_id, extras = reconcile_exports(contest, daily)
+        self.assertEqual(contest_id, "99999")
+        self.assertEqual(extras, 1)
+        self.assertEqual(len(matched), 36)
+        self.assertNotIn("Outside Contest", set(matched.fanduel_name))
+
     def test_invalid_contest_salary_fails_closed(self):
         contest, daily = synthetic_exports()
         rows = list(csv.DictReader(io.StringIO(contest.decode("utf-8"))))
