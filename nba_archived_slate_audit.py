@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 
-def audit_archived_slate(prelock, actuals):
+def audit_archived_slate(prelock, actuals, *, contest_ids=None):
     """Return full-pool coverage and accuracy without silently dropping missing rows.
 
     prelock: fanduel_id, projected_fd_points, projected_minutes
@@ -21,6 +21,18 @@ def audit_archived_slate(prelock, actuals):
         ids = frame.fanduel_id.astype("string")
         if ids.isna().any() or ids.str.strip().eq("").any() or ids.duplicated().any():
             raise ValueError(f"{label} must contain unique nonblank contest player IDs.")
+    # The contest CSV is the authoritative denominator.
+    if contest_ids is None:
+        authoritative_ids = set(prelock.fanduel_id)
+        missing_prelock = 0
+    else:
+        ids = pd.Series(list(contest_ids), dtype="string")
+        if ids.isna().any() or ids.str.strip().eq("").any() or ids.duplicated().any():
+            raise ValueError("Contest IDs must be unique and nonblank.")
+        authoritative_ids = set(ids)
+        missing_prelock = len(authoritative_ids - set(prelock.fanduel_id))
+        if set(prelock.fanduel_id) - authoritative_ids:
+            raise ValueError("Pre-lock projections contain players outside the contest.")
     p = prelock[list(expected)].copy()
     a = actuals[list(observed)].copy()
     for frame, cols in ((p, ("projected_fd_points", "projected_minutes")),
@@ -38,13 +50,14 @@ def audit_archived_slate(prelock, actuals):
     fd_error = scored.projected_fd_points - scored.actual_fd_points
     minute_error = scored.projected_minutes - scored.actual_minutes
     return {
-        "contest_players": int(len(p)),
+        "contest_players": int(len(authoritative_ids)),
+        "missing_prelock_rows": int(missing_prelock),
         "actual_players": int(len(a)),
         "missing_actual_rows": int((joined._merge == "left_only").sum()),
         "actuals_outside_contest": int(len(actual_ids - prediction_ids)),
         "incomplete_comparisons": int((~usable).sum()),
         "fully_comparable_players": int(usable.sum()),
-        "coverage_rate": float(usable.mean()) if len(joined) else 0.0,
+        "coverage_rate": float(usable.sum() / len(authoritative_ids)) if authoritative_ids else 0.0,
         "fd_mae": float(fd_error.abs().mean()) if len(scored) else None,
         "fd_bias": float(fd_error.mean()) if len(scored) else None,
         "minutes_mae": float(minute_error.abs().mean()) if len(scored) else None,
