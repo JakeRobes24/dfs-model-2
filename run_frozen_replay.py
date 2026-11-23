@@ -57,7 +57,10 @@ def run(pool_path, day, output_path):
     props = review_player_props(replay, results)
     prop_summary = summarize_player_props(props)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
-    summary = dict(summary, status='reviewed', player_outcomes=counts)
+    summary = dict(summary, status='reviewed', player_outcomes=counts,
+                   diagnostic_coverage={key: (int(value) if key != 'paired_played_coverage_pct'
+                                              else (float(value) if pd.notna(value) else None))
+                                        for key, value in decomposition_coverage.iloc[0].items()})
     with TemporaryDirectory(dir=output_path.parent) as staging:
         archive = Path(staging) / 'replay.zip'
         with ZipFile(archive, 'w', ZIP_DEFLATED) as zipped:
