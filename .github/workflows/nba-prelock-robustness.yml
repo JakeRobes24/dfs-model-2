@@ -1,0 +1,32 @@
+name: NBA prelock robustness regression
+on:
+  push:
+    branches: [dev/streamlit-runtime-validation]
+    paths:
+      - 'nba_live_prelock_fragility.py'
+      - 'test_nba_live_prelock_fragility.py'
+      - 'nba_prelock_robustness.py'
+      - 'test_nba_prelock_robustness.py'
+      - 'site_ui.py'
+      - '.github/workflows/nba-prelock-robustness.yml'
+  pull_request:
+    paths:
+      - 'nba_live_prelock_fragility.py'
+      - 'test_nba_live_prelock_fragility.py'
+      - 'nba_prelock_robustness.py'
+      - 'test_nba_prelock_robustness.py'
+      - 'site_ui.py'
+      - '.github/workflows/nba-prelock-robustness.yml'
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'pandas>=2.0'
+      - run: python -m unittest -v test_nba_live_prelock_fragility test_nba_prelock_robustness
+      - run: python -m py_compile site_ui.py nba_live_prelock_fragility.py nba_prelock_robustness.py
