@@ -34,6 +34,21 @@ class ArchivedSlateAuditTests(unittest.TestCase):
         self.assertEqual(result["fully_comparable_players"], 2)
         self.assertAlmostEqual(result["coverage_rate"], 2 / 3)
 
+    def test_missing_projection_is_not_misclassified_as_off_contest_actual(self):
+        result = audit_archived_slate(self.pre.head(1), self.actual,
+                                      contest_ids=["contest-1", "contest-2", "contest-3"])
+        self.assertEqual(result["missing_prelock_rows"], 2)
+        self.assertEqual(result["actuals_outside_contest"], 0)
+        self.assertEqual(result["missing_actual_rows"], 1)
+        self.assertEqual(result["incomplete_comparisons"], 2)
+
+    def test_actuals_outside_authoritative_contest_flagged(self):
+        outside = self.actual.copy()
+        outside.loc[2] = ["other-4", 22, 19]
+        result = audit_archived_slate(self.pre, outside,
+                                      contest_ids=["contest-1", "contest-2", "contest-3"])
+        self.assertEqual(result["actuals_outside_contest"], 1)
+
     def test_prelock_outside_contest_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "outside the contest"):
             audit_archived_slate(self.pre, self.actual,
