@@ -23,7 +23,7 @@ def audit_archived_exports(coverage, projections, actuals, *, projection_points=
     if ids.isna().any() or ids.str.strip().eq("").any() or ids.duplicated().any():
         raise ValueError("Contest coverage requires unique nonblank player IDs.")
     actual_status = actuals.status.astype("string").str.lower().str.strip()
-    if not actual_status.isin(["played", "dnp", "inactive"]).all():
+    if not actual_status.isin(["played", "dnp", "inactive", "did_not_play"]).all():
         raise ValueError("Unknown actuals status; do not infer played/DNP.")
     played = actuals.loc[actual_status.eq("played")].copy()
     nonplayed = actuals.loc[~actual_status.eq("played")].copy()
