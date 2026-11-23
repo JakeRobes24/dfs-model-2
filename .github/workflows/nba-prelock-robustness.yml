@@ -20,7 +20,7 @@ on:
       - 'test_nba_player_decision_audit.py'
       - 'slate_results_ui.py'
       - 'run_frozen_replay.py'
-      - 'test_nba_archive_provenance test_nba_player_decision_audit.py'
+      - 'test_nba_archive_provenance.py'
       - 'model.py'
       - 'slate_import.py'
       - 'nba_prelock_robustness.py'
@@ -63,6 +63,6 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -r requirements.txt
-      - run: python -m unittest -v test_nba_live_prelock_fragility test_nba_prelock_robustness test_nba_prelock_ui_integration test_nba_optimizer_integration test_nba_csv_pipeline_integration test_nba_archived_slate_audit test_nba_archived_export_adapter test_nba_archive_zip_benchmark test_nba_archive_provenance
+      - run: python -m unittest -v test_nba_live_prelock_fragility test_nba_prelock_robustness test_nba_prelock_ui_integration test_nba_optimizer_integration test_nba_csv_pipeline_integration test_nba_archived_slate_audit test_nba_archived_export_adapter test_nba_archive_zip_benchmark test_nba_archive_provenance test_nba_player_decision_audit
       - run: python -m py_compile app.py site_ui.py nba_live_prelock_fragility.py nba_prelock_robustness.py
       - run: python -c 'import site_ui; from streamlit.testing.v1 import AppTest; app = AppTest.from_file("app.py").run(timeout=45); assert not app.exception, [str(e.message) for e in app.exception]'
