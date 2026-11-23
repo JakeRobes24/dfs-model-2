@@ -72,6 +72,15 @@ class LiveFragilityTests(unittest.TestCase):
         self.pool.loc[9,"adjusted_minutes"]=0
         with self.assertRaisesRegex(ValueError,"Invalid minutes"):
             rank_fragility(self.pool,self.lineups)
+    def test_nonnumeric_differential_minutes_fails_closed(self):
+        self.pool.loc[9,"adjusted_minutes"]="unknown"
+        with self.assertRaisesRegex(ValueError,"Invalid minutes"):
+            rank_fragility(self.pool,self.lineups)
+    def test_negative_differential_points_fails_closed(self):
+        self.pool.loc[9,"adjusted_fd_points"]=-1
+        self.lineups.loc[self.lineups.fanduel_id.eq("9"),"adjusted_fd_points"]=-1
+        with self.assertRaisesRegex(ValueError,"Invalid minutes"):
+            rank_fragility(self.pool,self.lineups)
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
