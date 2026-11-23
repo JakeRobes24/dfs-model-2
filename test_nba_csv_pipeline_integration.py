@@ -89,8 +89,9 @@ class CsvToLineupsTests(unittest.TestCase):
 
     def test_invalid_contest_salary_fails_closed(self):
         contest, daily = synthetic_exports()
-        contest = contest.replace(b"99999-1000,Fixture Player 0,ATL@BOS,ATL,6000,PG",
-                                  b"99999-1000,Fixture Player 0,ATL@BOS,ATL,-1,PG")
+        rows = list(csv.DictReader(io.StringIO(contest.decode("utf-8"))))
+        rows[0]["Salary"] = "-1"
+        contest = export_bytes(list(rows[0]), rows)
         with self.assertRaises(ValueError):
             reconcile_exports(contest, daily)
 
