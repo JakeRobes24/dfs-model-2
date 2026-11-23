@@ -81,6 +81,21 @@ class LiveFragilityTests(unittest.TestCase):
         self.lineups.loc[self.lineups.fanduel_id.eq("9"),"adjusted_fd_points"]=-1
         with self.assertRaisesRegex(ValueError,"Invalid minutes"):
             rank_fragility(self.pool,self.lineups)
+    def test_missing_pool_id_fails_closed(self):
+        self.pool.loc[0,"fanduel_id"]=None
+        with self.assertRaisesRegex(ValueError,"Missing contest player IDs"):
+            rank_fragility(self.pool,self.lineups)
+    def test_missing_lineup_id_fails_closed(self):
+        self.lineups.loc[0,"fanduel_id"]=None
+        with self.assertRaisesRegex(ValueError,"Missing contest player IDs"):
+            rank_fragility(self.pool,self.lineups)
+    def test_nonnumeric_candidate_projection_fails_closed(self):
+        self.lineups.loc[0,"adjusted_fd_points"]="unknown"
+        with self.assertRaisesRegex(ValueError,"Non-numeric"):
+            rank_fragility(self.pool,self.lineups)
+    def test_invalid_spread_type_fails_closed(self):
+        with self.assertRaisesRegex(ValueError,"Minute spread"):
+            rank_fragility(self.pool,self.lineups,minute_spread="two")
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
