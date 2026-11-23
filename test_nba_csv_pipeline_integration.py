@@ -5,6 +5,7 @@ No live projections or real contest results are inferred from this fixture.
 import csv
 import io
 import unittest
+import pandas as pd
 
 from model import SLOTS, allowed_slots, consensus, optimize
 from slate_import import reconcile_exports
@@ -86,6 +87,28 @@ class CsvToLineupsTests(unittest.TestCase):
         player = matched.loc[matched.fanduel_id.eq("99999-1000")].iloc[0]
         self.assertEqual(player.salary, 6000)
         self.assertIn("DAILY salary differs", player.import_issue)
+
+    def test_duplicate_daily_identity_is_flagged_not_silently_matched(self):
+        contest, daily = synthetic_exports()
+        rows = list(csv.DictReader(io.StringIO(daily.decode("utf-8"))))
+        rows.append(dict(rows[0]))
+        daily = export_bytes(list(rows[0]), rows)
+        matched, _, extras = reconcile_exports(contest, daily)
+        player = matched.loc[matched.fanduel_id.eq("99999-1000")].iloc[0]
+        self.assertEqual(player.identity_match, "ambiguous")
+        self.assertEqual(player.import_issue, "Ambiguous identity")
+        self.assertTrue(pd.isna(player.projected_fd_points))
+        self.assertEqual(extras, 0)
+        lineup = optimize(consensus(matched), number=1)
+        self.assertNotIn("99999-1000", set(lineup.fanduel_id))
+
+    def test_mixed_contest_ids_are_rejected(self):
+        contest, daily = synthetic_exports()
+        rows = list(csv.DictReader(io.StringIO(contest.decode("utf-8"))))
+        rows[0]["Id"] = "88888-1000"
+        contest = export_bytes(list(rows[0]), rows)
+        with self.assertRaisesRegex(ValueError, "mixes FanDuel contest IDs"):
+            reconcile_exports(contest, daily)
 
     def test_invalid_contest_salary_fails_closed(self):
         contest, daily = synthetic_exports()
