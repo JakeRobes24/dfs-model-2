@@ -34,12 +34,17 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
     cutoff = _timestamp(cutoff_utc)
     if cutoff is None:
         raise ValueError("Timezone-aware cutoff required")
+    # Historical replay certification must never use projections published
+    # after the decision cutoff, even when the numerical projection matches.
     unverified = [
         p["player_id"] for p in active
         if not projection_by_id.get(p["player_id"], {}).get("source")
         or not projection_by_id.get(p["player_id"], {}).get("source_version")
         or not projection_by_id.get(p["player_id"], {}).get("source_record_id")
         or _timestamp(projection_by_id.get(p["player_id"], {}).get("asof_utc")) is None
+        or (_timestamp(projection_by_id.get(p["player_id"], {}).get("asof_utc"))
+            is not None and
+            _timestamp(projection_by_id.get(p["player_id"], {}).get("asof_utc")) > cutoff)
     ]
     # Contest injury flags cannot independently certify official availability.
     evidence = official_status_evidence if official_status_evidence is not None else []
@@ -74,13 +79,30 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
                 or not entry.get("source_record_id")
                 or stamp is None or stamp > cutoff):
             uncertain_status.append(p["player_id"])
+    # An official pre-cutoff OUT designation in the contest export itself
+    # cannot be overridden by a contradictory active report without review.
+    contested_out = []
+    for p in reconciled:
+        if p["status"] != "out":
+            continue
+        entry = official_by_id.get(p["player_id"], {})
+        stamp = _timestamp(entry.get("observed_at"))
+        if (entry.get("official") is True and entry.get("source")
+                and entry.get("source_record_id") and stamp is not None
+                and stamp <= cutoff
+                and str(entry.get("status", "")).lower() in {"active", "available"}):
+            contested_out.append(p["player_id"])
     report = {"contest_id": str(contest_id), "slate_date": slate_date,
               "contest_players": len(contest), "excluded_out_ids": excluded,
               "eligible_players": len(active), "missing_projection_ids": missing,
               "ready": False, "certified": False, "rankings": [],
               "unverified_projection_ids": unverified,
               "uncertain_status_ids": uncertain_status,
-              "officially_out_conflict_ids": conflicting_out}
+              "officially_out_conflict_ids": conflicting_out,
+              "contest_out_conflict_ids": contested_out}
+    if contested_out:
+        report["block_reason"] = "Official active evidence conflicts with contest OUT designation"
+        return report
     if conflicting_out:
         report["block_reason"] = "Official inactive evidence conflicts with contest eligibility"
         return report
