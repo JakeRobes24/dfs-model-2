@@ -2,7 +2,7 @@ name: Nov22 historical public box score verification
 on:
   push:
     branches: [dev/streamlit-runtime-validation]
-    paths: ['nba_public_boxscores.py', '.github/workflows/nov22-public-boxscores.yml']
+    paths: ['nba_public_boxscores.py', 'nba_official_nov22_verify.py', '.github/workflows/nov22-public-boxscores.yml']
   workflow_dispatch:
 jobs:
   boxscores:
@@ -12,6 +12,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - name: Verify six official NBA final box scores
+        run: python nba_official_nov22_verify.py
       - name: Fetch and validate six contest box scores
         run: python nba_public_boxscores.py > nov22_public_boxscores.csv
       - name: Print public box score data
