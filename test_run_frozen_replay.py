@@ -48,6 +48,11 @@ def test_archive_is_written_only_once_official_games_are_final(tmp_path, monkeyp
         assert (diagnostic.minutes_contribution + diagnostic.rate_contribution - diagnostic.point_error).abs().max() < 1e-8
         diagnostic_summary = pd.read_csv(BytesIO(archive.read('projection_error_decomposition_summary.csv')))
         assert diagnostic_summary.players.eq(1).all()
+        coverage = pd.read_csv(BytesIO(archive.read('projection_error_decomposition_coverage.csv'))).iloc[0]
+        assert coverage.eligible_players == 1
+        assert coverage.verified_played == 1
+        assert coverage.paired_played_diagnostics == 1
+        assert coverage.paired_played_coverage_pct == 100
         grouped = pd.read_csv(BytesIO(archive.read('adjustment_comparison.csv')))
         assert grouped['Minutes method'].eq('consensus').all()
         props = pd.read_csv(BytesIO(archive.read('player_prop_review.csv')))
