@@ -83,6 +83,17 @@ class OptimizerIntegrationTests(unittest.TestCase):
             eligibility = pool.loc[pool.fanduel_id.eq(player.fanduel_id), "roster_eligibility"].iloc[0]
             self.assertIn(player.slot, allowed_slots(eligibility))
 
+    def test_insufficient_players_does_not_return_invalid_roster(self):
+        pool = fixture_pool().head(8)
+        result = optimize(pool, number=1)
+        self.assertTrue(result.empty)
+
+    def test_blocked_pair_is_not_selected_together(self):
+        pool = fixture_pool()
+        result = optimize(pool, number=1, blocked_pairs=[("Fixture Player 0", "Fixture Player 1")])
+        selected = set(result.player)
+        self.assertFalse({"Fixture Player 0", "Fixture Player 1"} <= selected)
+
     def test_alternative_objective_is_respected(self):
         pool = fixture_pool()
         pool["ceiling_fd_points"] = pool.adjusted_fd_points
