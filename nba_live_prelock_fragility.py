@@ -36,6 +36,7 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
     base={}
     for name, group in lineups.groupby("lineup"):
         name=str(name)
+        total=0.0
         for r in group.itertuples():
             try:
                 points=float(r.adjusted_fd_points)
@@ -44,7 +45,8 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
                 raise ValueError("Non-numeric candidate or pool projection") from exc
             if not math.isfinite(points) or abs(points-source)>1e-4:
                 raise ValueError("Candidate and scored pool projection mismatch")
-        base[name]=float(group.adjusted_fd_points.sum())
+            total += points
+        base[name]=total
     ordered=sorted(base,key=lambda name:(-base[name],name))
     leader=ordered[0]
     exposure=set().union(*candidates.values())
