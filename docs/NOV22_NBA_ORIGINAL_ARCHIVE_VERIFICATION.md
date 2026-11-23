@@ -68,3 +68,21 @@ Computed by joining all 36 original scenario lineup rows to the 210-player `Nov2
 All other original-lineup player projections were unchanged from DAILY in this frozen scenario; many explicitly say `No additional research; retained previous scenario`. The Buzelis adjustment appears in original Lineups 2 and 3 and accounts for **5.742 of the 6.843-point** DAILY-to-scenario reduction in original Lineup 3. Original Lineup 1 has no Buzelis and its net change is **-1.101** (Jokic +1.686 and Giddey -2.787). Therefore the projected ranking flip between entered model Lineups 1 and 3 is predominantly explained by the Buzelis minutes reduction, not broad nine-player independent consensus.
 
 **Decision audit:** Model 3's two differential players Klay Thompson (27.2 actual) and Buzelis (36.5 actual) totaled 63.7, versus model 1's Bridges (14.1 actual) and Suggs (16.8 actual) totaling 30.9; seven shared players cancel, yielding +32.8 actual. This is an outcome comparison, not proof that prelock ceiling, minutes, or ownership inputs should be reweighted. The archived NBA House/StatIQ labels are provenance notes, not independently verified live source captures. Next replay should sweep Buzelis minutes at 27–33 while preserving all other frozen inputs and calculate ranking stability; obtain full-pool verified actuals before fitting adjustments.
+
+## Implemented candidate-ranking robustness guard
+
+Development-only implementation: `nba_prelock_robustness.py`, with regression test source `test_nba_prelock_robustness.py`. Given a frozen scenario pool, the exact lineup player-ID CSV, one target player, and lower/upper plausible minutes, the module validates IDs, nine-player candidate membership, finite projections, and source projection equality; it then reports both endpoint lineup rankings and pairwise crossover minutes. It intentionally does **not** optimize new lineups, assert independent research source validity, or certify news at lock. The regression tests are committed, but this commit does not assert a CI run.
+
+**Directly recomputed from original archived CSVs:** Buzelis ID `137037-203761`, scenario 28.0 minutes / 32.158 FD. Holding all other frozen player projections fixed and linearly scaling his points per minute, the original candidate totals are:
+
+| Buzelis minutes | L1 | L2 | L3 | L4 | Leader |
+|---|---:|---:|---:|---:|---|
+|27|336.799|335.459|334.409|335.249|L1|
+|28|336.799|336.607|335.557|335.249|L1|
+|29|336.799|337.755|336.706|335.249|L2|
+|30|336.799|338.904|337.854|335.249|L2|
+|31|336.799|340.053|339.002|335.249|L2|
+|32|336.799|341.201|340.151|335.249|L2|
+|33|336.799|342.349|341.300|335.249|L2|
+
+The crossover L2/L1 is approximately 28.167 minutes, and L3/L1 is approximately 29.081 minutes. These are deterministic *what-if* computations, not calibrated conditional forecasts. Before integrating into the production lineup optimizer, the guard needs real CI verification and integration into the existing prelock candidate selection path, plus independent source confidence and multi-player joint scenario treatment.
