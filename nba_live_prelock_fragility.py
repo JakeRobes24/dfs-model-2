@@ -48,10 +48,12 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
     exposed.sort(key=impact,reverse=True)
     results=[]
     checked = exposed if max_players is None else exposed[:max_players]
+    invalid=[]
     for pid in checked:
         minutes=float(pool.loc[pid,"adjusted_minutes"])
         points=float(pool.loc[pid,"adjusted_fd_points"])
         if not all(math.isfinite(x) for x in (minutes,points)) or minutes<=0 or points<0:
+            invalid.append(str(pid))
             continue
         low=max(0.1,minutes-minute_spread)
         high=minutes+minute_spread
@@ -68,6 +70,8 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
                             "low_minutes":round(low,2),"high_minutes":round(high,2),
                             "low_winner":endpoint_winners[0],"high_winner":endpoint_winners[1],
                             "baseline_leader":leader})
+    if invalid:
+        raise ValueError(f"Invalid minutes/projections for {len(invalid)} differential players; sensitivity is not complete")
     return {"fragile":bool(results),"rows":results,
             "baseline_leader":leader,"tested_differential_players":len(checked),
             "differential_players_total":len(exposed),
