@@ -151,7 +151,7 @@ def reconcile_exports(contest_raw, daily_raw):
                                  field(daily, 'GameInfo', 'Game').map(game_code).map(matchup_key)))
     daily['daily_key'] = daily.daily_key.map(lambda key: scoped_aliases.get(key, key))
     daily['projected_minutes'] = number(field(daily, 'Minutes')).where(lambda x: x.gt(0) & x.le(48))
-    daily['projected_fd_points'] = number(field(daily, 'Fantasy'))
+    daily['projected_fd_points'] = number(field(daily, 'Fantasy')).where(lambda x: x.ge(0))
     daily['daily_salary'] = number(field(daily, 'Salary', required=False))
     stat_columns = ['daily_points', 'daily_rebounds', 'daily_assists']
     for column in stat_columns:
