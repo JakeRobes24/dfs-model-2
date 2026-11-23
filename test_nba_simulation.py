@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nba_simulation import simulate_nba, walk_forward_ranges
+from nba_simulation import OutcomeDraws, simulate_nba, walk_forward_ranges
 
 
 def historical_rows(day, minutes_offset):
@@ -52,3 +52,20 @@ def test_walk_forward_scores_only_later_played_records():
     assert report.training_players == 24
     assert report.test_players == 23
     assert report.minutes_80pct_coverage < 0.8
+
+
+def test_lineup_comparisons_cancel_shared_players_and_keep_ties():
+    ids = pd.Index([f'p{i}' for i in range(10)])
+    scores = np.full((3, 10), 25.0)
+    scores[:, 8] = [10, 20, 30]
+    scores[:, 9] = [30, 20, 20]
+    outcomes = OutcomeDraws(ids, np.zeros_like(scores), scores)
+    rosters = pd.DataFrame({
+        'lineup': ['A'] * 9 + ['B'] * 9 + ['A reordered'] * 9,
+        'fanduel_id': list(ids[:9]) + list(ids[:8]) + [ids[9]] + list(reversed(ids[:9])),
+    })
+    report = outcomes.compare_lineups(rosters).set_index(['lineup', 'alternative'])
+    pair = report.loc[('A', 'B')]
+    assert pair.lineup_ahead_share == pair.alternative_ahead_share == pair.tie_share == 1 / 3
+    assert pair.fd_gap_p10 == -16 and pair.fd_gap_p50 == 0 and pair.fd_gap_p90 == 8
+    assert report.loc[('A', 'A reordered'), 'tie_share'] == 1

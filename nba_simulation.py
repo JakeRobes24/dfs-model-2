@@ -1,5 +1,6 @@
 """Experimental NBA outcome ranges conditional on a player taking the court."""
 from dataclasses import dataclass
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -41,19 +42,40 @@ class OutcomeDraws:
                 result[f'{metric}_p{pct}'] = values
         return pd.DataFrame(result)
 
-    def lineup_ranges(self, rosters):
-        """Summarize approved optimizer rosters using shared player draws."""
-        rows = []
+    def _lineup_totals(self, rosters):
+        totals = {}
         for lineup, roster in rosters.groupby('lineup', sort=False):
             if len(roster) != 9 or not roster.fanduel_id.is_unique:
                 raise ValueError('Each simulation roster needs nine distinct players.')
             indices = self.fanduel_ids.get_indexer(roster.fanduel_id)
             if (indices < 0).any():
                 raise ValueError('A lineup player has no simulated outcomes.')
-            totals = self.fd_points[:, indices].sum(axis=1)
+            totals[lineup] = self.fd_points[:, np.sort(indices)].sum(axis=1)
+        return totals
+
+    def lineup_ranges(self, rosters):
+        """Summarize approved optimizer rosters using shared player draws."""
+        rows = []
+        for lineup, totals in self._lineup_totals(rosters).items():
             p10, median, p90 = np.quantile(totals, QUANTILES)
             rows.append({'lineup': lineup, 'fd_p10': p10, 'fd_p50': median, 'fd_p90': p90,
                          'fd_stddev': totals.std()})
+        return pd.DataFrame(rows)
+
+    def compare_lineups(self, rosters):
+        """Compare pairs of supplied rosters on the same simulated outcomes."""
+        rows = []
+        for (left, first), (right, second) in combinations(self._lineup_totals(rosters).items(), 2):
+            gaps = first - second
+            tie = np.isclose(gaps, 0, atol=1e-9)
+            p10, p50, p90 = np.quantile(gaps, QUANTILES)
+            rows.append({
+                'lineup': left, 'alternative': right, 'draws': len(gaps),
+                'lineup_ahead_share': np.mean((gaps > 0) & ~tie),
+                'tie_share': np.mean(tie),
+                'alternative_ahead_share': np.mean((gaps < 0) & ~tie),
+                'fd_gap_p10': p10, 'fd_gap_p50': p50, 'fd_gap_p90': p90,
+            })
         return pd.DataFrame(rows)
 
 
