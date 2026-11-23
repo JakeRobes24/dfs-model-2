@@ -108,6 +108,12 @@ class LiveFragilityTests(unittest.TestCase):
         self.lineups.loc[0,"lineup"]="1"
         with self.assertRaisesRegex(ValueError,"Ambiguous lineup labels"):
             rank_fragility(self.pool,self.lineups)
+    def test_numeric_string_projections_are_summed_numerically(self):
+        self.pool["adjusted_fd_points"]=self.pool.adjusted_fd_points.astype(str)
+        self.lineups["adjusted_fd_points"]=self.lineups.adjusted_fd_points.astype(str)
+        result=rank_fragility(self.pool,self.lineups)
+        self.assertEqual(result["baseline_leader"],"2")
+        self.assertTrue(result["fragile"])
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
