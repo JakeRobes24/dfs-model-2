@@ -49,6 +49,22 @@ def test_paired_multislate_weighted_mae_without_retraining(tmp_path):
     assert points.evidence_status == 'descriptive_only_no_release_authorization'
 
 
+def test_missing_forecasts_are_counted_not_imputed(tmp_path):
+    path = archive(tmp_path, 'missing.zip', '100', rows=[
+        dict(fanduel_id='100-1', eligible=True, verified_outcome='played',
+             daily_minutes=30, adjusted_minutes=30, actual_minutes=30,
+             daily_points=20, adjusted_fd_points=24, actual_points=25),
+        dict(fanduel_id='100-2', eligible=True, verified_outcome='played',
+             daily_minutes=30, adjusted_minutes=30, actual_minutes=30,
+             daily_points=None, adjusted_fd_points=24, actual_points=25),
+    ])
+    _, summary = evaluate_archives([path])
+    points = summary.set_index('metric').loc['FanDuel points']
+    assert points.paired_players == 1
+    assert points.verified_outcomes_without_pairs == 1
+    assert points.slates_with_missing_paired_predictions == 1
+
+
 def test_rejects_nonfinal_and_duplicate_slate(tmp_path):
     good = archive(tmp_path, 'good.zip', '100')
     bad = archive(tmp_path, 'bad.zip', '101', final=False)
