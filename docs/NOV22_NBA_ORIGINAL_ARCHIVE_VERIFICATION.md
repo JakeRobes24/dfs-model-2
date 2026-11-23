@@ -53,3 +53,18 @@ Reopened the original provisional ZIP's exact `Nov22_137037_research_scenario_po
 | 4 | 337.3 | 335.249 | -2.051 | 60000 | None |
 
 **Ranking sensitivity:** DAILY ranks 2 > 3 > 1 > 4, while scenario ranks 1 > 2 > 3 > 4. The final presented ranking is therefore sensitive to uncertain research-adjusted minutes/projections. The observed entered outcomes (model 3 419.9, model 1 387.1) are not sufficient to conclude which methodology predicts better across the slate. Investigate each player-level adjustment with contemporaneous source evidence and paired final actuals; do not retune based solely on the two entered results.
+
+## Exact per-player adjustment attribution (original frozen research pool)
+
+Computed by joining all 36 original scenario lineup rows to the 210-player `Nov22_137037_research_scenario_pool.csv` using `player_id`. Only four unique players in these final four candidates had nonzero DAILY-to-research adjustments:
+
+| Player | DAILY FD | Research FD | Delta | DAILY minutes | Research minutes | Archived evidence |
+|---|---:|---:|---:|---:|---:|---|
+| Nikola Jokic | 60.7 | 62.386 | +1.686 | 36 | 37 | NBA House 37 |
+| Josh Giddey | 41.8 | 39.013 | -2.787 | 30 | 28 | NBA House 28 |
+| Matas Buzelis | 37.9 | 32.158 | -5.742 | 33 | 28 | NBA House 29; StatIQ 27 |
+| Desmond Bane | 34.2 | 33.25 | -0.950 | 36 | 35 | NBA House 35 |
+
+All other original-lineup player projections were unchanged from DAILY in this frozen scenario; many explicitly say `No additional research; retained previous scenario`. The Buzelis adjustment appears in original Lineups 2 and 3 and accounts for **5.742 of the 6.843-point** DAILY-to-scenario reduction in original Lineup 3. Original Lineup 1 has no Buzelis and its net change is **-1.101** (Jokic +1.686 and Giddey -2.787). Therefore the projected ranking flip between entered model Lineups 1 and 3 is predominantly explained by the Buzelis minutes reduction, not broad nine-player independent consensus.
+
+**Decision audit:** Model 3's two differential players Klay Thompson (27.2 actual) and Buzelis (36.5 actual) totaled 63.7, versus model 1's Bridges (14.1 actual) and Suggs (16.8 actual) totaling 30.9; seven shared players cancel, yielding +32.8 actual. This is an outcome comparison, not proof that prelock ceiling, minutes, or ownership inputs should be reweighted. The archived NBA House/StatIQ labels are provenance notes, not independently verified live source captures. Next replay should sweep Buzelis minutes at 27–33 while preserving all other frozen inputs and calculate ranking stability; obtain full-pool verified actuals before fitting adjustments.
