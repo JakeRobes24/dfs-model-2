@@ -43,10 +43,10 @@ jobs:
       - name: Run fixture-independent regression suite
         if: steps.fixtures.outputs.available != 'true'
         run: |
-          python -m pytest -q \\
-            --ignore=test_history_backup.py \\
-            --ignore=test_history_snapshot.py \\
-            --ignore=test_runtime_smoke_contract.py \\
-            --ignore=test_staging_runtime_simulated.py \\
+          python -m pytest -q \
+            --ignore=test_history_backup.py \
+            --ignore=test_history_snapshot.py \
+            --ignore=test_runtime_smoke_contract.py \
+            --ignore=test_staging_runtime_simulated.py \
             --deselect=test_slate_readiness.py::test_checkpoint_restore_preserves_existing_actuals_and_records_id_candidates
           echo "::notice::Private-history integration tests remain UNVERIFIED; passing this job does not authorize release."
