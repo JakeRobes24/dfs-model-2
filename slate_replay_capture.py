@@ -61,7 +61,7 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, mar
         replay_before_full_slate_tip=full_slate_before_tip,
         replay_contest_sha256=input_hashes[0],
         replay_daily_sha256=input_hashes[1],
-        replay_evidence_json=pool.fanduel_id.map(reviewed).fillna(json.dumps([])),
+        replay_evidence_json=pool.fanduel_id.map(lambda player_id: reviewed.get(player_id, '[]')),
     )
     archived.loc[known & cutoffs.gt(capture), 'replay_timing'] = 'before_scheduled_tip'
     archived.loc[known & cutoffs.le(capture), 'replay_timing'] = 'at_or_after_cutoff'
@@ -74,7 +74,7 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, mar
                 player: group.drop(columns=['fanduel_id', 'player', 'game']).to_json(orient='records')
                 for player, group in quotes.groupby('fanduel_id')
             }
-            archived['replay_player_props_json'] = pool.fanduel_id.map(by_player).fillna('[]')
+            archived['replay_player_props_json'] = pool.fanduel_id.map(lambda player_id: by_player.get(player_id, '[]'))
     return archived
 
 
