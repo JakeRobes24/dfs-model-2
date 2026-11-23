@@ -73,6 +73,7 @@ class LiveFragilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Invalid minutes"):
             rank_fragility(self.pool,self.lineups)
     def test_nonnumeric_differential_minutes_fails_closed(self):
+        self.pool["adjusted_minutes"]=self.pool["adjusted_minutes"].astype(object)
         self.pool.loc[9,"adjusted_minutes"]="unknown"
         with self.assertRaisesRegex(ValueError,"Invalid minutes"):
             rank_fragility(self.pool,self.lineups)
@@ -90,6 +91,7 @@ class LiveFragilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Missing contest player IDs"):
             rank_fragility(self.pool,self.lineups)
     def test_nonnumeric_candidate_projection_fails_closed(self):
+        self.lineups["adjusted_fd_points"]=self.lineups["adjusted_fd_points"].astype(object)
         self.lineups.loc[0,"adjusted_fd_points"]="unknown"
         with self.assertRaisesRegex(ValueError,"Non-numeric"):
             rank_fragility(self.pool,self.lineups)
@@ -101,10 +103,12 @@ class LiveFragilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Missing lineup labels"):
             rank_fragility(self.pool,self.lineups)
     def test_blank_lineup_label_fails_closed(self):
+        self.lineups["lineup"]=self.lineups["lineup"].astype(object)
         self.lineups.loc[0,"lineup"]=" "
         with self.assertRaisesRegex(ValueError,"Missing lineup labels"):
             rank_fragility(self.pool,self.lineups)
     def test_ambiguous_lineup_labels_fails_closed(self):
+        self.lineups["lineup"]=self.lineups["lineup"].astype(object)
         self.lineups.loc[0,"lineup"]="1"
         with self.assertRaisesRegex(ValueError,"Ambiguous lineup labels"):
             rank_fragility(self.pool,self.lineups)
