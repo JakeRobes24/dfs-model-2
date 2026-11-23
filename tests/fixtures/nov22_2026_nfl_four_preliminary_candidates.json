@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "slate_date": "2026-11-22",
+  "contest_id": "136799",
+  "salary_cap": 60000,
+  "preliminary": true,
+  "all_player_salaries": {
+    "Dak Prescott": 8200,
+    "Emmett Johnson": 6200,
+    "Bucky Irving": 7600,
+    "CeeDee Lamb": 9100,
+    "Parker Washington": 7200,
+    "Jalen Coker": 5400,
+    "Colston Loveland": 5700,
+    "Omarion Hampton": 5700,
+    "Buffalo Bills": 4900,
+    "Trevor Lawrence": 7900,
+    "James Cook III": 8600,
+    "Amon-Ra St. Brown": 8900,
+    "Denver Broncos": 4400,
+    "Jonah Coleman": 6500,
+    "Caleb Williams": 8100,
+    "Kansas City Chiefs": 5000
+  },
+  "lineups": [
+    {
+      "label": "Original preliminary lineup 1 (entered)",
+      "players": [
+        "Dak Prescott",
+        "Emmett Johnson",
+        "Bucky Irving",
+        "CeeDee Lamb",
+        "Parker Washington",
+        "Jalen Coker",
+        "Colston Loveland",
+        "Omarion Hampton",
+        "Buffalo Bills"
+      ],
+      "projected_fd": 137.1,
+      "salary_total": 60000,
+      "source_status": "preliminary screenshot transcription; not final certified"
+    },
+    {
+      "label": "Original preliminary lineup 2",
+      "players": [
+        "Trevor Lawrence",
+        "Emmett Johnson",
+        "James Cook III",
+        "Amon-Ra St. Brown",
+        "Parker Washington",
+        "Jalen Coker",
+        "Colston Loveland",
+        "Omarion Hampton",
+        "Denver Broncos"
+      ],
+      "projected_fd": 135.9,
+      "salary_total": 60000,
+      "source_status": "preliminary screenshot transcription; not final certified"
+    },
+    {
+      "label": "Original preliminary lineup 3",
+      "players": [
+        "Trevor Lawrence",
+        "Emmett Johnson",
+        "Bucky Irving",
+        "CeeDee Lamb",
+        "Parker Washington",
+        "Jalen Coker",
+        "Colston Loveland",
+        "Jonah Coleman",
+        "Denver Broncos"
+      ],
+      "projected_fd": 135.6,
+      "salary_total": 60000,
+      "source_status": "preliminary screenshot transcription; not final certified"
+    },
+    {
+      "label": "Original preliminary lineup 4",
+      "players": [
+        "Caleb Williams",
+        "Emmett Johnson",
+        "Bucky Irving",
+        "Amon-Ra St. Brown",
+        "Parker Washington",
+        "Jalen Coker",
+        "Colston Loveland",
+        "Omarion Hampton",
+        "Kansas City Chiefs"
+      ],
+      "projected_fd": 135.4,
+      "salary_total": 59800,
+      "source_status": "preliminary screenshot transcription; not final certified"
+    }
+  ],
+  "source": "user screenshots of original chat",
+  "limitations": [
+    "Only lineup 1 actual results recovered",
+    "No complete original player pool",
+    "No individual projected points for every player",
+    "Cannot calculate model-wide challenger optimality or ownership leverage"
+  ]
+}
