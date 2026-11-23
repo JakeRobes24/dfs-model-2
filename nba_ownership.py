@@ -8,7 +8,9 @@ OWNERSHIP_FIELDS = ('ownership_reference_pct', 'ownership_reference_source',
 
 def archive_ownership(pool, comparison, stamp, source, slate_label):
     """Keep matched reference estimates and their provenance on the saved pool."""
-    estimates = comparison.set_index('fanduel_id', verify_integrity=True).reference_ownership
+    if comparison.fanduel_id.isna().any() or not comparison.fanduel_id.is_unique:
+        raise ValueError('Ownership reference requires unique nonmissing FanDuel IDs.')
+    estimates = comparison.set_index('fanduel_id').reference_ownership
     pct = pd.to_numeric(pool.fanduel_id.map(estimates), errors='coerce')
     pct = pct.where(pct.between(0, 100))
     metadata = (source, pd.Timestamp(stamp).tz_convert('UTC').isoformat(), slate_label)
