@@ -1,4 +1,6 @@
 import unittest
+import ast
+from pathlib import Path
 import pandas as pd
 from nba_live_prelock_fragility import rank_fragility
 
@@ -14,6 +16,22 @@ class LiveFragilityTests(unittest.TestCase):
              "adjusted_fd_points":float(self.pool.loc[i,"adjusted_fd_points"])}
             for lineup,indices in [(1,range(9)),(2,range(9,18))]
             for i in indices])
+    def test_streamlit_guard_keeps_mean_sensitivity_out_of_gpp_mode(self):
+        source=Path(__file__).with_name("site_ui.py").read_text(encoding="utf-8")
+        tree=ast.parse(source)
+        guards=[node for node in ast.walk(tree) if isinstance(node,ast.If)
+                and isinstance(node.test,ast.Compare)
+                and isinstance(node.test.left,ast.Name)
+                and node.test.left.id=="objective"
+                and any(isinstance(op,ast.NotEq) for op in node.test.ops)
+                and any(isinstance(c,ast.Constant) and c.value=="adjusted_fd_points"
+                        for c in node.test.comparators)]
+        self.assertTrue(guards,"Missing objective-specific Streamlit guard")
+        self.assertTrue(any(any(isinstance(n,ast.Call)
+                                 and isinstance(n.func,ast.Name)
+                                 and n.func.id=="rank_fragility"
+                                 for branch in guard.orelse for n in ast.walk(branch))
+                            for guard in guards),"Sensitivity call must be confined to mean-FD objective")
     def test_detects_flip(self):
         result=rank_fragility(self.pool,self.lineups,minute_spread=2)
         self.assertTrue(result["fragile"])
