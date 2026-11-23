@@ -46,6 +46,50 @@ class NFLPipelineTests(unittest.TestCase):
         self.assertTrue(result["ready"])
         self.assertTrue(result["certified"])
 
+    def test_official_inactive_conflict_blocks_rankings(self):
+        csv, projections, candidates, kw = inputs()
+        evidence = [{"player_id": "136799-1", "status": "inactive",
+                     "official": True, "source": "Official inactive list",
+                     "source_record_id": "official-1", "observed_at": TIME}]
+        result = run_nfl_prelock_pipeline(
+            csv, projections, candidates, official_status_evidence=evidence, **kw)
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["rankings"], [])
+        self.assertEqual(result["officially_out_conflict_ids"], ["136799-1"])
+
+    def test_future_inactive_report_does_not_change_historical_rankings(self):
+        csv, projections, candidates, kw = inputs()
+        evidence = [{"player_id": "136799-1", "status": "inactive",
+                     "official": True, "source": "Official inactive list",
+                     "source_record_id": "official-late",
+                     "observed_at": "2026-11-22T18:00:00Z"}]
+        result = run_nfl_prelock_pipeline(
+            csv, projections, candidates, official_status_evidence=evidence, **kw)
+        self.assertTrue(result["ready"])
+        self.assertFalse(result["certified"])
+        self.assertEqual(result["officially_out_conflict_ids"], [])
+
+    def test_duplicate_official_evidence_rejected(self):
+        csv, projections, candidates, kw = inputs()
+        entry = {"player_id": "136799-1", "status": "active"}
+        with self.assertRaises(ValueError):
+            run_nfl_prelock_pipeline(
+                csv, projections, candidates,
+                official_status_evidence=[entry, entry], **kw)
+
+    def test_missing_official_source_is_not_certified(self):
+        csv, projections, candidates, kw = inputs()
+        for p in projections:
+            p.update(source="Provider", source_version="v1",
+                     source_record_id="record-" + p["player_id"])
+        evidence = [{"player_id": p["player_id"], "status": "active",
+                     "official": True, "observed_at": TIME}
+                    for p in projections]
+        result = run_nfl_prelock_pipeline(
+            csv, projections, candidates, official_status_evidence=evidence, **kw)
+        self.assertTrue(result["ready"])
+        self.assertFalse(result["certified"])
+
     def test_end_to_end(self):
         csv,projections,candidates,kw=inputs()
         result=run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
