@@ -48,6 +48,7 @@ def export():
                 for item in group.get("athletes", []):
                     vals = dict(zip(labels, item.get("stats", [])))
                     if not item.get("didPlay", True) or "MIN" not in vals or "PTS" not in vals:
+                        print("DNP|" + code + "|" + item["athlete"]["displayName"] + "|" + team, file=sys.stderr)
                         continue
                     try:
                         fields = {key: float(vals.get(label, 0)) for key, label in
