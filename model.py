@@ -67,7 +67,8 @@ def consensus(base, evidence=None, historical=None, min_sources=2):
 
 def allowed_slots(eligibility):
     # Preserve composite slots before splitting the slash-delimited export.
-    tokens = set(str(eligibility).replace('G/F', 'G').replace('F/C', 'F').split('/'))
+    tokens = set(re.sub(r'(?<![A-Za-z])F/C(?=/|$)', 'F',
+                        re.sub(r'(?<![A-Za-z])G/F(?=/|$)', 'G', str(eligibility))).split('/'))
     slots = tokens - {'G', 'F'}
     if 'G' in tokens:
         slots.add('G/F')
