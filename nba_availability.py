@@ -69,7 +69,9 @@ def estimate_dnp(history, pool, slate_date):
 
 def apply_availability(draws, risk, *, seed=43):
     """Apply a reproducible zero outcome for DNP draws without mutating inputs."""
-    probabilities = (risk.set_index('fanduel_id', verify_integrity=True)
+    if risk.fanduel_id.isna().any() or not risk.fanduel_id.is_unique:
+        raise ValueError('Availability risk requires unique nonmissing FanDuel IDs.')
+    probabilities = (risk.set_index('fanduel_id')
                      .reindex(draws.fanduel_ids).dnp_probability)
     if not probabilities.between(0, 1).all():
         raise ValueError('Supply a valid DNP probability for every simulated player.')
