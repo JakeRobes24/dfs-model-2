@@ -1,0 +1,66 @@
+import unittest
+from nfl_prelock_pipeline import run_nfl_prelock_pipeline
+
+HEAD="Id,Nickname,Position,Roster Position,Salary,Team,Game,Injury Indicator"
+POS=["QB","RB","RB","WR","WR","WR","TE","RB","D","WR"]
+ROSTER=["QB","RB/FLEX","RB/FLEX","WR/FLEX","WR/FLEX","WR/FLEX","TE/FLEX","RB/FLEX","DEF","WR/FLEX"]
+SLOTS=["QB","RB1","RB2","WR1","WR2","WR3","TE","FLEX","DEF"]
+TIME="2026-11-22T17:00:00Z"
+
+
+def inputs():
+    rows=[f"136799-{i+1},Player{i},{POS[i]},{ROSTER[i]},5000,DAL,DAL@NYG,{('O' if i==9 else '')}"
+          for i in range(10)]
+    csv=HEAD+"\n"+"\n".join(rows)
+    projections=[{"player_id":f"136799-{i+1}","projection_fd":10+i,"asof_utc":TIME} for i in range(9)]
+    candidate={"candidate_id":"entered","contest_id":"136799","slate_date":"2026-11-22",
+               "created_utc":TIME,"slots":dict(zip(SLOTS,[f"136799-{i+1}" for i in range(9)]))}
+    kw={"contest_id":"136799","slate_date":"2026-11-22","source_version":"DAILY",
+        "cutoff_utc":TIME}
+    return csv,projections,[candidate],kw
+
+
+class NFLPipelineTests(unittest.TestCase):
+    def test_end_to_end(self):
+        csv,projections,candidates,kw=inputs()
+        result=run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["contest_players"],10)
+        self.assertEqual(result["excluded_out_ids"],["136799-10"])
+        self.assertEqual(result["eligible_players"],9)
+        self.assertEqual(result["rankings"][0]["projected_fd"],126)
+
+    def test_missing_projection_blocks_rankings(self):
+        csv,projections,candidates,kw=inputs()
+        result=run_nfl_prelock_pipeline(csv,projections[:-1],candidates,**kw)
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["rankings"],[])
+        self.assertEqual(result["missing_projection_ids"],["136799-9"])
+
+    def test_missing_projection_on_out_player_not_required(self):
+        csv,projections,candidates,kw=inputs()
+        self.assertTrue(run_nfl_prelock_pipeline(csv,projections,candidates,**kw)["ready"])
+
+    def test_postcutoff_projection_rejected(self):
+        csv,projections,candidates,kw=inputs()
+        projections[0]["asof_utc"]="2026-11-22T18:00:00Z"
+        with self.assertRaises(ValueError):run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
+
+    def test_out_player_in_candidate_rejected(self):
+        csv,projections,candidates,kw=inputs()
+        candidates[0]["slots"]["QB"]="136799-10"
+        with self.assertRaises(ValueError):run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
+
+    def test_mismatched_contest_rejected(self):
+        csv,projections,candidates,kw=inputs()
+        kw["contest_id"]="999999"
+        with self.assertRaises(ValueError):run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
+
+    def test_salary_violation_rejected(self):
+        csv,projections,candidates,kw=inputs()
+        csv=csv.replace("5000,DAL", "9000,DAL")
+        with self.assertRaises(ValueError):run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
+
+
+if __name__=="__main__":
+    unittest.main()
