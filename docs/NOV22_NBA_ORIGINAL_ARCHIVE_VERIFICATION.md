@@ -40,3 +40,16 @@ The original archive explicitly labels itself `PROVISIONAL_NOT_CERTIFIED`, and w
 4. Require reproducible replay outputs, evidence audit, and tests before recommending any NBA production projection weight change.
 
 **No production merge/deployment or model-weight adjustment performed.**
+
+## Direct raw-file coverage and ranking audit
+
+Reopened the original provisional ZIP's exact `Nov22_137037_research_scenario_pool.csv` and standalone `Nov22_137037_four_reconstructed_scenario_lineups.csv` (not screenshots). The frozen scenario pool has **210 distinct rows**, **180 nonblank DAILY FD projections**, **180 nonblank consensus scenario FD projections**, and **30 rows without either**. Frozen status distribution: **159 blank**, **36 O**, **10 Q**, **4 P**, **1 D**. Of 30 rows missing projections, **24 have blank status and 6 have O**. Blank status is not proof of eligibility or availability. Of 180 rows with projections, 30 were marked O at capture; model-wide coverage metrics must therefore filter the contest's status and eligibility appropriately, and cannot equate 180 projections to 180 usable entrants.
+
+| Original lineup | Frozen DAILY FD | Frozen scenario FD | Adjustment | Salary | Archived O status in lineup |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 337.9 | 336.799 | -1.101 | 59800 | None |
+| 2 | 344.4 | 336.607 | -7.793 | 59800 | None |
+| 3 | 342.4 | 335.557 | -6.843 | 60000 | None |
+| 4 | 337.3 | 335.249 | -2.051 | 60000 | None |
+
+**Ranking sensitivity:** DAILY ranks 2 > 3 > 1 > 4, while scenario ranks 1 > 2 > 3 > 4. The final presented ranking is therefore sensitive to uncertain research-adjusted minutes/projections. The observed entered outcomes (model 3 419.9, model 1 387.1) are not sufficient to conclude which methodology predicts better across the slate. Investigate each player-level adjustment with contemporaneous source evidence and paired final actuals; do not retune based solely on the two entered results.
