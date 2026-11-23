@@ -1,5 +1,6 @@
 name: NBA prelock robustness regression
 on:
+  workflow_dispatch:
   push:
     branches: [dev/streamlit-runtime-validation]
     paths:
