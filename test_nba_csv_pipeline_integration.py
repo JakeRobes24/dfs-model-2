@@ -122,6 +122,18 @@ class CsvToLineupsTests(unittest.TestCase):
         lineup = optimize(consensus(matched), number=1)
         self.assertNotIn("99999-1000", set(lineup.fanduel_id))
 
+    def test_negative_daily_fantasy_projection_is_flagged(self):
+        contest, daily = synthetic_exports()
+        rows = list(csv.DictReader(io.StringIO(daily.decode("utf-8"))))
+        rows[0]["fantasy"] = "-15"
+        daily = export_bytes(list(rows[0]), rows)
+        matched, _, _ = reconcile_exports(contest, daily)
+        player = matched.loc[matched.fanduel_id.eq("99999-1000")].iloc[0]
+        self.assertTrue(pd.isna(player.projected_fd_points))
+        self.assertIn("Missing or invalid DAILY minutes/points", player.import_issue)
+        lineup = optimize(consensus(matched), number=1)
+        self.assertNotIn("99999-1000", set(lineup.fanduel_id))
+
     def test_extra_daily_player_count_does_not_expand_contest(self):
         contest, daily = synthetic_exports()
         rows = list(csv.DictReader(io.StringIO(daily.decode("utf-8"))))
