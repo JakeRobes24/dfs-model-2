@@ -33,6 +33,28 @@ class ArchivedExportAdapterTests(unittest.TestCase):
                                         timestamp_verified=True)
         self.assertFalse(result["retrospective_only"])
 
+    def test_duplicate_actuals_rejected(self):
+        self.actuals.loc[2, "fanduel_id"] = "c-1"
+        with self.assertRaisesRegex(ValueError, "unique"):
+            audit_archived_exports(self.coverage, self.projections, self.actuals)
+
+    def test_off_contest_actuals_rejected(self):
+        self.actuals.loc[2, "fanduel_id"] = "other-contest-4"
+        with self.assertRaisesRegex(ValueError, "outside"):
+            audit_archived_exports(self.coverage, self.projections, self.actuals)
+
+    def test_scored_dnp_rejected(self):
+        self.actuals.loc[1, "actual_fd_points"] = 0
+        with self.assertRaisesRegex(ValueError, "DNP/inactive"):
+            audit_archived_exports(self.coverage, self.projections, self.actuals)
+
+    def test_availability_coverage_tracks_missing_actual_rows(self):
+        result = audit_archived_exports(self.coverage, self.projections,
+                                        self.actuals.iloc[:2].copy())
+        self.assertEqual(result["availability_classified_count"], 2)
+        self.assertAlmostEqual(result["availability_coverage_rate"], 2/3)
+        self.assertEqual(result["actuals_missing_contest_ids"], 1)
+
     def test_unknown_status_fails_closed(self):
         self.actuals.loc[0, "status"] = "maybe"
         with self.assertRaisesRegex(ValueError, "Unknown actuals status"):
