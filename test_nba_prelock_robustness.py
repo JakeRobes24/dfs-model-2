@@ -29,6 +29,12 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(result["bounds"][1]["winner"],"2")
     def test_crossing(self):
         self.assertAlmostEqual(self.run_audit()["crossings"][0]["minutes"],28)
+    def test_zero_point_player_has_no_crossing(self):
+        self.pool[9]["consensus_scenario_fd"]="0"
+        self.lineups[9]["scenario_fd"]="0"
+        result=self.run_audit()
+        self.assertFalse(result["winner_changes"])
+        self.assertEqual(result["crossings"],[])
     def test_invalid_bounds(self):
         with self.assertRaises(ValueError):self.run_audit(33,27)
     def test_duplicate_id(self):
