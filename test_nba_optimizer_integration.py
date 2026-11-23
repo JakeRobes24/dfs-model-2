@@ -4,7 +4,7 @@ This checks lineup legality, diversity, and objective ordering, not slate accura
 """
 import unittest
 import pandas as pd
-from model import SLOTS, allowed_slots, optimize
+from model import SLOTS, allowed_slots, optimize, optimize_late_swap
 
 
 def fixture_pool():
@@ -100,6 +100,32 @@ class OptimizerIntegrationTests(unittest.TestCase):
         pool.loc[0, "injury_flag"] = "O"
         with self.assertRaisesRegex(ValueError, "Open-game pinned players require"):
             optimize(pool, number=1, fixed_slots={0: "fixture-0"})
+
+    def test_late_swap_preserves_started_slots_and_replaces_open_player(self):
+        pool = fixture_pool()
+        entered = optimize(pool, number=1)
+        self.assertEqual(len(entered), 9)
+        closed_ids = set(entered.head(2).fanduel_id)
+        open_id = entered.iloc[2].fanduel_id
+        pool.loc[pool.fanduel_id.eq(open_id), "eligible"] = False
+        pool.loc[pool.fanduel_id.eq(open_id), "injury_flag"] = "O"
+        swapped = optimize_late_swap(pool, entered, closed_ids)
+        self.assertEqual(len(swapped), 9)
+        self.assertEqual(swapped.fanduel_id.nunique(), 9)
+        self.assertEqual(sorted(swapped.slot), sorted(SLOTS))
+        self.assertLessEqual(int(swapped.salary.sum()), 60000)
+        self.assertNotIn(open_id, set(swapped.fanduel_id))
+        self.assertEqual(set(swapped.loc[swapped.locked, "fanduel_id"]), closed_ids)
+        for pid in closed_ids:
+            original_slot = entered.loc[entered.fanduel_id.eq(pid), "slot"].iloc[0]
+            replacement_slot = swapped.loc[swapped.fanduel_id.eq(pid), "slot"].iloc[0]
+            self.assertEqual(replacement_slot, original_slot)
+
+    def test_late_swap_rejects_incomplete_entered_lineup(self):
+        pool = fixture_pool()
+        entered = optimize(pool, number=1).head(8)
+        with self.assertRaisesRegex(ValueError, "nine FanDuel slots"):
+            optimize_late_swap(pool, entered, {entered.iloc[0].fanduel_id})
 
     def test_started_out_player_remains_locked(self):
         pool = fixture_pool()
