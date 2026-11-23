@@ -27,5 +27,26 @@ jobs:
         run: python -m pip install -r requirements.txt pytest
       - name: Compile all tracked Python files
         run: git ls-files '*.py' | xargs -r python -m py_compile
-      - name: Run complete Python regression suite
+      - name: Check for private historical database fixtures
+        id: fixtures
+        shell: bash
+        run: |
+          if [[ -f ../nov20_player_history.sqlite && -f ../nov20_player_history_verified_backup.sqlite && -f ../nov20_player_history_verified_backup.sqlite.manifest.json ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Private history fixtures unavailable; historical integration tests are NOT validated by this run."
+          fi
+      - name: Run complete Python regression suite with private history fixtures
+        if: steps.fixtures.outputs.available == 'true'
         run: python -m pytest -q
+      - name: Run fixture-independent regression suite
+        if: steps.fixtures.outputs.available != 'true'
+        run: |
+          python -m pytest -q \\
+            --ignore=test_history_backup.py \\
+            --ignore=test_history_snapshot.py \\
+            --ignore=test_runtime_smoke_contract.py \\
+            --ignore=test_staging_runtime_simulated.py \\
+            --deselect=test_slate_readiness.py::test_checkpoint_restore_preserves_existing_actuals_and_records_id_candidates
+          echo "::notice::Private-history integration tests remain UNVERIFIED; passing this job does not authorize release."
