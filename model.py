@@ -101,10 +101,9 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
             or not np.isfinite(invalid_open.adjusted_fd_points).all()
             or (invalid_open.adjusted_fd_points <= 0).any()):
         raise ValueError('Open-game pinned players require eligible, finite positive projections.')
-    if (pinned.adjusted_fd_points.isna().any()
-            or not np.isfinite(pinned.adjusted_fd_points).all()
-            or (pinned.adjusted_fd_points < 0).any()):
-        raise ValueError('Locked players require finite nonnegative projections.')
+    # Started-game entries are immutable even when their projection is missing.
+    # They contribute zero to the *optimization objective* (see c below);
+    # preserve their original NaN in the output rather than fabricating points.
     a = a.loc[~a.fanduel_id.isin(set(closed_players) | set(fixed_slots.values()))]
     if not np.isfinite(a[objective_column]).all():
         raise ValueError('Objective requires finite scores for all optimizable players')
