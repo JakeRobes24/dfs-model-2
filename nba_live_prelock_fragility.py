@@ -45,7 +45,8 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
         m=float(pool.loc[pid,"adjusted_minutes"])
         p=float(pool.loc[pid,"adjusted_fd_points"])
         return abs(p/m)*minute_spread if m>0 and math.isfinite(m) and math.isfinite(p) else 0
-    exposed.sort(key=impact,reverse=True)
+    # Deterministic priority when a caller explicitly limits the number examined.
+    exposed.sort(key=lambda pid: (-impact(pid), str(pid)))
     results=[]
     checked = exposed if max_players is None else exposed[:max_players]
     invalid=[]
