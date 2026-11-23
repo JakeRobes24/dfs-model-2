@@ -13,6 +13,7 @@ import pandas as pd
 
 from market_evidence import review_player_props, summarize_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
+from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
 from slate_results import SOURCE_ERRORS, collect_final_boxes, compare_results
@@ -47,6 +48,8 @@ def run(pool_path, day, output_path):
     replay = build_replay_rows(pool, results, day)
     accuracy = compare_frozen_projections(replay)
     methods = compare_adjustment_methods(replay)
+    decisions = audit_player_decisions(replay)
+    decision_summary = summarize_player_decisions(decisions)
     props = review_player_props(replay, results)
     prop_summary = summarize_player_props(props)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
@@ -57,6 +60,8 @@ def run(pool_path, day, output_path):
             zipped.writestr('manifest.json', json.dumps(summary, indent=2) + '\n')
             zipped.writestr('player_replay.csv', replay.to_csv(index=False))
             zipped.writestr('projection_comparison.csv', accuracy.to_csv(index=False))
+            zipped.writestr('player_decision_audit.csv', decisions.to_csv(index=False))
+            zipped.writestr('player_decision_summary.csv', decision_summary.to_csv(index=False))
             if not methods.empty:
                 zipped.writestr('adjustment_comparison.csv', methods.to_csv(index=False))
             if not props.empty:
