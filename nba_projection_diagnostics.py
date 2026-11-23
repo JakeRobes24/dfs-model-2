@@ -61,3 +61,21 @@ def summarize_decomposition(details):
         mean_abs_minutes_contribution=('minutes_contribution', lambda s: s.abs().mean()),
         mean_abs_rate_contribution=('rate_contribution', lambda s: s.abs().mean()),
     ).reset_index()
+
+
+def diagnostic_coverage(replay, details):
+    """Count eligible participation and paired forecast coverage without imputing DNPs."""
+    if not set(REQUIRED).issubset(replay.columns):
+        raise ValueError('Missing frozen replay columns')
+    eligible = replay.loc[replay.eligible.eq(True)]
+    played = eligible.loc[eligible.verified_outcome.eq('played')]
+    paired = int(details.loc[details.forecast.eq('DAILY'), 'fanduel_id'].nunique()) if not details.empty else 0
+    return pd.DataFrame([{
+        'eligible_players': len(eligible),
+        'verified_played': len(played),
+        'verified_did_not_play': int(eligible.verified_outcome.eq('did_not_play').sum()),
+        'unresolved_outcome': int((~eligible.verified_outcome.isin(['played', 'did_not_play'])).sum()),
+        'paired_played_diagnostics': paired,
+        'played_without_paired_diagnostics': len(played) - paired,
+        'paired_played_coverage_pct': 100 * paired / len(played) if len(played) else float('nan'),
+    }])
