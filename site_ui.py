@@ -18,13 +18,40 @@ from model import SLOTS, optimize
 from nba_ownership import archive_ownership
 from opportunity_evidence import opportunity_evidence
 from prelock import REQUIRED
-from slate_import import reconcile_exports
+from slate_import import matchup_key, reconcile_exports, team_code
 from slate_research import (
-    ET, FTA_NBA_BOARD, LINEUPEXPERTS_TODAY, compare_reference, fantasysportsedge_reference,
+    ET, FTA_NBA_BOARD, LINEUPEXPERTS_TODAY, compare_reference, fantasysportsedge_reference, games_for_date,
     fta_nba_reference, get_public_research, historical_context, lineupexperts_reference,
     match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
+
+
+@st.cache_data(ttl=60, max_entries=8, show_spinner=False)
+def public_slate_schedule(slate):
+    try:
+        return games_for_date(slate)
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        return []
+
+
+def started_contest_games(schedule, games, now):
+    """Match exact contest games and detect reported starts or elapsed tip times."""
+    remaining = {matchup_key(game) for game in games}
+    started = set()
+    matched = set()
+    for entry in schedule:
+        away, home = (team_code((entry.get(side) or {}).get('teamTricode', ''))
+                      for side in ('awayTeam', 'homeTeam'))
+        key = matchup_key(f'{away}@{home}')
+        tip = pd.to_datetime(entry.get('gameTimeUtc'), utc=True, errors='coerce')
+        if key not in remaining or pd.isna(tip) or tip.tz_convert(ET).date() != now.date():
+            continue
+        matched.add(key)
+        actual = pd.to_datetime(entry.get('actualStartTimeUTC'), utc=True, errors='coerce')
+        if tip <= now or entry.get('gameStatus') in (2, 3) or (pd.notna(actual) and actual <= now):
+            started.add(key)
+    return started, remaining <= matched
 
 
 @st.cache_data(ttl=300, max_entries=16, show_spinner=False)
@@ -385,10 +412,21 @@ def render_slate(history_slot):
         st.caption('Ranks by adjusted FanDuel points. Review ceiling, correlation and ownership as GPP inputs become available.')
     else:
         st.caption('Ranks by 75% adjusted points and 25% reviewed ceiling. This score does not estimate ownership or correlation.')
-    render_challenger(scored, exclude_uncertain=exclude)
+    started = set()
+    research_replay = slate < now.date()
+    if slate == now.date():
+        started, complete = started_contest_games(public_slate_schedule(slate), pool.game, now)
+        if started:
+            st.warning(f'{len(started)} contest games have reached tip. New lineups and swaps are unavailable here.')
+        elif not complete:
+            st.info('NBA tip times could not be verified for every contest game. Confirm the contest lock in FanDuel.')
+    if research_replay:
+        st.caption('Historical replay. Generated lineups are for research.')
+    if not started:
+        render_challenger(scored, exclude_uncertain=exclude)
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
     key = 'slate_results'
-    if st.button('Generate four lineups', type='primary', key='slate_optimize'):
+    if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
         try:
             with st.spinner('Optimizing and checking legal alternatives…'):
                 st.session_state[key] = (signature, generate_and_challenge(scored, overlap, exclude, objective))
@@ -401,6 +439,8 @@ def render_slate(history_slot):
     lineups = None
     if key in st.session_state:
         lineups, comparison, alternative = st.session_state[key][1]
+        if started:
+            st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
     else:
         st.caption('Generated lineups and their alternatives appear here.')

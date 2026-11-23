@@ -93,7 +93,8 @@ def test_corroborated_adjustment_flows_to_points_and_injury_takes_precedence():
 def test_default_streamlit_workflow_generates_four_legal_candidates():
     contest, daily = uploads()
     with (patch('site_ui.public_research', return_value=([], [], [('NBA injury report', 'Unavailable')])),
-          patch('site_ui.public_rotations', return_value=([], 'Unavailable'))):
+          patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('site_ui.public_slate_schedule', return_value=[]) as schedule):
         app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
         assert app.radio(key='site_view').value == 'Build a slate'
         assert not any('November 20' in item.value for item in app.subheader)
@@ -113,6 +114,26 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
                 eligibility = contest.loc[contest.Id.eq(row.fanduel_id), 'Roster Position'].iat[0]
                 assert row.slot in allowed_slots(eligibility)
         assert set(alternative.fanduel_id) != set(lineups[lineups.lineup.eq(1)].fanduel_id)
+        schedule.return_value = [dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
+                                      gameTimeUtc=datetime.now(ET).isoformat(), gameStatus=2)]
+        app.run()
+        assert not app.exception
+        assert app.button(key='slate_optimize').disabled
+        assert any('reached tip' in warning.value for warning in app.warning)
+        assert any('Saved pre-tip candidates' in caption.value for caption in app.caption)
+
+
+def test_contest_tip_checks_scope_date_and_early_start():
+    from site_ui import started_contest_games
+
+    game = dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
+                gameTimeUtc='2026-11-22T22:00:00Z', gameStatus=1)
+    wrong_day = dict(game, gameTimeUtc='2026-11-21T22:00:00Z')
+    early = dict(game, actualStartTimeUTC='2026-11-22T20:59:00Z')
+    assert started_contest_games([game], ['NYK@BOS'], AS_OF) == (set(), True)
+    assert started_contest_games([wrong_day], ['NYK@BOS'], AS_OF) == (set(), False)
+    assert started_contest_games([early], ['NYK@BOS'], AS_OF) == ({'BOS/NYK'}, True)
+    assert started_contest_games([early], ['LAL@LAC'], AS_OF) == (set(), False)
 
 
 def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):
@@ -178,6 +199,7 @@ def test_owner_live_slate_archive_keeps_replay_capture_stable_on_retry():
     with (patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner),
           patch('site_ui.public_research', return_value=([], [], [])),
           patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('site_ui.public_slate_schedule', return_value=[]),
           patch('history_intake_ui.games_for_date', side_effect=OSError) as schedule,
           patch('history_intake_ui.submit_reviewed_slate', side_effect=[OSError('Retry'), None]) as archive):
         app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
