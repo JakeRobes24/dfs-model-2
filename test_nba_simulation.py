@@ -69,3 +69,24 @@ def test_lineup_comparisons_cancel_shared_players_and_keep_ties():
     assert pair.lineup_ahead_share == pair.alternative_ahead_share == pair.tie_share == 1 / 3
     assert pair.fd_gap_p10 == -16 and pair.fd_gap_p50 == 0 and pair.fd_gap_p90 == 8
     assert report.loc[('A', 'A reordered'), 'tie_share'] == 1
+
+
+def test_lineup_review_requires_verified_outcomes_and_excludes_ties_from_probability_error():
+    ids = pd.Index([f'p{i}' for i in range(10)])
+    scores = np.full((2, 10), 25.0)
+    scores[:, 8] = [26, 27]
+    simulation = OutcomeDraws(ids, np.zeros_like(scores), scores)
+    rosters = pd.DataFrame({'lineup': ['A'] * 9 + ['B'] * 9,
+                            'fanduel_id': list(ids[:9]) + list(ids[:8]) + [ids[9]]})
+    predictions = pd.DataFrame({'fanduel_id': ids, 'projected_fd_points': [25] * 9 + [26]})
+    official = pd.DataFrame({'fanduel_id': ids, 'outcome': 'Played', 'nba_source': 'Official box',
+                             'nba_fd_points': [25] * 9 + [24]})
+    result = simulation.review_lineup_comparisons(rosters, predictions, official).iloc[0]
+    assert result.actual_gap == 1 and result.projected_gap == -1
+    assert result.simulation_direction_correct and not result.projection_direction_correct
+    assert result.simulation_brier == 0
+    official.loc[9, 'nba_fd_points'] = 25
+    tied = simulation.review_lineup_comparisons(rosters, predictions, official).iloc[0]
+    assert pd.isna(tied.simulation_brier)
+    official.loc[9, 'outcome'] = 'Did not play'
+    assert simulation.review_lineup_comparisons(rosters, predictions, official).empty

@@ -78,6 +78,31 @@ class OutcomeDraws:
             })
         return pd.DataFrame(rows)
 
+    def review_lineup_comparisons(self, rosters, projections, official_results):
+        """Audit the played-only model against complete, verified historical pairs."""
+        pairs = self.compare_lineups(rosters)
+        if pairs.empty:
+            return pairs
+        played = official_results.loc[official_results.outcome.eq('Played')
+                                      & official_results.nba_source.fillna('').ne('')]
+        players = rosters[['lineup', 'fanduel_id']].merge(
+            projections[['fanduel_id', 'projected_fd_points']], on='fanduel_id', how='left', validate='many_to_one',
+        ).merge(played[['fanduel_id', 'nba_fd_points']], on='fanduel_id', how='left', validate='many_to_one')
+        fields = ['projected_fd_points', 'nba_fd_points']
+        totals = _numeric(players, fields).groupby(players.lineup).sum(min_count=9)
+        for field, name in zip(fields, ('projected_gap', 'actual_gap')):
+            pairs[name] = pairs.lineup.map(totals[field]) - pairs.alternative.map(totals[field])
+        reviewed = pairs.dropna(subset=['projected_gap', 'actual_gap']).copy()
+        reviewed['actual_gap'] = reviewed.actual_gap.round(1)
+        reviewed['actual_result'] = np.sign(reviewed.actual_gap)
+        reviewed['projection_direction_correct'] = np.sign(reviewed.projected_gap.round(2)).eq(reviewed.actual_result)
+        direction = reviewed.lineup_ahead_share - reviewed.alternative_ahead_share
+        reviewed['simulation_direction_correct'] = np.sign(direction).eq(reviewed.actual_result)
+        probability = reviewed.lineup_ahead_share + reviewed.tie_share / 2
+        actual = reviewed.actual_result.gt(0).where(reviewed.actual_result.ne(0))
+        reviewed['simulation_brier'] = (probability - actual) ** 2
+        return reviewed
+
 
 def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_projection=True):
     """Sample paired minutes and efficiency errors from earlier completed games.
