@@ -86,3 +86,11 @@ Development-only implementation: `nba_prelock_robustness.py`, with regression te
 |33|336.799|342.349|341.300|335.249|L2|
 
 The crossover L2/L1 is approximately 28.167 minutes, and L3/L1 is approximately 29.081 minutes. These are deterministic *what-if* computations, not calibrated conditional forecasts. Before integrating into the production lineup optimizer, the guard needs real CI verification and integration into the existing prelock candidate selection path, plus independent source confidence and multi-player joint scenario treatment.
+
+## Live fragility module replay against original four-lineup archive (November 23 verification)
+
+The development `rank_fragility` implementation was run locally against the **actual** `Nov22_137037_research_scenario_pool.csv` and `Nov22_137037_four_reconstructed_scenario_lineups.csv`, mapping frozen contest ID, scenario FD, and scenario minutes into the live module's expected columns. The module reported baseline leader **Lineup 1**, **9/9** differential players checked, **complete coverage**, and **9** individual-player ±2-minute scenarios that changed the leading candidate at an endpoint. Players flagged: Jamal Murray, Matas Buzelis, Keyonte George, Jalen Brunson, Jalen Suggs, Desmond Bane, Kyshawn George, Mikal Bridges, and Klay Thompson. This is a **frozen-data computational check**, not proof that the live Streamlit UI or GitHub CI passed, and not a multi-player joint scenario or empirical forecast validation.
+
+The local combined regression suite was also executed with `python -m unittest -v test_nba_live_prelock_fragility test_nba_prelock_robustness` and reported **18 tests passed**. This is distinct from GitHub-hosted CI and production runtime testing.
+
+The separate 5:15 PM ET official injury report annotation was reopened: `recorded_utc=2026-11-22T22:52:29.667066+00:00`, lists Shai Gilgeous-Alexander and Giannis Antetokounmpo as confirmed OUT, and explicitly states no projections were revised. It remains an annotation rather than a certified final model run. The original four-lineup archive is still provisional.
