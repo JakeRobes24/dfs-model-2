@@ -96,6 +96,18 @@ class LiveFragilityTests(unittest.TestCase):
     def test_invalid_spread_type_fails_closed(self):
         with self.assertRaisesRegex(ValueError,"Minute spread"):
             rank_fragility(self.pool,self.lineups,minute_spread="two")
+    def test_missing_lineup_label_fails_closed(self):
+        self.lineups.loc[0,"lineup"]=None
+        with self.assertRaisesRegex(ValueError,"Missing lineup labels"):
+            rank_fragility(self.pool,self.lineups)
+    def test_blank_lineup_label_fails_closed(self):
+        self.lineups.loc[0,"lineup"]=" "
+        with self.assertRaisesRegex(ValueError,"Missing lineup labels"):
+            rank_fragility(self.pool,self.lineups)
+    def test_ambiguous_lineup_labels_fails_closed(self):
+        self.lineups.loc[0,"lineup"]="1"
+        with self.assertRaisesRegex(ValueError,"Ambiguous lineup labels"):
+            rank_fragility(self.pool,self.lineups)
     def test_one_lineup(self):
         result=rank_fragility(self.pool,self.lineups[self.lineups.lineup==1])
         self.assertFalse(result["fragile"])
