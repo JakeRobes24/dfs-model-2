@@ -52,6 +52,18 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
         if not pid or pid in official_by_id or pid not in contest_ids:
             raise ValueError("Official status evidence IDs must be unique and on-contest")
         official_by_id[pid] = entry
+    # An official OUT report overrides a stale/blank contest injury flag.
+    # Never rank a lineup while its eligible pool contains a known inactive.
+    conflicting_out = []
+    for p in active:
+        entry = official_by_id.get(p["player_id"], {})
+        stamp = _timestamp(entry.get("observed_at"))
+        if (entry.get("official") is True and entry.get("source")
+                and entry.get("source_record_id") and stamp is not None
+                and stamp <= cutoff
+                and str(entry.get("status", "")).lower() in
+                {"out", "inactive", "ir", "suspended"}):
+            conflicting_out.append(p["player_id"])
     uncertain_status = []
     for p in active:
         entry = official_by_id.get(p["player_id"], {})
@@ -67,7 +79,11 @@ def run_nfl_prelock_pipeline(contest_csv, projections, candidates, *,
               "eligible_players": len(active), "missing_projection_ids": missing,
               "ready": False, "certified": False, "rankings": [],
               "unverified_projection_ids": unverified,
-              "uncertain_status_ids": uncertain_status}
+              "uncertain_status_ids": uncertain_status,
+              "officially_out_conflict_ids": conflicting_out}
+    if conflicting_out:
+        report["block_reason"] = "Official inactive evidence conflicts with contest eligibility"
+        return report
     if missing:
         report["block_reason"] = "Missing individually timestamped projections"
         return report
