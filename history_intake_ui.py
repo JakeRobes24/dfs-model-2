@@ -36,6 +36,35 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
     if not token:
         return
 
+    # Explicit owner opt-in; never submit actuals or historical reconstructions automatically.
+    if replay_inputs is not None and slate_date == datetime.now(ZoneInfo('America/New_York')).date():
+        auto = st.checkbox('Automatically preserve reviewed pre-tip candidates in private history',
+                           value=False, key='history_auto_capture')
+        if auto and generated_lineups is not None and not generated_lineups.empty:
+            try:
+                audit, input_hashes = replay_inputs
+                lineup_csv = generated_lineups.to_csv(index=False)
+                base_path, _ = make_submission(pool, slate_date, lineups=lineup_csv)
+                from hashlib import sha256
+                fingerprint = sha256(repr((base_path, input_hashes, audit.to_csv(index=False),
+                                           market_events)).encode()).hexdigest()
+                saved = st.session_state.get('history_auto_saved', set())
+                if fingerprint not in saved:
+                    schedule = games_for_date(slate_date)
+                    archived = capture_pool(pool, audit, schedule, slate_date, datetime.now(timezone.utc),
+                                            input_hashes, market_events=market_events)
+                    if not archived.replay_before_full_slate_tip.all():
+                        st.info('Automatic preservation skipped: full-slate pre-tip timing is not verified.')
+                    else:
+                        path, raw = make_submission(archived, slate_date, lineups=lineup_csv)
+                        commit = submit_reviewed_slate(token, path, raw)
+                        st.session_state['history_auto_saved'] = saved | {fingerprint}
+                        st.success('Reviewed pre-tip candidates submitted to private history; backup verification is separate.')
+                else:
+                    st.caption('Unchanged reviewed candidates already submitted this session.')
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                st.warning('Automatic preservation unavailable. Use the manual archive controls below.')
+
     with st.expander('Save reviewed slate to private history'):
         st.caption('Saves the current full pool and projections. Include verified actuals or a final lineup CSV when available.')
         if replay_inputs is not None:
