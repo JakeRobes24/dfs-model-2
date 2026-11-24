@@ -238,6 +238,26 @@ def render_post_slate():
                                        f'{slate}_{contest}_{version[:12]}_shadow_research.csv', mime='text/csv')
                 else:
                     st.caption('This capture predates the frozen research features; experimental comparisons are unavailable.')
+            if len(finals) == len(games):
+                st.caption('Experimental equal-entry comparison: generate eight legal projection-ranked candidates from the saved pool, then select four by projected mean or simulated P90. Training uses earlier verified frozen results only; current actuals are used only for scoring.')
+                if st.button('Compare candidate selection policies', key=f'candidate_experiment_{slate}_{contest}_{version[:12]}'):
+                    from nba_archive_training import load_prior_replays
+                    from nba_candidate_experiment import build_experiment, score_experiment
+                    try:
+                        with st.spinner('Checking earlier training and rebuilding frozen candidates…'):
+                            training, coverage = load_prior_replays(history, slate, token, limit=5)
+                            st.dataframe(coverage, hide_index=True)
+                            if training.empty:
+                                raise ValueError('No earlier verified frozen training captures.')
+                            candidates, ranges, selections, count = build_experiment(pool, training, slate)
+                            policy_report, actual_totals = score_experiment(pool, candidates, selections, results, slate)
+                        st.caption(f'{count} earlier played training rows. No changes to live optimizer rankings; this is a fixed historical candidate-ranking experiment, not a contest win-rate estimate.')
+                        st.dataframe(policy_report.round(2), hide_index=True)
+                        st.dataframe(ranges.merge(actual_totals, on='lineup', validate='one_to_one').round(2), hide_index=True)
+                        st.download_button('Download candidate policy comparison', policy_report.to_csv(index=False),
+                                           f'{slate}_{contest}_candidate_policy_comparison.csv', mime='text/csv')
+                    except (ValueError, TypeError, KeyError, OSError) as exc:
+                        st.info(f'Candidate policy comparison unavailable: {exc}')
             decisions = audit_player_decisions(replay)
             decision_summary = summarize_player_decisions(decisions)
             st.caption('Player-by-player projection changes, error improvements and regressions. '
