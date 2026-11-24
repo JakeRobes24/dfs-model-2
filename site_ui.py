@@ -721,6 +721,15 @@ def render_slate(history_slot):
                             st.caption('Fixed hypothetical latent dependence scenarios, not measured correlations. Player distributions are preserved. Best-candidate shares compare only these supplied lineups, not the contest field; P99 is especially noisy.')
                             st.dataframe(ceiling.round(3), hide_index=True)
                             st.dataframe(portfolio.round(2), hide_index=True)
+                            from nba_dependence import reviewed_dependence_evidence
+                            detail, measured = reviewed_dependence_evidence(training, slate)
+                            if measured.empty:
+                                st.info('Insufficient earlier verified games for a held-out dependence audit. Hypothetical scenarios remain uncalibrated.')
+                            else:
+                                st.caption('Historical adjusted-score error cross-products, tested on later dates against a zero-dependence benchmark. These are not correlation coefficients and do not set simulation weights.')
+                                st.dataframe(measured.round(3), hide_index=True)
+                                st.download_button('Download held-out dependence audit', detail.to_csv(index=False),
+                                                   'reviewed_dependence_audit.csv', mime='text/csv')
                             st.download_button('Download candidate sensitivity', ceiling.to_csv(index=False),
                                                'candidate_dependence_sensitivity.csv', mime='text/csv')
                     except (ValueError, KeyError, TypeError, OSError) as exc:
