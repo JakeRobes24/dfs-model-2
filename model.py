@@ -119,15 +119,29 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         raise ValueError('Optimizer requires unique FanDuel IDs')
     a=a.reset_index(drop=True)
     pinned_ids = set(fixed_slots.values())
-    pairs = [
-        (i, j) for i, row in a.iterrows() for j, slot in enumerate(SLOTS)
-        if slot in allowed_slots(row.roster_eligibility)
-        and (fixed_slots[j] == row.fanduel_id if j in fixed_slots else row.fanduel_id not in pinned_ids)
-    ]
+    # Cache row metadata once; preserve pair order and exact MILP constraints.
+    player_ids = a.fanduel_id.to_numpy()
+    salaries = a.salary.to_numpy(dtype=float)
+    scores = a[objective_column].to_numpy(dtype=float)
+    eligibility = [allowed_slots(e) for e in a.roster_eligibility]
+    pairs = [(i,j) for i,pid in enumerate(player_ids) for j,slot in enumerate(SLOTS)
+             if slot in eligibility[i]
+             and (fixed_slots[j] == pid if j in fixed_slots else pid not in pinned_ids)]
     n=len(pairs)
     if not n:raise ValueError('No projected eligible players')
+    player_index, slot_index = np.asarray(pairs, dtype=int).T
+    columns = np.arange(n)
     A=lil_matrix((9+len(a)+1,n))
-    for k,(i,j) in enumerate(pairs):A[j,k]=1;A[9+i,k]=1;A[-1,k]=a.iloc[i].salary
+    A[slot_index,columns]=1
+    A[9+player_index,columns]=1
+    A[-1,columns]=salaries[player_index]
+    c=np.where(np.isin(slot_index,list(fixed_slots)),0.,-scores[player_index])
+    normalized_names = [norm(name) for name in a.fanduel_name]
+    blocked_indices=[]
+    for x,y in blocked_pairs:
+        names={norm(x),norm(y)}
+        inds={i for i,name in enumerate(normalized_names) if name in names}
+        if len(inds)==2:blocked_indices.append(inds)
     low=np.r_[np.ones(9),np.zeros(len(a)),0];high=np.r_[np.ones(9),np.ones(len(a)),60000]
     excluded = [set(roster) for roster in exclude_rosters]
     sets=[];out=[]
@@ -136,17 +150,15 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
             break
         mat=A.tocsr();lo=low.copy();hi=high.copy();extra=[];elow=[];ehigh=[]
         for s in sets:
-            extra.append([1 if i in s else 0 for i,j in pairs]);elow.append(0);ehigh.append(max_overlap)
+            extra.append(np.isin(player_index,list(s)).astype(int));elow.append(0);ehigh.append(max_overlap)
         for roster in excluded:
-            extra.append([int(a.iloc[i].fanduel_id in roster) for i,j in pairs])
+            extra.append(np.isin(player_ids[player_index],list(roster)).astype(int))
             elow.append(0)
             ehigh.append(8)
-        for x,y in blocked_pairs:
-            inds={i for i,r in a.iterrows() if norm(r.fanduel_name) in (norm(x),norm(y))}
-            if len(inds)==2:extra.append([1 if i in inds else 0 for i,j in pairs]);elow.append(0);ehigh.append(1)
+        for inds in blocked_indices:
+            extra.append(np.isin(player_index,list(inds)).astype(int));elow.append(0);ehigh.append(1)
         if extra:
             mat=vstack([mat,lil_matrix(np.array(extra)).tocsr()]);lo=np.r_[lo,elow];hi=np.r_[hi,ehigh]
-        c=np.array([0 if j in fixed_slots else -float(a.iloc[i][objective_column]) for i,j in pairs])
         limit = 35 if deadline is None else min(35, deadline - monotonic())
         if limit <= 0:
             break
