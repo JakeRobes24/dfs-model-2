@@ -19,13 +19,15 @@ AS_OF = datetime(2026, 11, 22, 16, tzinfo=ET)
 def uploads():
     with (ROOT / 'nov20_reconciled_example.csv').open() as file:
         base = pd.read_csv(file).head(55)
-    # Test CSV shape only. Assign the fixture to one synthetic matchup.
-    contest = base.assign(game='BOS@NYK', team='BOS').rename(columns={
+    # Synthetic teams and two matchups; test standard classic team limits.
+    teams = [['BOS','NYK','CHI','TOR'][i%4] for i in range(len(base))]
+    games = ['BOS@NYK' if t in ('BOS','NYK') else 'CHI@TOR' for t in teams]
+    contest = base.assign(game=games, team=teams).rename(columns={
         'fanduel_id': 'Id', 'fanduel_name': 'Nickname', 'salary': 'Salary', 'team': 'Team',
         'game': 'Game', 'position': 'Position', 'roster_eligibility': 'Roster Position',
         'injury_flag': 'Injury Indicator',
     })
-    daily = base.assign(team='Boston Celtics', gameInfo='BOS @ NYK').rename(columns={
+    daily = base.assign(team=teams, gameInfo=games).rename(columns={
         'fanduel_name': 'player', 'projected_minutes': 'minutes', 'projected_fd_points': 'fantasy',
     })
     return contest, daily
@@ -35,7 +37,7 @@ def test_contest_authority_and_ambiguous_projection_matches():
     contest, daily = uploads()
     daily = daily.assign(points=20, rebounds=0, assists=-1)
     daily = pd.concat([daily, daily.iloc[:1]], ignore_index=True)
-    daily.loc[2, 'team'] = 'Knicks'
+    daily.loc[2, 'team'] = 'BOS'
     manual_extra = daily.iloc[[3]].assign(gameInfo='IND @ ATL')
     daily = pd.concat([daily, manual_extra], ignore_index=True)
     raw = ('FanDuel lineup template\n' + contest.to_csv(index=False)).encode()
@@ -115,6 +117,8 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
                 assert row.slot in allowed_slots(eligibility)
         assert set(alternative.fanduel_id) != set(lineups[lineups.lineup.eq(1)].fanduel_id)
         schedule.return_value = [dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': 'NYK'},
+                                      gameTimeUtc=datetime.now(ET).isoformat(), gameStatus=2),
+                                 dict(awayTeam={'teamTricode':'CHI'}, homeTeam={'teamTricode':'TOR'},
                                       gameTimeUtc=datetime.now(ET).isoformat(), gameStatus=2)]
         app.run()
         assert not app.exception
@@ -140,6 +144,7 @@ def test_late_swap_preserves_second_util_and_ignores_other_closed_players():
     ids = [f'123-{i}' for i in range(11)]
     pool = pd.DataFrame({
         'fanduel_id': ids, 'fanduel_name': ids, 'eligible': True, 'salary': 6500,
+        'team': ['BOS','NYK','CHI']*3+['NYK','CHI'],
         'roster_eligibility': 'PG/SG/SF/PF/G/F/F/C/UTIL/C', 'adjusted_minutes': 30,
         'adjusted_fd_points': [25] * 7 + [1, float('nan'), 50, 100],
         'confidence': 'high', 'minutes_method': 'DAILY', 'injury_flag': '',
@@ -161,14 +166,13 @@ def test_late_swap_preserves_second_util_and_ignores_other_closed_players():
 
 def test_streamlit_late_swap_compares_entered_and_candidate_slots():
     contest, daily = uploads()
-    contest.loc[:6, 'Game'] = 'BOS@CHI'
-    daily.loc[:6, 'gameInfo'] = 'BOS @ CHI'
+    # The first matchup locks; all remaining players remain open.
     with (patch('site_ui.public_research', return_value=([], [], [])),
           patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
           patch('site_ui.public_slate_schedule', return_value=[
-              dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': opponent},
+              dict(awayTeam={'teamTricode': away}, homeTeam={'teamTricode': home},
                    gameTimeUtc=(datetime.now(ET) + timedelta(minutes=45)).isoformat(), gameStatus=1)
-              for opponent in ('CHI', 'NYK')
+              for away,home in [('BOS','NYK'),('CHI','TOR')]
           ]),
           patch('site_ui.started_contest_games', return_value=(set(), True)) as game_state):
         app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
@@ -177,7 +181,7 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
         app.button(key='slate_optimize').click().run()
         lineups = app.session_state['slate_results'][1][0]
         entered = lineups.loc[lineups.lineup.eq(1), ['slot', 'fanduel_id']]
-        game_state.return_value = ({'BOS/CHI'}, True)
+        game_state.return_value = ({'BOS/NYK'}, True)
         app.run()
         assert app.radio(key='slate_swap_entry_method').value == 'Select players'
         assert not any(button.key == 'slate_late_swap_run' for button in app.button)
@@ -197,7 +201,7 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
         assert not app.exception and not app.error
         assert app.button(key='slate_optimize').disabled
         swap = app.session_state['late_swap_result'][1]
-        locked = set(entered.fanduel_id) & set(contest.loc[:6, 'Id'])
+        locked = set(entered.fanduel_id) & set(contest.loc[contest.Game.eq('BOS@NYK'), 'Id'])
         assert locked and set(swap.loc[swap.locked, 'fanduel_id']) == locked
         assert swap.loc[swap.locked, 'changed'].eq(False).all()
         assert any('Projected points change' in caption.value for caption in app.caption)
@@ -207,7 +211,7 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
         # results, even when the returned roster was legal at solve start.
         def crossing_lock(*args, **kwargs):
             assert 0 < kwargs['time_budget_seconds'] <= 35
-            game_state.return_value = ({'BOS/CHI','BOS/NYK'}, True)
+            game_state.return_value = ({'BOS/NYK','CHI/TOR'}, True)
             return swap
         with patch('site_ui.optimize_late_swap', side_effect=crossing_lock):
             app.button(key='slate_late_swap_run').click().run()
@@ -350,8 +354,9 @@ def test_prepared_contingency_runtime_survives_news_refresh():
     scratch = contest.loc[0, 'Id']
     contest.loc[0, ['Injury Indicator', 'Salary']] = ['Q', 3500]
     daily.loc[0, ['fantasy', 'minutes']] = [85., 40.]
-    schedule = [dict(awayTeam={'teamTricode':'BOS'}, homeTeam={'teamTricode':'NYK'},
-                     gameTimeUtc=(datetime.now(ET)+timedelta(minutes=45)).isoformat(), gameStatus=1)]
+    schedule = [dict(awayTeam={'teamTricode':away}, homeTeam={'teamTricode':home},
+                     gameTimeUtc=(datetime.now(ET)+timedelta(minutes=45)).isoformat(), gameStatus=1)
+                for away,home in [('BOS','NYK'),('CHI','TOR')]]
     with (patch('site_ui.public_research', return_value=([], [], [])) as news,
           patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
           patch('site_ui.public_slate_schedule', return_value=schedule) as clock):
@@ -406,7 +411,7 @@ def test_prepared_contingency_runtime_survives_news_refresh():
         app.button(key='prepared_validate').click().run()
         assert not app.exception and not app.error
         assert any('validated_at_snapshot' in c.value for c in app.caption)
-        clock.return_value=[dict(schedule[0],gameStatus=2)]
+        clock.return_value=[dict(schedule[0],gameStatus=2),schedule[1]]
         app.run()
         app.button(key='prepared_validate').click().run()
         assert not app.exception
