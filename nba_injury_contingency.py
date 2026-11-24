@@ -18,7 +18,7 @@ RESOLVED = {'available','out','inactive','suspended'}
 def prepare_contingencies(pool, baseline, *, time_budget_seconds=45,
                           max_scenarios=4, max_overlap=7,
                           exclude_uncertain=False, objective_column='adjusted_fd_points',
-                          max_joint_scenarios=0):
+                          max_joint_scenarios=0, conditional_evidence=None, as_of=None):
     """Return baseline unchanged plus ranked single-player and optional paired OUT alternatives.
 
     Each scenario replaces the entire candidate portfolio, using the original
@@ -32,6 +32,8 @@ def prepare_contingencies(pool, baseline, *, time_budget_seconds=45,
         raise ValueError('Positive integer max_scenarios required')
     if isinstance(max_joint_scenarios,bool) or not isinstance(max_joint_scenarios,int) or max_joint_scenarios < 0:
         raise ValueError('Nonnegative integer joint scenario limit required')
+    if conditional_evidence is not None and (as_of is None or objective_column != 'adjusted_fd_points'):
+        raise ValueError('Conditional impacts require as-of and the mean-FD objective')
     deadline = monotonic() + time_budget_seconds
     if not pool.fanduel_id.is_unique or pool.fanduel_id.isna().any():
         raise ValueError('Unique contest IDs required')
@@ -82,6 +84,17 @@ def prepare_contingencies(pool, baseline, *, time_budget_seconds=45,
             scenario=pool.copy(deep=True)
             scenario.loc[scenario.fanduel_id.isin(out_ids),'eligible']=False
             try:
+                if conditional_evidence is not None:
+                    from nba_injury_scenario_inputs import reviewed_impact_pool
+                    scenario, accepted = reviewed_impact_pool(pool, out_ids, conditional_evidence, as_of)
+                    record['impact_evidence_count']=len(accepted)
+                else:
+                    record['impact_evidence_count']=0
+                remaining=deadline-monotonic()
+                if remaining<=0:
+                    record['status']='not_run_budget_or_limit'
+                    scenarios.append(record)
+                    continue
                 candidates=optimize(scenario, number=len(groups), max_overlap=max_overlap,
                     exclude_uncertain=exclude_uncertain, objective_column=objective_column,
                     time_budget_seconds=remaining)
@@ -99,4 +112,4 @@ def prepare_contingencies(pool, baseline, *, time_budget_seconds=45,
             'joint_scenarios_possible':len(pairs),
             'joint_scenarios_requested':min(max_joint_scenarios,len(pairs)),
             'joint_scenarios_completed':sum(r['status']=='complete' and len(r['out_ids'])==2 for r in scenarios),
-            'method':'Hypothetical single-player and optional paired OUT sensitivity; no automatic teammate redistribution; not certified live news.'}
+            'method':'Hypothetical single-player and optional paired OUT sensitivity; conditional teammate impacts only from explicitly reviewed inputs; not certified live news.'}
