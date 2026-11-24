@@ -748,7 +748,9 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
         {'out', 'inactive', 'suspended', 'doubtful', 'questionable'}), 'fanduel_id'])
     candidates = fresh.loc[fresh.source.isin({RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE})
                            & fresh.minutes.notna() & fresh.independent_group.ne('')].copy()
-    latest_news = official.groupby('fanduel_id').observed_at.max()
+    changes = fresh.loc[fresh.official & (fresh.status.str.casefold().isin(OFFICIAL_STATUS)
+                                         | fresh.starter.str.casefold().isin({'starter', 'bench'}))]
+    latest_news = changes.groupby('fanduel_id').observed_at.max()
     cutoff = candidates.fanduel_id.map(latest_news)
     candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
     groups = ['fanduel_id', 'independent_group']
