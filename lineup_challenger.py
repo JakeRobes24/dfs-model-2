@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from model import SLOTS, allowed_slots, optimize
+from nba_classic_rules import validate_team_roster
 
 
 def challenge_lineups(pool, proposed, *, include_ceiling=False, exclude_uncertain=False):
@@ -45,6 +46,12 @@ def challenge_lineups(pool, proposed, *, include_ceiling=False, exclude_uncertai
         salary = int(distinct.salary.sum()) if len(distinct) == 9 else None
         if salary is not None and salary > 60000:
             errors.append('Salary exceeds $60,000')
+        if len(distinct) == 9:
+            try:
+                if not validate_team_roster(pool, distinct.fanduel_id):
+                    errors.append('Team restrictions unverified: legacy pool has no team data')
+            except ValueError as exc:
+                errors.append(str(exc))
         known = group[['lineup', 'slot', 'fanduel_id']].join(pool[['fanduel_name', 'adjusted_fd_points', 'prelock_change']]
                           if 'prelock_change' in pool else pool[['fanduel_name', 'adjusted_fd_points']],
                           on='fanduel_id')
