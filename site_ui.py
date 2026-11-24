@@ -633,15 +633,35 @@ def render_slate(history_slot):
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
-                files = st.file_uploader('Earlier verified player_replay.csv exports', type='csv',
-                                         accept_multiple_files=True, key='slate_simulation_history')
-                if files and st.button('Simulate current candidates', key='slate_simulation_run'):
+                import os
+                from history_panel import owner_can_view_history
+                from nba_archive_training import load_prior_replays, prior_contests
+                owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
+                token = (os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN') or
+                         os.environ.get('DFS_HISTORY_INTAKE_TOKEN', '')).strip()
+                archive_available = bool(owner and token and owner_can_view_history(owner, st.user)
+                                         and prior_contests(history, slate))
+                use_archive = (st.checkbox('Use earlier private slate archives automatically', value=True,
+                                           key='slate_simulation_archive') if archive_available else False)
+                files = [] if use_archive else st.file_uploader(
+                    'Earlier verified player_replay.csv exports', type='csv',
+                    accept_multiple_files=True, key='slate_simulation_history')
+                if use_archive:
+                    st.caption('Checks up to three earlier saved dates, one broadest contest per date, and eight versions per contest. Uses the latest valid full pre-tip capture and verified final NBA games.')
+                if (use_archive or files) and st.button('Simulate current candidates', key='slate_simulation_run'):
                     try:
                         from nba_simulation import simulate_reviewed_candidates
-                        if sum(file.size for file in files) > 8 * 1024 * 1024:
-                            raise ValueError('Combined replay files must be smaller than 8 MiB.')
-                        training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
-                                              for file in files], ignore_index=True).drop_duplicates()
+                        if use_archive:
+                            with st.spinner('Verifying earlier private captures and final NBA box scores…'):
+                                training, coverage = load_prior_replays(history, slate, token)
+                            st.dataframe(coverage, hide_index=True)
+                            if training.empty:
+                                raise ValueError('No verified earlier frozen replay found. Use the CSV fallback if available.')
+                        else:
+                            if sum(file.size for file in files) > 8 * 1024 * 1024:
+                                raise ValueError('Combined replay files must be smaller than 8 MiB.')
+                            training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
+                                                  for file in files], ignore_index=True).drop_duplicates()
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
@@ -654,8 +674,8 @@ def render_slate(history_slot):
                             st.dataframe(pairs, hide_index=True)
                     except (ValueError, KeyError, TypeError, OSError) as exc:
                         st.warning(f'Simulation unavailable: {exc}')
-                elif not files:
-                    st.info('Verified earlier replay exports are required. The existing history view does not expose original DAILY points for this training method.')
+                elif not use_archive and not files:
+                    st.info('Sign in to use eligible private archives, or supply verified earlier replay exports. Generic historical results are not substitutes for frozen DAILY points.')
         if not started and not lineups.empty:
             with st.expander('Prepare injury contingencies'):
                 st.caption('Prepare before lock. These are hypothetical single-player and paired OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
