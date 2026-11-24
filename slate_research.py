@@ -707,7 +707,10 @@ def points_consensus(projections, evidence, as_of):
     frame = frame.sort_values('time')
     frame = frame.loc[~frame.duplicated(['fanduel_id', 'family', 'time'], keep=False)]
     frame = frame.drop_duplicates(['fanduel_id', 'family'], keep='last')
-    frame['weight'] = 2 ** (-age.loc[frame.index] / 3)
+    # Relative recency weights are mathematically equivalent to absolute age weights.
+    # Anchoring to each player's latest accepted estimate avoids clock-only score drift.
+    relative_age = (frame.groupby('fanduel_id').time.transform('max') - frame.time).dt.total_seconds() / 3600
+    frame['weight'] = 2 ** (-relative_age / 3)
     rows = {}
     for player, group in frame.groupby('fanduel_id'):
         rows[player] = dict(points=(group.points * group.weight).sum() / group.weight.sum(),
@@ -744,7 +747,6 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
         result[target] = result.fanduel_id.map(independent[field])
     result['projection_source_count'] = result.projection_source_count.fillna(0).astype(int)
     result['projection_sources_json'] = result.projection_sources_json.fillna('[]')
-    result['projection_scored_at_utc'] = pd.Timestamp(as_of).tz_convert('UTC').isoformat()
     result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
     baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
     minute_gap = historical - baseline
