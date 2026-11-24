@@ -411,3 +411,66 @@ def test_prepared_contingency_runtime_survives_news_refresh():
         app.button(key='prepared_validate').click().run()
         assert not app.exception
         assert not any('validated_at_snapshot' in c.value for c in app.caption)
+
+
+
+@pytest.mark.parametrize('change', [
+    {'observed_at': (AS_OF-timedelta(hours=7)).isoformat()},
+    {'observed_at': (AS_OF+timedelta(minutes=1)).isoformat()},
+    {'observed_at': AS_OF.replace(tzinfo=None).isoformat()},
+    {'minutes': 'not numeric'},
+    {'minutes': 49},
+    {'independent_group': ''},
+])
+def test_unusable_minutes_cannot_adjust_provisional_projection(change):
+    contest, daily = uploads()
+    pool, _, _ = reconcile_exports(contest.to_csv(index=False).encode(), daily.to_csv(index=False).encode())
+    player = pool.iloc[0]
+    history = pd.DataFrame([dict(player=player.fanduel_name, recent_mpg=player.projected_minutes + 3,
+                                 history_games=3)])
+    estimate = dict(fanduel_id=player.fanduel_id, source=RW_MINUTES, independent_group='rotowire',
+                    observed_at=AS_OF.isoformat(), official=False, status='', starter='', role='',
+                    minutes=player.projected_minutes+3)
+    baseline, _ = score_slate(pool, history, [], [], AS_OF)
+    scored, _ = score_slate(pool, history, [dict(estimate, **change)], [], AS_OF)
+    assert scored.iloc[0].adjusted_fd_points == pytest.approx(baseline.iloc[0].adjusted_fd_points)
+    assert pd.isna(scored.iloc[0].independent_minutes)
+
+
+def test_superseded_and_conflicting_minutes_do_not_corroborate():
+    from slate_research import PROPSIMS
+    contest, daily = uploads()
+    pool, _, _ = reconcile_exports(contest.to_csv(index=False).encode(), daily.to_csv(index=False).encode())
+    player = pool.iloc[0]
+    history = pd.DataFrame([dict(player=player.fanduel_name, recent_mpg=player.projected_minutes + 3,
+                                 history_games=3)])
+    estimate = dict(fanduel_id=player.fanduel_id, source=RW_MINUTES, independent_group='rotowire',
+                    observed_at=(AS_OF-timedelta(minutes=30)).isoformat(), official=False, status='',
+                    starter='', role='', minutes=player.projected_minutes+3)
+    second = dict(estimate, source=PROPSIMS, independent_group='propsims')
+    official = dict(estimate, source='NBA', independent_group='nba', official=True, status='available',
+                    minutes=None, observed_at=AS_OF.isoformat())
+    baseline, _ = score_slate(pool, history, [], [], AS_OF)
+    for notes in ([estimate, second, official],
+                  [estimate, second, dict(estimate, minutes=player.projected_minutes+5)]):
+        scored, _ = score_slate(pool, history, notes, [], AS_OF)
+        assert scored.iloc[0].adjusted_fd_points == pytest.approx(baseline.iloc[0].adjusted_fd_points)
+    updated = dict(estimate, observed_at=AS_OF.isoformat())
+    stale_out = dict(official, status='out', observed_at=(AS_OF-timedelta(hours=1)).isoformat())
+    scored, _ = score_slate(pool, history, [stale_out, official, updated], [], AS_OF)
+    assert scored.iloc[0].adjusted_minutes == pytest.approx(player.projected_minutes+1)
+    assert scored.iloc[0].eligible
+
+
+def test_naive_point_timestamp_cannot_supply_independent_projection():
+    from slate_research import DFF
+    contest, daily = uploads()
+    pool, _, _ = reconcile_exports(contest.to_csv(index=False).encode(), daily.to_csv(index=False).encode())
+    player = pool.iloc[0]
+    history = pd.DataFrame([dict(player=player.fanduel_name, recent_mpg=player.projected_minutes + 3,
+                                 history_games=3)])
+    projection = dict(fanduel_id=player.fanduel_id, source=DFF,
+                      observed_at=AS_OF.astimezone(__import__('datetime').timezone.utc).replace(tzinfo=None).isoformat(),
+                      points=player.projected_fd_points+3)
+    scored, _ = score_slate(pool, history, [], [projection], AS_OF)
+    assert scored.iloc[0].projection_source_count == 0
