@@ -14,7 +14,7 @@ import pandas as pd
 import pdfplumber
 
 from model import consensus, norm
-from prelock import REQUIRED, apply_prelock
+from prelock import REQUIRED, OFFICIAL_STATUS, apply_prelock, review_prelock_evidence
 from slate_import import contest_player_keys, matchup_key, player_key, team_code
 
 
@@ -687,7 +687,117 @@ def points_consensus(projections, evidence, as_of):
     if frame.empty:
         return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail'])
     frame['family'] = frame.source.map(POINT_SOURCE_GROUPS)
-    frame['time'] = pd.to_datetime(frame.observed_at, utc=True, errors='coerce', format='mixed')
+    dated = frame.observed_at.astype('string').fillna('').str.strip()
+    has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})
+    frame['points'] = pd.to_numeric(frame.points, errors='coerce')
+    age = (pd.Timestamp(as_of) - frame.time).dt.total_seconds() / 3600
+    frame = frame.loc[frame.family.notna() & age.between(0, 6) & frame.points.between(0, 150)].copy()
+    news = pd.DataFrame(evidence)
+    if not news.empty:
+        affecting = news.loc[news.official.eq(True) & (
+            news.status.str.casefold().isin(OFFICIAL_STATUS) |
+            news.starter.isin(['starter', 'bench'])
+        )].copy()
+        affecting['time'] = pd.to_datetime(affecting.observed_at, utc=True, errors='coerce', format='mixed')
+        newest = affecting.loc[affecting.time.le(as_of)].groupby('fanduel_id').time.max()
+        cutoff = frame.fanduel_id.map(newest)
+        frame = frame.loc[cutoff.isna() | frame.time.ge(cutoff)].copy()
+    frame = frame.sort_values('time')
+    frame = frame.loc[~frame.duplicated(['fanduel_id', 'family', 'time'], keep=False)]
+    frame = frame.drop_duplicates(['fanduel_id', 'family'], keep='last')
+    frame['weight'] = 2 ** (-age.loc[frame.index] / 3)
+    rows = {}
+    for player, group in frame.groupby('fanduel_id'):
+        rows[player] = dict(points=(group.points * group.weight).sum() / group.weight.sum(),
+                            observed_at=group.time.max().isoformat(), source=', '.join(group.source),
+                            source_count=len(group), spread=group.points.max() - group.points.min(),
+                            detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()))
+    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail'])
+
+
+def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=None, manual_history=None):
+    """Keep DAILY as the baseline and apply only bounded, corroborated changes."""
+    pool = pool.copy()
+    history = history.copy()
+    if manual_history is not None:
+        existing = {norm(name) for name in manual_history.player}
+        history = pd.concat([history.loc[~history.player.map(norm).isin(existing)], manual_history], ignore_index=True)
+    result = consensus(pool, manual_minutes, history)
+    if 'recent_mpg' not in result:
+        result['recent_mpg'] = None
+    # History alone is context. A moderate, same-direction discrepancy in an independent
+    # points model can support a small, explicitly provisional minutes adjustment.
+    reviewed = review_prelock_evidence(pool, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
+    fresh = reviewed.loc[reviewed.review.eq('Reviewed')].copy()
+    independent = points_consensus(projections, fresh.to_dict('records'), as_of)
+    for target, field in {
+        'independent_fd_points': 'points', 'independent_projection_at': 'observed_at',
+        'independent_projection_source': 'source', 'projection_source_spread': 'spread',
+        'projection_source_count': 'source_count', 'projection_source_estimates': 'detail',
+    }.items():
+        result[target] = result.fanduel_id.map(independent[field])
+    result['projection_source_count'] = result.projection_source_count.fillna(0).astype(int)
+    result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
+    baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
+    minute_gap = historical - baseline
+    counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
+    official = fresh.loc[fresh.official & fresh.status.str.casefold().isin(OFFICIAL_STATUS)]
+    newest_status = official.loc[official.observed_at.eq(official.groupby('fanduel_id').observed_at.transform('max'))]
+    official_out = set(newest_status.loc[newest_status.status.str.casefold().isin(
+        {'out', 'inactive', 'suspended', 'doubtful', 'questionable'}), 'fanduel_id'])
+    candidates = fresh.loc[fresh.source.isin({RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE})
+                           & fresh.minutes.notna() & fresh.independent_group.ne('')].copy()
+    latest_news = official.groupby('fanduel_id').observed_at.max()
+    cutoff = candidates.fanduel_id.map(latest_news)
+    candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
+    groups = ['fanduel_id', 'independent_group']
+    candidates = candidates.loc[candidates.observed_at.eq(candidates.groupby(groups).observed_at.transform('max'))]
+    # Conflicting latest estimates from the same provider are not corroboration.
+    conflicts = candidates.groupby(groups).minutes.transform('nunique').gt(1)
+    conflicted_ids = set(candidates.loc[conflicts, 'fanduel_id'])
+    candidates = candidates.loc[~conflicts].drop_duplicates(groups)
+    by_id = candidates.groupby('fanduel_id').minutes.apply(list).to_dict()
+    result['independent_minutes'] = result.fanduel_id.map(
+        {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
+    )
+    minutes_agree = ((result.independent_minutes - historical).abs().le(3)
+                     & (result.independent_minutes - baseline).abs().between(2, 6))
+    points_agree = (result.fd_disagreement.abs().between(2, 8)
+                    & (minute_gap * result.fd_disagreement).gt(0))
+    source_conflict = result.projection_source_spread.ge(5) | result.fanduel_id.isin(conflicted_ids) | result.fanduel_id.isin(
+        key for key, values in by_id.items() if max(values) - min(values) > 3
+    )
+    corroborated = (~source_conflict & ~result.fanduel_id.isin(official_out) & result.eligible & result.minutes_method.eq('DAILY_only_unverified')
+                    & counts.ge(3) & minute_gap.abs().between(2, 6) & result.fppm.gt(0)
+                    & (minutes_agree | points_agree))
+    result.loc[corroborated, 'adjusted_minutes'] = baseline + (minute_gap / 3).clip(-2, 2)
+    result.loc[corroborated, 'adjusted_fd_points'] = result.fppm * result.adjusted_minutes
+    result.loc[corroborated, 'minutes_method'] = 'provisional_corroborated_rotation'
+    result.loc[corroborated, 'projection_warning'] = 'Provisional adjustment based on recent rotations and independent estimates'
+    result, audit = apply_prelock(result, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
+    uncertain = result.prelock_status.isin(['questionable', 'doubtful']) | result.injury_flag.isin(['Q', 'D', 'GTD'])
+    # Verified minutes adjustments and official scratches have priority.
+    use_blend = (result.eligible & ~uncertain & ~source_conflict
+                 & result.minutes_method.eq('DAILY_only_unverified')
+                 & result.projection_source_count.ge(2) & result.projected_fd_points.gt(0)
+                 & result.fd_disagreement.abs().lt(5))
+    blend = .60 * result.projected_fd_points + .40 * result.independent_fd_points
+    result['blended_fd_points'] = blend.where(use_blend)
+    result.loc[use_blend, 'adjusted_fd_points'] = result.loc[use_blend, 'blended_fd_points']
+    result['projection_method'] = 'DAILY with applicable minutes and status checks'
+    result.loc[use_blend, 'projection_method'] = '60% DAILY / 40% independent blend'
+    disputes = (source_conflict | result.fd_disagreement.abs().ge(5) | minute_gap.abs().gt(5)
+                | (result.independent_minutes - baseline).abs().gt(5))
+    result['research_attention'] = ''
+    result.loc[result.prelock_starter.eq(''), 'research_attention'] += 'Starter unconfirmed. '
+    result.loc[uncertain, 'research_attention'] += 'Availability uncertain. '
+    result.loc[disputes, 'research_attention'] += 'Review source disagreement. '
+    role_changed = result.prelock_starter.eq('starter') & result.prelock_role.eq('Projected bench')
+    result.loc[role_changed, 'research_attention'] += 'Role change: confirmed starter against bench estimate. '
+    result.loc[~result.adjusted_fd_points.gt(0) & result.eligible, 'research_attention'] += 'Missing usable points. '
+    return result, audit
+, regex=True)
+    frame['time'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
     frame['points'] = pd.to_numeric(frame.points, errors='coerce')
     age = (pd.Timestamp(as_of) - frame.time).dt.total_seconds() / 3600
     frame = frame.loc[frame.family.notna() & age.between(0, 6) & frame.points.between(0, 150)].copy()
@@ -726,7 +836,9 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
         result['recent_mpg'] = None
     # History alone is context. A moderate, same-direction discrepancy in an independent
     # points model can support a small, explicitly provisional minutes adjustment.
-    independent = points_consensus(projections, evidence, as_of)
+    reviewed = review_prelock_evidence(pool, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
+    fresh = reviewed.loc[reviewed.review.eq('Reviewed')].copy()
+    independent = points_consensus(projections, fresh.to_dict('records'), as_of)
     for target, field in {
         'independent_fd_points': 'points', 'independent_projection_at': 'observed_at',
         'independent_projection_source': 'source', 'projection_source_spread': 'spread',
@@ -738,12 +850,22 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
     minute_gap = historical - baseline
     counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
-    by_id = {}
-    for note in evidence:
-        if note.get('source') in {RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE}:
-            by_id.setdefault(note['fanduel_id'], []).append(note['minutes'])
-    official_out = {note['fanduel_id'] for note in evidence if note.get('official') is True
-                    and note.get('status') in {'out', 'doubtful', 'questionable'}}
+    official = fresh.loc[fresh.official & fresh.status.str.casefold().isin(OFFICIAL_STATUS)]
+    newest_status = official.loc[official.observed_at.eq(official.groupby('fanduel_id').observed_at.transform('max'))]
+    official_out = set(newest_status.loc[newest_status.status.str.casefold().isin(
+        {'out', 'inactive', 'suspended', 'doubtful', 'questionable'}), 'fanduel_id'])
+    candidates = fresh.loc[fresh.source.isin({RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE})
+                           & fresh.minutes.notna() & fresh.independent_group.ne('')].copy()
+    latest_news = official.groupby('fanduel_id').observed_at.max()
+    cutoff = candidates.fanduel_id.map(latest_news)
+    candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
+    groups = ['fanduel_id', 'independent_group']
+    candidates = candidates.loc[candidates.observed_at.eq(candidates.groupby(groups).observed_at.transform('max'))]
+    # Conflicting latest estimates from the same provider are not corroboration.
+    conflicts = candidates.groupby(groups).minutes.transform('nunique').gt(1)
+    conflicted_ids = set(candidates.loc[conflicts, 'fanduel_id'])
+    candidates = candidates.loc[~conflicts].drop_duplicates(groups)
+    by_id = candidates.groupby('fanduel_id').minutes.apply(list).to_dict()
     result['independent_minutes'] = result.fanduel_id.map(
         {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
     )
@@ -751,7 +873,7 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
                      & (result.independent_minutes - baseline).abs().between(2, 6))
     points_agree = (result.fd_disagreement.abs().between(2, 8)
                     & (minute_gap * result.fd_disagreement).gt(0))
-    source_conflict = result.projection_source_spread.ge(5) | result.fanduel_id.isin(
+    source_conflict = result.projection_source_spread.ge(5) | result.fanduel_id.isin(conflicted_ids) | result.fanduel_id.isin(
         key for key, values in by_id.items() if max(values) - min(values) > 3
     )
     corroborated = (~source_conflict & ~result.fanduel_id.isin(official_out) & result.eligible & result.minutes_method.eq('DAILY_only_unverified')
