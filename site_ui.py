@@ -318,6 +318,10 @@ def render_slate(history_slot):
     if not queue.empty:
         recent_rates, recent_absences = opportunity_evidence(scored, rotations, slate)
         queue = attach_rate_context(queue, recent_rates)
+        from nba_matchup_context import matchup_context
+        matchup = matchup_context(scored.loc[scored.fanduel_id.isin(queue.fanduel_id)], rotations, slate)
+        if not matchup.empty:
+            queue = queue.merge(matchup, on='fanduel_id', how='left', validate='one_to_one')
     with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
         st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers. Time and rate effects use only same-provider paired points/minutes, and may cover fewer sources than the overall point consensus. Historical production is minutes-weighted over complete recent official box scores; sample size is shown. This is descriptive evidence, not a matchup or usage-adjusted forecast.')
         if queue.empty:
@@ -326,6 +330,8 @@ def render_slate(history_slot):
             st.dataframe(queue.drop(columns='research_priority'), hide_index=True)
             st.download_button('Download disagreement review CSV', queue.to_csv(index=False),
                                file_name=f'{slate}-research-disagreements.csv', mime='text/csv')
+            if not matchup.empty:
+                st.caption('Pace uses estimated possessions from complete final team box scores, normalized to 48 minutes. Defensive rating is opponent points per 100 estimated possessions; recent team samples are descriptive, not matchup-adjusted player projections.')
             if not recent_rates.empty:
                 role_fields = ['fanduel_id', 'Player', 'Minutes as starter', 'Minutes off bench',
                                'FD/min as starter', 'FD/min off bench', 'Starter complete FD games',
