@@ -282,6 +282,13 @@ def render_post_slate():
                                            f'{slate}_{contest}_candidate_policy_comparison.csv', mime='text/csv')
                     except (ValueError, TypeError, KeyError, OSError) as exc:
                         st.info(f'Candidate policy comparison unavailable: {exc}')
+            if len(finals) == len(games):
+                from nba_combined_scoring_shadow import FIELDS, compare_combined_shadow
+                if set(FIELDS) <= set(pool):
+                    combined = compare_combined_shadow(pool, replay)
+                    if not combined.empty:
+                        st.caption('Experimental 60/40 total-score blend after corroborated minutes. Compared on the same verified played players; no live scoring changes.')
+                        st.dataframe(combined.round(2), hide_index=True)
             decisions = audit_player_decisions(replay)
             decision_summary = summarize_player_decisions(decisions)
             st.caption('Player-by-player projection changes, error improvements and regressions. '
