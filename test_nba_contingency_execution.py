@@ -7,7 +7,7 @@ AS_OF='2026-11-23T23:00:00Z'
 def fixture():
     ids=[str(i) for i in range(11)]
     p=pd.DataFrame(dict(fanduel_id=ids,fanduel_name=['Player '+i for i in ids],
-        team='CHA',salary=6000,eligible=True,adjusted_fd_points=[30.]*9+[40.,25.],
+        team=['CHA','BOS','NYK']*3+['CHA','BOS'],salary=6000,eligible=True,adjusted_fd_points=[30.]*9+[40.,25.],
         roster_eligibility='PG/SG/SF/PF/C/G/F/F/C/UTIL'))
     b=pd.DataFrame({'slot':SLOTS,'fanduel_id':ids[:9]})
     t=b.copy();t.loc[0,'fanduel_id']='9';t['lineup']=1
