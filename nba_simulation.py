@@ -184,7 +184,7 @@ def walk_forward_ranges(history, *, draws=4000, seed=42, center_on_projection=Tr
     return pd.DataFrame(reports)
 
 
-def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, draws=4000, seed=42):
+def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, draws=4000, seed=42, return_draws=False):
     """Informational lineup comparison centered on reviewed, rather than DAILY, scores.
 
     Use earlier verified played rows from frozen pre-tip replay exports. DAILY
@@ -224,4 +224,5 @@ def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, d
     points = target.set_index('fanduel_id').projected_fd_points
     totals = rosters.assign(reviewed_fd=rosters.fanduel_id.map(points)).groupby('lineup').reviewed_fd.sum()
     ranges.insert(1, 'reviewed_fd', ranges.lineup.map(totals))
-    return ranges, outcomes.compare_lineups(rosters), len(_history_rows(history))
+    result = (ranges, outcomes.compare_lineups(rosters), len(_history_rows(history)))
+    return (*result, outcomes) if return_draws else result
