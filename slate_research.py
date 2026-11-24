@@ -685,7 +685,7 @@ def points_consensus(projections, evidence, as_of):
     """Weight verified point estimates by recency and count each source family once."""
     frame = pd.DataFrame(projections)
     if frame.empty:
-        return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail'])
+        return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json'])
     frame['family'] = frame.source.map(POINT_SOURCE_GROUPS)
     dated = frame.observed_at.astype('string').fillna('').str.strip()
     has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
@@ -713,8 +713,11 @@ def points_consensus(projections, evidence, as_of):
         rows[player] = dict(points=(group.points * group.weight).sum() / group.weight.sum(),
                             observed_at=group.time.max().isoformat(), source=', '.join(group.source),
                             source_count=len(group), spread=group.points.max() - group.points.min(),
-                            detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()))
-    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail'])
+                            detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()),
+                            inputs_json=group[['source', 'family', 'points', 'time', 'weight']]
+                                .rename(columns={'time': 'observed_at'})
+                                .to_json(orient='records', date_format='iso', double_precision=15))
+    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json'])
 
 
 def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=None, manual_history=None):
@@ -736,9 +739,12 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
         'independent_fd_points': 'points', 'independent_projection_at': 'observed_at',
         'independent_projection_source': 'source', 'projection_source_spread': 'spread',
         'projection_source_count': 'source_count', 'projection_source_estimates': 'detail',
+        'projection_sources_json': 'inputs_json',
     }.items():
         result[target] = result.fanduel_id.map(independent[field])
     result['projection_source_count'] = result.projection_source_count.fillna(0).astype(int)
+    result['projection_sources_json'] = result.projection_sources_json.fillna('[]')
+    result['projection_scored_at_utc'] = pd.Timestamp(as_of).tz_convert('UTC').isoformat()
     result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
     baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
     minute_gap = historical - baseline
