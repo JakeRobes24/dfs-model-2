@@ -203,6 +203,22 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
         assert any('Projected points change' in caption.value for caption in app.caption)
         assert any('UTIL 2' in frame.value.get('slot', []).tolist() for frame in app.dataframe if 'slot' in frame.value)
 
+        # A game starting during a solve invalidates the old and new swap
+        # results, even when the returned roster was legal at solve start.
+        def crossing_lock(*args, **kwargs):
+            assert 0 < kwargs['time_budget_seconds'] <= 35
+            game_state.return_value = ({'BOS/CHI','BOS/NYK'}, True)
+            return swap
+        with patch('site_ui.optimize_late_swap', side_effect=crossing_lock):
+            app.button(key='slate_late_swap_run').click().run()
+        assert not app.exception
+        assert any('Game locks changed during optimization' in e.value for e in app.error)
+        assert 'late_swap_result' not in app.session_state
+        app.run()
+        assert not app.exception
+        assert not any(b.key=='slate_late_swap_run' for b in app.button)
+
+
 
 def test_rotogrinders_accepts_dated_upcoming_rows_only(monkeypatch):
     from datetime import datetime
