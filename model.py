@@ -2,6 +2,7 @@
 import re
 import unicodedata
 from collections import Counter
+from time import monotonic
 import numpy as np
 import pandas as pd
 from scipy.optimize import milp, Bounds, LinearConstraint
@@ -78,8 +79,13 @@ def allowed_slots(eligibility):
 
 
 def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pairs=(), *,
-             exclude_rosters=(), objective_column="adjusted_fd_points", fixed_slots=None, closed_players=()):
+             exclude_rosters=(), objective_column="adjusted_fd_points", fixed_slots=None, closed_players=(),
+             time_budget_seconds=None):
     """Optimize full defensibly projected pool; preserve low-confidence labels, don't silently exclude."""
+    if time_budget_seconds is not None and (isinstance(time_budget_seconds, bool)
+            or not np.isfinite(time_budget_seconds) or time_budget_seconds <= 0):
+        raise ValueError('Optimization time budget must be finite and positive')
+    deadline = None if time_budget_seconds is None else monotonic() + float(time_budget_seconds)
     a=pool[pool.eligible & pool.adjusted_fd_points.notna() & (pool.adjusted_fd_points>0)].copy()
     if exclude_uncertain:a=a[~a.confidence.isin(['low','missing'])]
     fixed_slots = fixed_slots or {}
@@ -126,6 +132,8 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
     excluded = [set(roster) for roster in exclude_rosters]
     sets=[];out=[]
     for t in range(number):
+        if deadline is not None and monotonic() >= deadline:
+            break
         mat=A.tocsr();lo=low.copy();hi=high.copy();extra=[];elow=[];ehigh=[]
         for s in sets:
             extra.append([1 if i in s else 0 for i,j in pairs]);elow.append(0);ehigh.append(max_overlap)
@@ -139,7 +147,10 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         if extra:
             mat=vstack([mat,lil_matrix(np.array(extra)).tocsr()]);lo=np.r_[lo,elow];hi=np.r_[hi,ehigh]
         c=np.array([0 if j in fixed_slots else -float(a.iloc[i][objective_column]) for i,j in pairs])
-        sol=milp(c,integrality=np.ones(n),bounds=Bounds(np.zeros(n),np.ones(n)),constraints=LinearConstraint(mat,lo,hi),options={'time_limit':35})
+        limit = 35 if deadline is None else min(35, deadline - monotonic())
+        if limit <= 0:
+            break
+        sol=milp(c,integrality=np.ones(n),bounds=Bounds(np.zeros(n),np.ones(n)),constraints=LinearConstraint(mat,lo,hi),options={'time_limit':limit})
         if sol.x is None:break
         assignments = [(i, j) for k, (i, j) in enumerate(pairs) if sol.x[k] > .5]
         if fixed_slots or closed_players:
