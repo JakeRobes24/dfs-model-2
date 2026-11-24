@@ -56,3 +56,26 @@ def test_paired_gap_decomposition_never_borrows_other_provider_minutes():
     offset = evaluate(dict(family='a', points=30, paired_minutes=40, weight=1))
     assert offset['paired_gap_driver'] == 'Offsetting time and rate effects'
     assert offset['time_effect'] + offset['rate_effect'] == pytest.approx(0)
+
+
+def test_historical_rate_context_preserves_missing_and_small_samples():
+    import pytest
+    from nba_research_triage import attach_rate_context
+    queue = pd.DataFrame({'fanduel_id': ['a','b','c'], 'projected_fd_points': [30,30,30],
+                          'projected_minutes': [30,30,0], 'paired_projected_fppm': [1.5,1.2,None]})
+    history = pd.DataFrame({'fanduel_id': ['a','b'], 'FD points per minute': [1.1,.8],
+                            'Games with complete FD stats': [3,1],
+                            'Minutes with complete FD stats': [90,15],
+                            'Shot/FT/turnover opportunities per minute': [.7,.4],
+                            'Box-score sources': ['official a','official b']})
+    result = attach_rate_context(queue, history).set_index('fanduel_id')
+    assert result.loc['a','paired_rate_vs_history'] == pytest.approx(.4)
+    assert result.loc['a','daily_rate_vs_history'] == pytest.approx(-.1)
+    assert result.loc['a','historical_rate_context'].startswith('Recent observed')
+    assert result.loc['b','historical_rate_context'] == 'Small observed sample'
+    assert pd.isna(result.loc['c','daily_fppm'])
+    assert pd.isna(result.loc['c','observed_fppm'])
+    assert result.loc['c','historical_rate_context'].startswith('No complete')
+    assert attach_rate_context(queue, pd.DataFrame()).observed_fppm.isna().all()
+    with pytest.raises(ValueError):
+        attach_rate_context(queue, pd.concat([history, history]))
