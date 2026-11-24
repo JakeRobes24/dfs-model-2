@@ -688,6 +688,8 @@ def render_slate(history_slot):
                     accept_multiple_files=True, key='slate_simulation_history')
                 if use_archive:
                     st.caption('Checks up to three earlier saved dates, one broadest contest per date, and eight versions per contest. Uses the latest valid full pre-tip capture and verified final NBA games.')
+                stress = st.checkbox('Compare hypothetical game/team dependence and candidate ceilings', value=True,
+                                     key='slate_simulation_stress')
                 if (use_archive or files) and st.button('Simulate current candidates', key='slate_simulation_run'):
                     try:
                         from nba_simulation import simulate_reviewed_candidates
@@ -707,11 +709,20 @@ def render_slate(history_slot):
                         if not alternative.empty:
                             candidates = pd.concat([candidates, alternative[['fanduel_id']].assign(
                                 lineup='Best distinct alternative')], ignore_index=True)
-                        ranges, pairs, count = simulate_reviewed_candidates(training, scored, candidates, slate)
+                        ranges, pairs, count, outcomes = simulate_reviewed_candidates(
+                            training, scored, candidates, slate, return_draws=True)
                         st.caption(f'{count} earlier verified played training rows; 4,000 shared outcome draws.')
                         st.dataframe(ranges, hide_index=True)
                         if not pairs.empty:
                             st.dataframe(pairs, hide_index=True)
+                        if stress:
+                            from nba_candidate_sensitivity import candidate_sensitivity
+                            ceiling, portfolio = candidate_sensitivity(outcomes, scored, candidates)
+                            st.caption('Fixed hypothetical latent dependence scenarios, not measured correlations. Player distributions are preserved. Best-candidate shares compare only these supplied lineups, not the contest field; P99 is especially noisy.')
+                            st.dataframe(ceiling.round(3), hide_index=True)
+                            st.dataframe(portfolio.round(2), hide_index=True)
+                            st.download_button('Download candidate sensitivity', ceiling.to_csv(index=False),
+                                               'candidate_dependence_sensitivity.csv', mime='text/csv')
                     except (ValueError, KeyError, TypeError, OSError) as exc:
                         st.warning(f'Simulation unavailable: {exc}')
                 elif not use_archive and not files:
