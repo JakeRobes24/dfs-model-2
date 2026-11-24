@@ -32,7 +32,7 @@ def load_prior_replays(history, target_day, token, *, limit=3, version_limit=8,
     from official final boxes, never from generic or manually recorded actuals.
     A bounded scan fails closed if a contest has too many versions to compare.
     """
-    if not token or type(target_day) is not date or not 1 <= limit <= 5 or not 1 <= version_limit <= 12:
+    if not token or type(target_day) is not date or not 1 <= limit <= 8 or not 1 <= version_limit <= 12:
         raise ValueError('A verified archive connection and bounded prior-slate scan are required.')
     replays, report, captures = [], [], []
     for day, contest in prior_contests(history, target_day, limit=limit):
