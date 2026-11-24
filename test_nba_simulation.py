@@ -90,3 +90,41 @@ def test_lineup_review_requires_verified_outcomes_and_excludes_ties_from_probabi
     assert pd.isna(tied.simulation_brier)
     official.loc[9, 'outcome'] = 'Did not play'
     assert simulation.review_lineup_comparisons(rosters, predictions, official).empty
+
+
+def test_reviewed_candidate_simulation_uses_adjusted_scores_and_prior_verified_rows():
+    from nba_simulation import simulate_reviewed_candidates
+
+    def frozen(day):
+        return historical_rows(day, 0).assign(
+            verified_outcome='played', nba_source='NBA official box',
+            replay_before_full_slate_tip=True,
+            replay_captured_at_utc=day + 'T18:00:00Z',
+            replay_cutoff_utc=day + 'T23:00:00Z')
+
+    prior = frozen('2026-11-18')
+    ids = [f'p{i}' for i in range(10)]
+    pool = pd.DataFrame({'fanduel_id': ids, 'eligible': True,
+                         'projected_minutes': 20, 'projected_fd_points': 20,
+                         'adjusted_minutes': 30, 'adjusted_fd_points': 40})
+    rosters = pd.DataFrame({'lineup': ['A'] * 9 + ['B'] * 9,
+                            'fanduel_id': ids[:9] + ids[1:]})
+    ranges, pairs, count = simulate_reviewed_candidates(prior, pool, rosters, '2026-11-20', draws=256)
+    assert count == 24
+    assert ranges.reviewed_fd.tolist() == [360, 360]
+    assert ranges.fd_p50.gt(300).all()
+    assert len(pairs) == 1
+    extra = pd.concat([frozen('2026-11-20'),
+                       frozen('2026-11-17').assign(nba_source=''),
+                       frozen('2026-11-16').assign(replay_before_full_slate_tip=False),
+                       frozen('2026-11-15').assign(replay_captured_at_utc='2026-11-16T00:00:00Z')])
+    result = simulate_reviewed_candidates(pd.concat([prior, extra]), pool, rosters, '2026-11-20', draws=256)
+    pd.testing.assert_frame_equal(ranges, result[0])
+    pd.testing.assert_frame_equal(pairs, result[1])
+    assert result[2] == count
+    with pytest.raises(ValueError, match='verified frozen'):
+        simulate_reviewed_candidates(prior.drop(columns='nba_source'), pool, rosters, '2026-11-20')
+    with pytest.raises(ValueError, match='remain eligible'):
+        simulate_reviewed_candidates(prior, pool.assign(eligible=False), rosters, '2026-11-20')
+    with pytest.raises(ValueError, match='Insufficient earlier'):
+        simulate_reviewed_candidates(extra, pool, rosters, '2026-11-20')
