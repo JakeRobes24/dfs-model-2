@@ -556,6 +556,58 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        if not started and not lineups.empty:
+            with st.expander('Prepare injury contingencies'):
+                st.caption('Prepare before lock. These are hypothetical single-player OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
+                contingency_key = (signature, sha256(lineups.to_csv(index=False).encode()).hexdigest())
+                if st.button('Prepare scratch alternatives', key='slate_contingencies_run'):
+                    try:
+                        from nba_injury_contingency import prepare_contingencies
+                        budget = 45.0
+                        if slate == datetime.now(ET).date():
+                            current = datetime.now(ET)
+                            current_started, current_complete = started_contest_games(schedule, pool.game, current)
+                            if current_started:
+                                raise ValueError('A contest game reached tip; use lock-aware late swap instead.')
+                            if current_complete:
+                                matchups = {matchup_key(game) for game in pool.game}
+                                tips = [pd.to_datetime(entry.get('gameTimeUtc'), utc=True, errors='coerce')
+                                        for entry in schedule
+                                        if matchup_key('@'.join(team_code((entry.get(side) or {}).get('teamTricode', ''))
+                                                                  for side in ('awayTeam', 'homeTeam'))) in matchups]
+                                tips = [tip for tip in tips if pd.notna(tip) and tip.tz_convert(ET).date() == current.date()]
+                                if not tips:
+                                    raise ValueError('Cannot verify contest tip times.')
+                                budget = min(budget, (min(tips)-current).total_seconds()-30)
+                            else:
+                                budget = min(budget, 15.0)
+                                st.warning('Tip times unverified. Alternatives are research only; check FanDuel.')
+                        if budget <= 0:
+                            raise ValueError('Too close to lock to prepare new scratch scenarios.')
+                        report = prepare_contingencies(scored, lineups, time_budget_seconds=budget,
+                            max_overlap=overlap, exclude_uncertain=exclude, objective_column=objective)
+                        if slate == datetime.now(ET).date():
+                            fresh_started, _ = started_contest_games(schedule, pool.game, datetime.now(ET))
+                            if fresh_started:
+                                raise ValueError('Contest reached tip during the solve; do not apply these pre-tip alternatives.')
+                        st.session_state['slate_contingencies_result'] = (contingency_key, report)
+                    except (ValueError, KeyError) as exc:
+                        st.warning(str(exc))
+                saved = st.session_state.get('slate_contingencies_result')
+                if saved is not None and saved[0] == contingency_key:
+                    report = saved[1]
+                    st.caption(f"{report['completed_scenarios']}/{report['uncertain_selected_players']} selected uncertain players have complete alternative portfolios.")
+                    if report['scenarios']:
+                        st.dataframe(pd.DataFrame([{k:v for k,v in scenario.items() if k!='candidates'}
+                                                    for scenario in report['scenarios']]), hide_index=True)
+                        for scenario in report['scenarios']:
+                            candidates = scenario['candidates']
+                            if scenario['status'] == 'complete' and not candidates.empty:
+                                st.download_button(f"Download {scenario['player']} OUT alternatives",
+                                    candidates.to_csv(index=False), f"scratch_{scenario['out_id']}.csv",
+                                    key=f"scratch_download_{scenario['out_id']}")
+                    else:
+                        st.info('No selected players have an unresolved probable, questionable or doubtful designation.')
         # Informational guard: this check ranks adjusted FD means, not GPP ceiling blends.
         if objective != 'adjusted_fd_points':
             st.info('Pre-lock mean-FD ranking sensitivity is not shown for the GPP ceiling-weighted objective; a GPP-objective sensitivity check is not yet validated.')
