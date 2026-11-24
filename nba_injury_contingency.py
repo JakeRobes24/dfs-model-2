@@ -9,6 +9,7 @@ from time import monotonic
 from math import isfinite
 import pandas as pd
 from model import optimize, SLOTS, allowed_slots
+from nba_classic_rules import validate_team_roster
 from collections import Counter
 from itertools import combinations
 
@@ -45,6 +46,7 @@ def prepare_contingencies(pool, baseline, *, time_budget_seconds=45,
         if (Counter(roster.slot)!=Counter(SLOTS) or not roster.fanduel_id.is_unique
                 or not roster.fanduel_id.isin(source.index).all()):
             raise ValueError('Invalid baseline roster')
+        validate_team_roster(pool, roster.fanduel_id)
         rows=source.loc[roster.fanduel_id]
         if (not rows.eligible.all() or rows.salary.sum()>60000
                 or any(s not in allowed_slots(e) for s,e in zip(roster.slot,rows.roster_eligibility))):
