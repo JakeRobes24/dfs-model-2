@@ -476,8 +476,34 @@ def render_slate(history_slot):
                 roster_hash = sha256(roster[['slot', 'fanduel_id']].to_csv(index=False).encode()).hexdigest()
                 swap_key = (signature, roster_hash, tuple(sorted(started)))
                 if st.button('Find strongest legal lineup', key='slate_late_swap_run'):
+                    st.session_state.pop('late_swap_result', None)
                     try:
-                        swap = optimize_late_swap(scored, roster, locked_ids, exclude_uncertain=exclude)
+                        current = datetime.now(ET)
+                        current_started, current_complete = started_contest_games(
+                            schedule, pool.game, current)
+                        if not current_complete or current_started != started:
+                            raise ValueError('Game locks changed; refresh before solving.')
+                        open_games = set(pool.game.map(matchup_key)) - current_started
+                        next_tips = []
+                        for entry in schedule:
+                            away, home = (team_code((entry.get(side) or {}).get('teamTricode', ''))
+                                          for side in ('awayTeam', 'homeTeam'))
+                            if matchup_key(f'{away}@{home}') not in open_games:
+                                continue
+                            tip = pd.to_datetime(entry.get('gameTimeUtc'), utc=True, errors='coerce')
+                            if pd.notna(tip) and tip.tz_convert(ET).date() == current.date():
+                                next_tips.append(tip)
+                        if not next_tips:
+                            raise ValueError('Cannot verify the next open game tip.')
+                        budget = min(35.0, (min(next_tips)-current).total_seconds()-30)
+                        if budget <= 0:
+                            raise ValueError('Too close to the next game lock for a new late-swap solve.')
+                        swap = optimize_late_swap(scored, roster, locked_ids, exclude_uncertain=exclude,
+                                                  time_budget_seconds=budget)
+                        fresh_started, fresh_complete = started_contest_games(
+                            public_slate_schedule(slate), pool.game, datetime.now(ET))
+                        if not fresh_complete or fresh_started != started:
+                            raise ValueError('Game locks changed during optimization; refresh before applying any swaps.')
                     except ValueError as exc:
                         st.error(str(exc))
                     else:
@@ -494,6 +520,12 @@ def render_slate(history_slot):
                     except ValueError as exc:
                         st.error(f'Candidate is not executable: {exc}. Keep your current entry.')
                         layout, steps = None, None
+                    checked_started, checked_complete = started_contest_games(
+                        public_slate_schedule(slate), pool.game, datetime.now(ET))
+                    if not checked_complete or checked_started != started:
+                        st.session_state.pop('late_swap_result', None)
+                        steps = None
+                        st.warning('Game locks changed during validation; refresh and recheck before editing.')
                     if steps is None:
                         st.warning('No verified direct replacement sequence found within the search limit. Keep your current entry.')
                     else:
