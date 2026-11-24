@@ -100,6 +100,27 @@ def render_post_slate():
         st.info('Sign in with the authorized account to review saved slates.')
         return
 
+    with st.expander('Multi-slate experimental projection evaluation'):
+        st.caption('Compare fixed shadow policies over up to five earlier saved dates. Dates through November 24, 2026 are exploratory; subsequent dates form prospective evidence. No scoring changes are made.')
+        if st.button('Evaluate earlier verified slates', key='shadow_multislate_review'):
+            from nba_archive_training import load_prior_replays
+            from nba_shadow_multislate import compare_across_slates
+            try:
+                with st.spinner('Checking prior frozen pools and final NBA results…'):
+                    earlier, coverage = load_prior_replays(history, datetime.now(ET).date(), token, limit=5)
+                st.dataframe(coverage, hide_index=True)
+                details, aggregate = compare_across_slates(earlier)
+                if aggregate.empty:
+                    st.info('No verified earlier replay available.')
+                else:
+                    st.dataframe(aggregate.round(2), hide_index=True)
+                    st.caption('Each policy has its own paired sample. Both player-weighted and equal-date improvements are reported; neither automatically approves a scoring change.')
+                    st.dataframe(details.round(2), hide_index=True)
+                    st.download_button('Download multi-slate policy evaluation', aggregate.to_csv(index=False),
+                                       'shadow_multislate_summary.csv', mime='text/csv')
+            except SOURCE_ERRORS:
+                st.warning('Multi-slate evidence could not be verified. No policy was changed.')
+
     available = {}
     if history is not None and not history.empty:
         rows = history[['slate_date', 'fanduel_id']].drop_duplicates()
