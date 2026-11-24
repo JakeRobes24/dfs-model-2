@@ -442,7 +442,7 @@ def render_slate(history_slot):
                     st.error(str(exc))
             else:
                 sorted_pool = scored.sort_values(['fanduel_name', 'fanduel_id'], kind='stable')
-                labels = {row.fanduel_id: f'{row.fanduel_name} · {row.team}'
+                labels = {row.fanduel_id: f'{row.fanduel_name} · {row.team} · ${int(row.salary):,} · {row.fanduel_id}'
                           + (' · Locked' if row.fanduel_id in locked_ids else '')
                           for row in sorted_pool.itertuples()}
                 eligibility = sorted_pool.roster_eligibility.map(allowed_slots)
@@ -479,8 +479,24 @@ def render_slate(history_slot):
                     comparison.loc[comparison.slot.eq('UTIL'), 'slot'] = ['UTIL 1', 'UTIL 2']
                     st.dataframe(comparison.rename(columns={'entered_player': 'Entered', 'player': 'Candidate',
                                                            'fd_points_delta': 'Projected change'}), hide_index=True)
-                    st.download_button('Download late-swap candidate', swap.to_csv(index=False),
-                                       'late_swap_candidate.csv', key='slate_late_swap_download')
+                    from nba_swap_execution import plan_direct_swaps
+                    try:
+                        steps = plan_direct_swaps(scored, swap.entered_fanduel_id.tolist(),
+                                                  swap.fanduel_id.tolist(), locked_ids)
+                    except ValueError as exc:
+                        st.error(f'Candidate is not executable: {exc}. Keep your current entry.')
+                        steps = None
+                    if steps is None:
+                        st.warning('No verified single-slot replacement sequence. Do not apply this candidate as written.')
+                    elif not steps:
+                        st.info('Keep the current lineup; no replacements required.')
+                    else:
+                        st.caption('Apply these replacements in order. Recheck every game lock and player status in FanDuel first.')
+                        st.dataframe(pd.DataFrame(steps), hide_index=True)
+                        st.download_button('Download ordered swap instructions', pd.DataFrame(steps).to_csv(index=False),
+                                           'late_swap_steps.csv', key='slate_swap_steps_download')
+                        st.download_button('Download late-swap candidate', swap.to_csv(index=False),
+                                           'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
         try:
