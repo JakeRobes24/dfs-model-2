@@ -41,9 +41,14 @@ def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
                 source=float(pool.loc[r.fanduel_id,"adjusted_fd_points"])
             except (TypeError, ValueError) as exc:
                 raise ValueError("Non-numeric candidate or pool projection") from exc
-            if not math.isfinite(points) or abs(points-source)>1e-4:
+            # The optimizer exports two-decimal player scores. Accept either
+            # the full-precision source value or its exact exported rounding,
+            # but calculate every baseline and scenario from the scored pool.
+            if (not math.isfinite(points) or not math.isfinite(source)
+                    or not (math.isclose(points, source, rel_tol=0, abs_tol=1e-9)
+                            or math.isclose(points, round(source, 2), rel_tol=0, abs_tol=1e-9))):
                 raise ValueError("Candidate and scored pool projection mismatch")
-            total += points
+            total += source
         base[name]=total
     # Shared players cannot flip a ranking, but malformed shared inputs still
     # invalidate the advertised full-candidate sensitivity audit.
