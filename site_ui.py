@@ -316,7 +316,7 @@ def render_slate(history_slot):
     from nba_research_triage import disagreement_queue
     queue = disagreement_queue(scored)
     with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
-        st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers.')
+        st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers. Time and rate effects use only same-provider paired points/minutes, and may cover fewer sources than the overall point consensus.')
         if queue.empty:
             st.info('No flagged discrepancies in available evidence; this does not certify complete source coverage.')
         else:
