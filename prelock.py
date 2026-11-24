@@ -9,7 +9,8 @@ OFFICIAL_STATUS = OFFICIAL_OUT | {'available', 'probable', 'questionable', 'doub
 STARTING_STATUS = {'starter', 'bench'}
 
 
-def apply_prelock(pool, evidence, as_of, max_age_hours=6):
+def review_prelock_evidence(pool, evidence, as_of, max_age_hours=6):
+    """Normalize and audit evidence once, before any projection adjustment."""
     missing = REQUIRED - set(evidence.columns)
     if missing:
         raise ValueError(f'Pre-lock evidence missing columns: {sorted(missing)}')
@@ -37,6 +38,11 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
         ['Unknown contest ID', 'Missing source', 'Missing/invalid timestamp', 'After as-of time', 'Stale'],
         default='Reviewed',
     )
+    return notes
+
+
+def apply_prelock(pool, evidence, as_of, max_age_hours=6):
+    notes = review_prelock_evidence(pool, evidence, as_of, max_age_hours)
     result = pool.copy()
     result['prelock_prior_fd_points'] = result.adjusted_fd_points
     result['prelock_change'] = ''
