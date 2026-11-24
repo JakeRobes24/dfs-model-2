@@ -469,33 +469,33 @@ def render_slate(history_slot):
                     swap = saved_swap[1]
                     if not swap.solver_optimal.all():
                         st.warning('The solver found a legal candidate. Its optimality is unverified.')
-                    st.caption(f'{int(swap.locked.sum())} locked · {int(swap.changed.sum())} slots change · '
-                               f'${int(swap.entered_salary.sum()):,} before · ${int(swap.salary.sum()):,} after')
-                    if swap.fd_points_delta.notna().all():
-                        st.caption(f'Projected points change {swap.fd_points_delta.sum():+.2f}')
-                    else:
-                        st.caption('Projected change is unavailable because an affected player lacks a projection.')
-                    comparison = swap[['slot', 'entered_player', 'player', 'locked', 'fd_points_delta']].copy()
-                    comparison.loc[comparison.slot.eq('UTIL'), 'slot'] = ['UTIL 1', 'UTIL 2']
-                    st.dataframe(comparison.rename(columns={'entered_player': 'Entered', 'player': 'Candidate',
-                                                           'fd_points_delta': 'Projected change'}), hide_index=True)
-                    from nba_swap_execution import plan_direct_swaps
+                    from nba_swap_execution import find_executable_layout, LABELS
                     try:
-                        steps = plan_direct_swaps(scored, swap.entered_fanduel_id.tolist(),
-                                                  swap.fanduel_id.tolist(), locked_ids)
+                        layout, steps = find_executable_layout(
+                            scored, swap.entered_fanduel_id.tolist(), swap.fanduel_id.tolist(), locked_ids)
                     except ValueError as exc:
                         st.error(f'Candidate is not executable: {exc}. Keep your current entry.')
-                        steps = None
+                        layout, steps = None, None
                     if steps is None:
-                        st.warning('No verified single-slot replacement sequence. Do not apply this candidate as written.')
+                        st.warning('No verified direct replacement sequence found within the search limit. Keep your current entry.')
                     elif not steps:
                         st.info('Keep the current lineup; no replacements required.')
                     else:
+                        lookup = scored.set_index('fanduel_id')
+                        final = lookup.loc[list(layout), ['fanduel_name', 'team', 'salary']].reset_index()
+                        final.insert(0, 'slot', list(LABELS))
+                        final['entered_player'] = swap.entered_player.tolist()
+                        final['locked'] = final.fanduel_id.isin(locked_ids)
+                        st.caption(f'{int(final.locked.sum())} locked · {len(steps)} ordered replacements · '
+                                   f'${int(swap.entered_salary.sum()):,} before · ${int(final.salary.sum()):,} after')
+                        if swap.fd_points_delta.notna().all():
+                            st.caption(f'Projected points change {swap.fd_points_delta.sum():+.2f}')
+                        st.dataframe(final, hide_index=True)
                         st.caption('Apply these replacements in order. Recheck every game lock and player status in FanDuel first.')
                         st.dataframe(pd.DataFrame(steps), hide_index=True)
                         st.download_button('Download ordered swap instructions', pd.DataFrame(steps).to_csv(index=False),
                                            'late_swap_steps.csv', key='slate_swap_steps_download')
-                        st.download_button('Download late-swap candidate', swap.to_csv(index=False),
+                        st.download_button('Download late-swap candidate', final.to_csv(index=False),
                                            'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
