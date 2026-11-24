@@ -52,6 +52,10 @@ def test_current_site_import_review_and_optimize(monkeypatch):
         comparison = next(t.value for t in app.dataframe if 'Best distinct alternative FD' in t.value)
         assert len(comparison)==4
         assert any('Lineup 1 ·' in x.label for x in app.expander)
+        app.button(key='slate_clear_uploads').click().run()
+        assert not app.exception
+        assert all(w.key != 'slate_optimize' for w in app.button)
+        assert 'slate_retained_uploads' not in app.session_state
         app.radio(key='site_view').set_value('Post-slate review').run()
         assert not app.exception
         assert any('Sign in with the authorized account' in x.value for x in app.info)
