@@ -103,8 +103,17 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
             labels.append('Official available supersedes contest OUT; reassess role/minutes')
         if result.at[idx, 'eligible']:
             estimates = entries[entries.minutes.notna() & entries.independent_group.ne('')]
-            latest = estimates.drop_duplicates('independent_group', keep='last')
-            if len(latest) >= 2 and latest.minutes.max() - latest.minutes.min() <= 4:
+            # Estimates predating a reviewed official role/status change
+            # cannot confirm the player's current minutes.
+            changes = official.loc[official.status.str.casefold().isin(OFFICIAL_STATUS)
+                                   | official.starter.str.casefold().isin(STARTING_STATUS)]
+            if not changes.empty:
+                estimates = estimates.loc[estimates.observed_at.ge(changes.observed_at.max())]
+            latest = estimates.loc[estimates.observed_at.eq(
+                estimates.groupby('independent_group').observed_at.transform('max'))]
+            conflict = latest.groupby('independent_group').minutes.nunique().gt(1).any()
+            latest = latest.drop_duplicates('independent_group', keep='last')
+            if not conflict and len(latest) >= 2 and latest.minutes.max() - latest.minutes.min() <= 4:
                 minutes = float(latest.minutes.median())
                 result.at[idx, 'adjusted_minutes'] = minutes
                 if pd.notna(player.fppm):
