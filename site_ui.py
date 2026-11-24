@@ -301,6 +301,18 @@ def render_slate(history_slot):
     if missing:
         st.warning(f'{missing} eligible players lack usable projections. Results are provisional until those players are reviewed.')
     st.caption(f'{len(historical)} players with recent minutes evidence · {starters} official starters matched')
+    usable = scored.loc[scored.eligible & scored.adjusted_fd_points.gt(0)]
+    blends = int(usable.blend_status.eq('60/40 blend applied').sum())
+    independent_count = int(usable.projection_source_count.ge(2).sum())
+    st.caption(f'Independent point coverage (2+ fresh sources): {independent_count}/{len(usable)} usable players · 60/40 blend applied: {blends}/{len(usable)}')
+    if not blends:
+        st.warning('No verified 60/40 blends applied. Scores use DAILY and applicable reviewed minutes/status adjustments; independent scoring coverage is incomplete.')
+    if slate < now.date():
+        st.info('Historical slate: this session does not reconstruct the original pre-lock research. Use frozen archived projections for a true historical replay.')
+    with st.expander('Scoring coverage and blend exclusions'):
+        st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
+        st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
+
     archived_ownership = None
     archived_market_events = ()
     with st.expander('Sources and checks'):
@@ -405,7 +417,7 @@ def render_slate(history_slot):
                           'roster_eligibility', 'injury_flag',
                           'prelock_status', 'prelock_starter', 'prelock_role', 'projected_minutes', 'recent_mpg', 'independent_minutes',
                           'adjusted_minutes', 'projected_fd_points', 'independent_fd_points',
-                          'blended_fd_points', 'projection_source_estimates', 'projection_method',
+                          'blended_fd_points', 'projection_source_estimates', 'projection_source_count', 'projection_method', 'blend_status',
                           'minutes_method', 'import_issue', 'identity_match']]
         st.dataframe(display.rename(columns={
             'fanduel_name':'Player', 'projected_fd_points':'DAILY FD', 'adjusted_fd_points':'Adjusted FD',
