@@ -43,6 +43,10 @@ def test_current_site_import_review_and_optimize(monkeypatch):
         table = next(t.value for t in app.dataframe if {'Player','Adjusted FD','DAILY FD'} <= set(t.value))
         assert len(table)==36
         assert table['Adjusted FD'].tolist()==pytest.approx((table['DAILY FD']+1.2).tolist())
+        # Simulate missing uploader bytes after a successful reconciliation.
+        app.file_uploader(key='slate_daily').clear().run()
+        assert not app.exception
+        assert any('Recovered the last reconciled CSV pair' in x.value for x in app.warning)
         app.button(key='slate_optimize').click().run()
         assert not app.exception and not app.error
         comparison = next(t.value for t in app.dataframe if 'Best distinct alternative FD' in t.value)
