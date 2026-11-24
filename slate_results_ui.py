@@ -185,6 +185,24 @@ def render_post_slate():
         st.caption('Each row compares the two forecasts for the same nine players. Errors appear once both forecasts '
                    'and all results are available. A confirmed did-not-play result contributes zero.')
         st.dataframe(summary.round(2), hide_index=True)
+    if lineups is not None and not lineups.empty and set(finals) == set(games):
+        with st.expander('Historical contest-field comparison'):
+            st.caption('Optional reviewed entry sample from one contest. Use anonymous entry IDs, field_id, source, slot and fanduel_id. Include both UTIL rows. This compares only supplied entries and cannot authenticate the sample or infer official ranks or prizes.')
+            field_file = st.file_uploader('Historical contest entries CSV', type='csv',
+                                          key=f'field_entries_{slate}_{contest}_{version[:12]}')
+            if field_file is not None:
+                try:
+                    from nba_historical_field import review_supplied_field
+                    if field_file.size > MAX_PACKET:
+                        raise ValueError('Use a field sample smaller than 8 MiB.')
+                    field = pd.read_csv(StringIO(field_file.getvalue().decode('utf-8-sig')), dtype=str)
+                    field_summary, field_exposure = review_supplied_field(pool, lineups, field, results)
+                    st.dataframe(field_summary.round(2), hide_index=True)
+                    st.caption('Repeated player sets with distinct entry IDs are counted separately. Ownership below applies only to the supplied entries.')
+                    st.download_button('Download sample field ownership', field_exposure.to_csv(index=False),
+                                       f'{slate}_{contest}_sample_field_ownership.csv', mime='text/csv')
+                except (ValueError, TypeError, KeyError, pd.errors.ParserError) as exc:
+                    st.warning(f'Field comparison unavailable: {exc}')
     flags = results.loc[~(played | dnp) | disagreements]
     if not flags.empty:
         st.subheader('Results to review')
