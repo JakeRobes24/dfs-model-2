@@ -80,6 +80,21 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
                 result.at[idx, 'adjusted_fd_points'] = 0.0
             result.at[idx, 'minutes_method'] = 'official_out'
             result.at[idx, 'confidence'] = 'excluded'
+        # A fresh official available decision may correct a stale contest OUT.
+        # Restore the original forecast, never the zeroed OUT projection.
+        if (result.at[idx, 'prelock_status'] == 'available'
+                and str(player.get('injury_flag', '')).upper() in {'O', 'OUT'}
+                and player.get('minutes_method') == 'contest_out'):
+            result.at[idx, 'eligible'] = True
+            baseline = pd.to_numeric(player.get('projected_minutes'), errors='coerce')
+            rate = pd.to_numeric(player.get('fppm'), errors='coerce')
+            usable = pd.notna(baseline) and np.isfinite(baseline) and 0 < baseline <= 48
+            result.at[idx, 'adjusted_minutes'] = float(baseline) if usable else np.nan
+            result.at[idx, 'adjusted_fd_points'] = (float(rate) * baseline
+                if usable and pd.notna(rate) and np.isfinite(rate) and rate >= 0 else np.nan)
+            result.at[idx, 'minutes_method'] = 'official_available_baseline'
+            result.at[idx, 'confidence'] = 'low' if usable else 'missing'
+            labels.append('Official available supersedes contest OUT; reassess role/minutes')
         if result.at[idx, 'eligible']:
             estimates = entries[entries.minutes.notna() & entries.independent_group.ne('')]
             latest = estimates.drop_duplicates('independent_group', keep='last')
