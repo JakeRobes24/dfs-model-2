@@ -316,7 +316,7 @@ def render_slate(history_slot):
     from nba_research_triage import attach_rate_context, disagreement_queue
     queue = disagreement_queue(scored)
     if not queue.empty:
-        recent_rates, _ = opportunity_evidence(scored, rotations, slate)
+        recent_rates, recent_absences = opportunity_evidence(scored, rotations, slate)
         queue = attach_rate_context(queue, recent_rates)
     with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
         st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers. Time and rate effects use only same-provider paired points/minutes, and may cover fewer sources than the overall point consensus. Historical production is minutes-weighted over complete recent official box scores; sample size is shown. This is descriptive evidence, not a matchup or usage-adjusted forecast.')
@@ -326,6 +326,25 @@ def render_slate(history_slot):
             st.dataframe(queue.drop(columns='research_priority'), hide_index=True)
             st.download_button('Download disagreement review CSV', queue.to_csv(index=False),
                                file_name=f'{slate}-research-disagreements.csv', mime='text/csv')
+            if not recent_rates.empty:
+                role_fields = ['fanduel_id', 'Player', 'Minutes as starter', 'Minutes off bench',
+                               'FD/min as starter', 'FD/min off bench', 'Starter complete FD games',
+                               'Bench complete FD games', 'Starter complete FD minutes',
+                               'Bench complete FD minutes', 'Starter/bench FD rate evidence',
+                               'Opportunities/min as starter', 'Opportunities/min off bench',
+                               'Starter/bench opportunity evidence']
+                role_review = recent_rates.loc[recent_rates.fanduel_id.isin(queue.fanduel_id), role_fields]
+                if not role_review.empty:
+                    st.caption('Observed starter and bench splits for flagged players. Neither role is inferred from missing starter status.')
+                    st.dataframe(role_review.drop(columns='fanduel_id'), hide_index=True)
+            if not recent_absences.empty:
+                absence_review = recent_absences.loc[recent_absences.fanduel_id.isin(queue.fanduel_id)]
+                if not absence_review.empty:
+                    st.caption('Observed splits for flagged players with currently OUT teammates. Comparisons are not causal; overlapping absences must not be added together.')
+                    st.dataframe(absence_review.drop(columns=['fanduel_id', 'Box-score sources']), hide_index=True)
+                    st.download_button('Download flagged-player absence evidence', absence_review.to_csv(index=False),
+                                       file_name=f'{slate}-disagreement-absence-evidence.csv', mime='text/csv')
+
 
     archived_ownership = None
     archived_market_events = ()
