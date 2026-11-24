@@ -873,7 +873,7 @@ def render_slate(history_slot):
                                 st.info('No edits required for this candidate.')
                     except (ValueError, KeyError, TypeError) as exc:
                         st.warning(str(exc))
-    if archived_ownership and not lineups.empty:
+    if archived_ownership and lineups is not None and not lineups.empty:
         with st.expander('Candidate ownership and exposure review'):
             st.caption('Provider reference ownership, not actual contest ownership. Exposure is the share of supplied candidate lineups containing each player. Unknown estimates remain unknown; partial lineup totals are not ranked.')
             try:
