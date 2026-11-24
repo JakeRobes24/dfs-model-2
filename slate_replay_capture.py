@@ -37,6 +37,10 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, mar
             known_start = (pd.notna(started) and started <= capture
                            and started.tz_convert('America/New_York').date() == slate)
             cutoff = min(stamp, started) if known_start else stamp
+            # A game reported underway or final must never qualify as pre-tip,
+            # even if its scheduled tip is in the future or actual start absent.
+            if game.get('gameStatus') in (2, 3, '2', '3'):
+                cutoff = min(cutoff, capture)
             candidates[matchup_key(f'{away}@{home}')].append((stamp, cutoff))
     tips = {game: stamps[0] for game, stamps in candidates.items() if len(stamps) == 1}
     keys = pool.game.map(matchup_key)
