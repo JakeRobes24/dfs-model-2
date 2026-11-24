@@ -46,3 +46,49 @@ def compare_ownership(replay, actual):
     if not matched.empty:
         matched['error_pp'] = pd.to_numeric(matched.ownership_reference_pct) - matched.actual_ownership_pct
     return matched
+
+
+def candidate_ownership_review(pool, rosters, as_of, slate):
+    """Compare reference ownership to candidate exposure, not field duplication odds."""
+    import numpy as np
+    if not set(OWNERSHIP_FIELDS) <= set(pool):
+        return pd.DataFrame(), pd.DataFrame()
+    if not pool.fanduel_id.is_unique or rosters.empty or not {'lineup','fanduel_id'} <= set(rosters):
+        raise ValueError('Use a unique contest pool and candidate rosters.')
+    if rosters.lineup.isna().any() or not rosters.fanduel_id.isin(pool.fanduel_id).all():
+        raise ValueError('All candidates must match the contest pool.')
+    counts = rosters.groupby('lineup').fanduel_id.agg(['size','nunique'])
+    if not counts.eq(9).all().all():
+        raise ValueError('Each candidate must have nine unique players.')
+    now = pd.Timestamp(as_of)
+    if now.tzinfo is None or now.tz_convert('America/New_York').date() != slate:
+        raise ValueError('Ownership comparison requires the current slate clock.')
+    stamps = pd.to_datetime(pool.ownership_reference_at_utc, utc=True, errors='coerce', format='mixed')
+    age = (now - stamps).dt.total_seconds() / 3600
+    pct = pd.to_numeric(pool.ownership_reference_pct, errors='coerce')
+    valid = (pct.between(0,100) & age.between(0,6)
+             & stamps.dt.tz_convert('America/New_York').dt.date.eq(slate)
+             & pool.ownership_reference_source.fillna('').astype(str).str.strip().ne('')
+             & pool.ownership_reference_slate.fillna('').astype(str).str.strip().ne(''))
+    references = pool.assign(reference_pct=pct.where(valid))
+    # Never combine rows from different provider snapshots.
+    covered = references.loc[valid, list(OWNERSHIP_FIELDS[1:])]
+    if len(covered.drop_duplicates()) > 1:
+        raise ValueError('Use one matched ownership source snapshot at a time.')
+    joined = rosters[['lineup','fanduel_id']].merge(
+        references[['fanduel_id','fanduel_name','reference_pct','adjusted_fd_points']],
+        on='fanduel_id', validate='many_to_one')
+    summary = []
+    for label, rows in joined.groupby('lineup', sort=False):
+        own = rows.reference_pct
+        n = int(own.notna().sum())
+        summary.append({'Lineup': label, 'Matched ownership players': n,
+                        'Mean reference ownership (matched only)': own.mean(),
+                        'Total reference ownership (complete only)': own.sum() if n == 9 else np.nan,
+                        'Coverage': 'Complete candidate' if n == 9 else 'Partial; do not rank totals'})
+    exposure = joined.groupby('fanduel_id').size() * 100 / len(counts)
+    players = references.loc[references.fanduel_id.isin(exposure.index),
+                             ['fanduel_id','fanduel_name','reference_pct','adjusted_fd_points']].copy()
+    players['candidate_exposure_pct'] = players.fanduel_id.map(exposure)
+    players['exposure_minus_reference_pp'] = players.candidate_exposure_pct - players.reference_pct
+    return pd.DataFrame(summary), players.sort_values(['candidate_exposure_pct','fanduel_id'], ascending=[False,True])
