@@ -84,3 +84,20 @@ def test_alternative_layout_keeps_same_players_and_minimizes_moves():
     layout,steps=find_executable_layout(p,b,a)
     assert set(layout)==set(a)
     assert [s["slot"] for s in steps]==["UTIL 2","SG"]
+
+
+@pytest.mark.parametrize("salary",[6500.5,-1,float("nan"),float("inf")])
+def test_invalid_salary_rejected(salary):
+    p,b=fixture()
+    p["salary"]=p.salary.astype(float)
+    p.loc[p.fanduel_id.eq("0"),"salary"]=salary
+    with pytest.raises(ValueError,match="Invalid contest salary"):
+        plan_direct_swaps(p,b,b)
+
+
+def test_retained_open_ineligible_player_rejected():
+    p,b=fixture()
+    p.loc[p.fanduel_id.eq("0"),"eligible"]=False
+    with pytest.raises(ValueError,match="retained open"):
+        plan_direct_swaps(p,b,b)
+    assert plan_direct_swaps(p,b,b,{"0"})==[]
