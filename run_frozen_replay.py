@@ -13,6 +13,7 @@ import pandas as pd
 
 from market_evidence import review_player_props, summarize_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
+from nba_shadow_research import compare_shadow_forecasts
 from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
 from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
 from slate_import import game_code, matchup_key
@@ -48,6 +49,7 @@ def run(pool_path, day, output_path):
 
     replay = build_replay_rows(pool, results, day)
     accuracy = compare_frozen_projections(replay)
+    shadow = compare_shadow_forecasts(replay)
     methods = compare_adjustment_methods(replay)
     decomposition = decompose_played_errors(replay)
     decomposition_summary = summarize_decomposition(decomposition)
@@ -72,6 +74,8 @@ def run(pool_path, day, output_path):
             zipped.writestr('projection_error_decomposition_coverage.csv', decomposition_coverage.to_csv(index=False))
             zipped.writestr('player_decision_audit.csv', decisions.to_csv(index=False))
             zipped.writestr('player_decision_summary.csv', decision_summary.to_csv(index=False))
+            if not shadow.empty:
+                zipped.writestr('shadow_research_comparison.csv', shadow.to_csv(index=False))
             if not methods.empty:
                 zipped.writestr('adjustment_comparison.csv', methods.to_csv(index=False))
             if not props.empty:
