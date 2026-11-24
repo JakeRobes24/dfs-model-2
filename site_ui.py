@@ -544,14 +544,35 @@ def render_slate(history_slot):
                         raise ValueError('Lock changed during optimization. Do not enter these pre-tip candidates.')
                 if not result[0].empty:
                     st.session_state[key] = (signature, result)
+                    if result[0].lineup.nunique() == 4:
+                        # Preserve a complete portfolio independently of changing
+                        # research inputs. Never relabel its old projections as current.
+                        st.session_state['last_complete_portfolio'] = (
+                            prepared_key, signature, result[0].copy(deep=True))
                 else:
                     st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
             st.error(str(exc))
     if key in st.session_state and st.session_state[key][0] != signature:
         del st.session_state[key]
-        st.info('Research or slate inputs changed. Generate lineups again.')
+        st.info('Research or slate inputs changed. Generate fresh candidates; the last complete portfolio is retained for reference when available.')
     st.header('4. Review results')
+    prior = st.session_state.get('last_complete_portfolio')
+    if prior is not None and prior[0] == prepared_key:
+        active = st.session_state.get(key)
+        if (prior[1] != signature or active is None
+                or active[1][0].lineup.nunique() < 4):
+            with st.expander('Last complete portfolio — reference only', expanded=True):
+                st.warning('Earlier candidate snapshot, not a verified current entry or fresh recommendation. Do not submit these unchanged without checking current statuses, projections and locks.')
+                historical = prior[2][['lineup','slot','fanduel_id','player','salary','adjusted_fd_points']].copy()
+                historical = historical.rename(columns={'adjusted_fd_points':'previous_fd_points'})
+                lookup = scored.set_index('fanduel_id')
+                historical['current_fd_points'] = historical.fanduel_id.map(lookup.adjusted_fd_points)
+                historical['current_eligible'] = historical.fanduel_id.map(lookup.eligible).fillna(False)
+                historical['current_game_started'] = historical.fanduel_id.map(
+                    lookup.game.map(matchup_key).isin(started)).fillna(False)
+                st.dataframe(historical, hide_index=True)
+                st.caption('No historical portfolio is substituted into current optimization or the reviewed-slate archive. Started-game flags depend on the schedule available to this session.')
     lineups = None
     if key in st.session_state:
         lineups, comparison, alternative = st.session_state[key][1]
