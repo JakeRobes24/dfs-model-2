@@ -1,5 +1,6 @@
 """Local, auditable DFS history store. SQLite file must live on persistent disk in production."""
 import hashlib
+from math import isfinite
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -55,6 +56,7 @@ def import_actuals(db, csv_path, slate_date, allow_overwrite=False):
         raise ValueError('Missing or duplicate actuals player IDs')
     recorded = 0
     skipped = 0
+    unchanged = 0
     now = datetime.now(timezone.utc).isoformat()
     with db:
         for _, row in data.iterrows():
@@ -63,15 +65,26 @@ def import_actuals(db, csv_path, slate_date, allow_overwrite=False):
                 skipped += 1
                 continue
             pid = str(row.fanduel_id)
-            if not db.execute('SELECT 1 FROM players WHERE fanduel_id=?',(pid,)).fetchone():
-                raise ValueError(f'Unknown FanDuel ID in actuals: {pid}')
+            if not db.execute('''SELECT 1 FROM snapshot_players sp
+                                 JOIN snapshots s ON s.snapshot_id=sp.snapshot_id
+                                 WHERE s.slate_date=? AND sp.fanduel_id=?''',(slate_date,pid)).fetchone():
+                raise ValueError(f'Unknown FanDuel ID in actuals for this slate: {pid}')
+            if ((minutes is not None and (not isfinite(minutes) or minutes < 0))
+                    or (points is not None and not isfinite(points))):
+                raise ValueError(f'Invalid actual numeric result for {pid}')
             source = _str(row.get('actuals_source',''))
-            previous = db.execute('SELECT actual_minutes,actual_fd_points FROM actuals WHERE slate_date=? AND fanduel_id=?',(slate_date,pid)).fetchone()
-            if previous and (previous != (minutes,points)) and not allow_overwrite:
+            previous = db.execute('SELECT actual_minutes,actual_fd_points,source FROM actuals WHERE slate_date=? AND fanduel_id=?',(slate_date,pid)).fetchone()
+            if previous and previous[:2] == (minutes,points):
+                # Preserve original provenance and timestamp on identical retry.
+                # Explicit correction may update the source if approved.
+                if not allow_overwrite or previous[2] == source:
+                    unchanged += 1
+                    continue
+            if previous and previous[:2] != (minutes,points) and not allow_overwrite:
                 raise ValueError(f'Conflicting actuals for {pid}; manual approval required')
             db.execute('INSERT INTO actuals VALUES (?,?,?,?,?,?) ON CONFLICT(slate_date,fanduel_id) DO UPDATE SET actual_minutes=excluded.actual_minutes,actual_fd_points=excluded.actual_fd_points,source=excluded.source,recorded_at=excluded.recorded_at',(slate_date,pid,minutes,points,source,now))
             recorded += 1
-    return {'recorded':recorded,'skipped_without_results':skipped}
+    return {'recorded':recorded,'skipped_without_results':skipped,'unchanged':unchanged}
 
 def audit_summary(db, slate_date):
     return db.execute('''SELECT COUNT(*),SUM(CASE WHEN a.actual_fd_points IS NOT NULL THEN 1 ELSE 0 END),SUM(CASE WHEN a.actual_minutes IS NOT NULL THEN 1 ELSE 0 END) FROM snapshot_players sp JOIN snapshots s ON sp.snapshot_id=s.snapshot_id LEFT JOIN actuals a ON a.slate_date=s.slate_date AND a.fanduel_id=sp.fanduel_id WHERE s.slate_date=?''',(slate_date,)).fetchone()
