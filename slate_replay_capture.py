@@ -114,7 +114,9 @@ def build_replay_rows(pool, results, slate):
                 for note in notes):
             raise ValueError('The saved replay evidence contains an invalid source timestamp.')
 
-    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | {'replay_player_props_json'}
+    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | {
+        'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc',
+    }
     rows = pool[sorted(projection_fields | replay_fields | (optional_fields & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
     rows['replay_before_full_slate_tip'] = True
