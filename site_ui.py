@@ -873,6 +873,20 @@ def render_slate(history_slot):
                                 st.info('No edits required for this candidate.')
                     except (ValueError, KeyError, TypeError) as exc:
                         st.warning(str(exc))
+    if archived_ownership and not lineups.empty:
+        with st.expander('Candidate ownership and exposure review'):
+            st.caption('Provider reference ownership, not actual contest ownership. Exposure is the share of supplied candidate lineups containing each player. Unknown estimates remain unknown; partial lineup totals are not ranked.')
+            try:
+                from nba_ownership import candidate_ownership_review
+                ownership_pool = archive_ownership(scored, *archived_ownership)
+                ownership_summary, exposure = candidate_ownership_review(
+                    ownership_pool, lineups, datetime.now(ET), slate)
+                st.dataframe(ownership_summary.round(2), hide_index=True)
+                st.dataframe(exposure.round(2), hide_index=True)
+                st.download_button('Download candidate exposure review', exposure.to_csv(index=False),
+                                   'candidate_ownership_exposure.csv', mime='text/csv')
+            except (ValueError, TypeError, KeyError) as exc:
+                st.warning(f'Ownership comparison unavailable: {exc}')
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
     archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
