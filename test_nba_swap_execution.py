@@ -6,7 +6,7 @@ from nba_swap_execution import plan_direct_swaps
 
 def fixture():
     rows = [{"fanduel_id": str(i), "fanduel_name": "Player "+str(i),
-             "team": "CHA", "salary": 6500, "eligible": True,
+             "team": ["CHA","BOS","CHA","BOS","NYK","NYK","CHA","BOS","NYK"][i], "salary": 6500, "eligible": True,
              "roster_eligibility": s} for i,s in enumerate(SLOTS)]
     rows[1]["salary"] = 7500
     rows[6]["salary"] = 6500
