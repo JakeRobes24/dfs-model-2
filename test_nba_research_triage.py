@@ -26,3 +26,33 @@ def test_disagreement_queue_distinguishes_consensus_conflict_and_missing():
     assert 'Missing usable' in reasons.d
     pd.testing.assert_frame_equal(pool, original)
     assert disagreement_queue(pool.iloc[0:0]).empty
+
+
+def test_paired_gap_decomposition_never_borrows_other_provider_minutes():
+    import json
+    import pytest
+    from nba_research_triage import paired_gap_breakdown
+
+    def evaluate(*notes):
+        return paired_gap_breakdown(30, 30, json.dumps(notes))
+
+    minutes_only = dict(family='a', points=40, paired_minutes=40, weight=1)
+    rate_only = dict(family='b', points=45, paired_minutes=30, weight=.5)
+    unpaired = dict(family='c', points=90, weight=1)
+    one = evaluate(minutes_only, unpaired)
+    assert one['paired_source_count'] == 1
+    assert one['time_effect'] == 10
+    assert one['rate_effect'] == 0
+    assert one['paired_gap_driver'] == 'Mainly projected minutes'
+    two = evaluate(rate_only)
+    assert two['time_effect'] == 0 and two['rate_effect'] == 15
+    assert two['paired_gap_driver'] == 'Mainly projected production rate'
+    both = evaluate(minutes_only, rate_only, unpaired)
+    assert both['paired_source_count'] == 2
+    assert both['paired_point_gap'] == pytest.approx(17.5 / 1.5)
+    assert both['time_effect'] + both['rate_effect'] == pytest.approx(both['paired_point_gap'])
+    assert evaluate(unpaired)['paired_gap_driver'] == 'Paired evidence unavailable'
+    assert evaluate(minutes_only, minutes_only)['paired_source_count'] == 0
+    offset = evaluate(dict(family='a', points=30, paired_minutes=40, weight=1))
+    assert offset['paired_gap_driver'] == 'Offsetting time and rate effects'
+    assert offset['time_effect'] + offset['rate_effect'] == pytest.approx(0)
