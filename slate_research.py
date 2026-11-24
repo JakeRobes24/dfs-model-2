@@ -688,7 +688,8 @@ def points_consensus(projections, evidence, as_of):
         return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail'])
     frame['family'] = frame.source.map(POINT_SOURCE_GROUPS)
     dated = frame.observed_at.astype('string').fillna('').str.strip()
-    has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})
+    has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
+    frame['time'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
     frame['points'] = pd.to_numeric(frame.points, errors='coerce')
     age = (pd.Timestamp(as_of) - frame.time).dt.total_seconds() / 3600
     frame = frame.loc[frame.family.notna() & age.between(0, 6) & frame.points.between(0, 150)].copy()
