@@ -95,3 +95,18 @@ def test_replay_export_rechecks_saved_timing_and_preserves_unresolved_results():
         build_replay_rows(pool, results, day)
     with pytest.raises(ValueError, match='before every game'):
         build_replay_rows(saved.assign(replay_captured_at_utc='2026-11-21T00:00:00Z'), results, day)
+
+
+def test_started_or_final_schedule_status_blocks_pretip_capture_without_actual_start():
+    day = date(2026, 11, 24)
+    pool = pd.DataFrame({'fanduel_id':['123-1'], 'game':['BOS@NYK']})
+    schedule = dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},
+                    gameTimeUtc='2026-11-24T23:00:00Z')
+    for status in (2,3,'2','3'):
+        saved = capture_pool(pool,pd.DataFrame(),[dict(schedule,gameStatus=status)],
+                             day,'2026-11-24T22:00:00Z',('a'*64,'b'*64))
+        assert not saved.replay_before_full_slate_tip.any()
+        assert saved.replay_timing.iloc[0]=='at_or_after_cutoff'
+    scheduled = capture_pool(pool,pd.DataFrame(),[dict(schedule,gameStatus=1)],
+                             day,'2026-11-24T22:00:00Z',('a'*64,'b'*64))
+    assert scheduled.replay_before_full_slate_tip.all()
