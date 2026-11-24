@@ -315,11 +315,12 @@ def render_slate(history_slot):
 
     from nba_research_triage import attach_rate_context, disagreement_queue
     queue = disagreement_queue(scored)
+    from nba_matchup_context import matchup_context
+    from nba_shadow_research import freeze_research_features
+    recent_rates, recent_absences = opportunity_evidence(scored, rotations, slate)
+    matchup = matchup_context(scored, rotations, slate)
     if not queue.empty:
-        recent_rates, recent_absences = opportunity_evidence(scored, rotations, slate)
         queue = attach_rate_context(queue, recent_rates)
-        from nba_matchup_context import matchup_context
-        matchup = matchup_context(scored.loc[scored.fanduel_id.isin(queue.fanduel_id)], rotations, slate)
         if not matchup.empty:
             queue = queue.merge(matchup, on='fanduel_id', how='left', validate='one_to_one')
     with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
@@ -854,6 +855,7 @@ def render_slate(history_slot):
                         st.warning(str(exc))
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
+    archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes), market_events=archived_market_events)
 
