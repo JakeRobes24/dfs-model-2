@@ -67,10 +67,26 @@ def opportunity_evidence(pool, rotations, slate):
             continue
         minutes = [row['minutes'] for row in logs]
         starts_known = [row['started'] for row in logs if row.get('started') is not None]
+        bench_logs = [row for row in logs if row.get('started') is False]
+        start_logs = [row for row in logs if row.get('started') is True]
+        role_fd = rate_comparison(bench_logs, start_logs, FD_WEIGHTS)
+        role_opp = rate_comparison(bench_logs, start_logs, OPPORTUNITY_WEIGHTS)
         summaries.append({
             'fanduel_id': player.fanduel_id, 'Player': player.fanduel_name, 'Team': player.team,
             'Games observed': len(logs), 'Known starts': sum(starts_known) if starts_known else None,
             'Games with starter status': len(starts_known), 'Last played': logs[-1]['game_date'],
+            'Minutes as starter': mean(row['minutes'] for row in start_logs) if start_logs else None,
+            'Minutes off bench': mean(row['minutes'] for row in bench_logs) if bench_logs else None,
+            'FD/min as starter': role_fd['without_rate'],
+            'FD/min off bench': role_fd['with_rate'],
+            'Starter complete FD games': role_fd['without_games'],
+            'Bench complete FD games': role_fd['with_games'],
+            'Starter complete FD minutes': role_fd['without_minutes'],
+            'Bench complete FD minutes': role_fd['with_minutes'],
+            'Starter/bench FD rate evidence': 'Observed comparison' if role_fd['sufficient'] else 'Small or incomplete sample',
+            'Opportunities/min as starter': role_opp['without_rate'],
+            'Opportunities/min off bench': role_opp['with_rate'],
+            'Starter/bench opportunity evidence': 'Observed comparison' if role_opp['sufficient'] else 'Small or incomplete sample',
             'Last 5 minutes': mean(minutes[-5:]) if len(logs) >= 5 else None,
             'Last 10 minutes': mean(minutes[-10:]) if len(logs) >= 10 else None,
             'FD points per minute': stat_rate(logs, FD_WEIGHTS),
