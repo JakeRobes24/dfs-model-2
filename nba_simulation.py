@@ -182,3 +182,46 @@ def walk_forward_ranges(history, *, draws=4000, seed=42, center_on_projection=Tr
             report[f'{metric}_daily_mae'] = (paired[baseline] - outcomes).abs().mean()
         reports.append(report)
     return pd.DataFrame(reports)
+
+
+def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, draws=4000, seed=42):
+    """Informational lineup comparison centered on reviewed, rather than DAILY, scores.
+
+    Use earlier verified played rows from frozen pre-tip replay exports. DAILY
+    residuals applied to reviewed means are experimental, not an optimizer objective.
+    """
+    required = {'slate_date', 'fanduel_id', 'eligible', 'daily_minutes', 'daily_points',
+                'actual_minutes', 'actual_points', 'verified_outcome', 'nba_source',
+                'replay_before_full_slate_tip', 'replay_captured_at_utc', 'replay_cutoff_utc'}
+    if not required <= set(history):
+        raise ValueError('Use verified frozen player_replay.csv exports, not generic history or actuals.')
+    history = history.reset_index(drop=True).copy()
+    captured = pd.to_datetime(history.replay_captured_at_utc, utc=True, errors='coerce', format='mixed')
+    cutoff = pd.to_datetime(history.replay_cutoff_utc, utc=True, errors='coerce', format='mixed')
+    day = pd.to_datetime(history.slate_date, errors='coerce').dt.normalize()
+    verified = (history.verified_outcome.eq('played')
+                & history.nba_source.fillna('').astype(str).str.strip().ne('')
+                & history.replay_before_full_slate_tip.astype(str).str.lower().eq('true')
+                & captured.lt(cutoff) & cutoff.dt.tz_convert('America/New_York').dt.date.eq(day.dt.date)
+                & day.lt(pd.Timestamp(slate_date).normalize()))
+    history['eligible'] = history.eligible.astype(str).str.lower().eq('true')
+    history['slate_date'] = day
+    history = history.loc[verified].copy()
+    fields = {'fanduel_id', 'eligible', 'adjusted_minutes', 'adjusted_fd_points'}
+    if not fields <= set(scored_pool) or not scored_pool.fanduel_id.is_unique:
+        raise ValueError('Simulation requires the unique reviewed contest pool.')
+    if not {'lineup', 'fanduel_id'} <= set(rosters) or rosters.empty:
+        raise ValueError('Generate legal candidates before running the comparison.')
+    selected = scored_pool.loc[scored_pool.fanduel_id.isin(rosters.fanduel_id)].copy()
+    if (set(selected.fanduel_id) != set(rosters.fanduel_id)
+            or not selected.eligible.eq(True).all()):
+        raise ValueError('Candidate simulation requires every player to remain eligible in the reviewed pool.')
+    target = selected[['fanduel_id', 'adjusted_minutes', 'adjusted_fd_points']].rename(columns={
+        'adjusted_minutes': 'projected_minutes', 'adjusted_fd_points': 'projected_fd_points',
+    }).sort_values('fanduel_id')
+    outcomes = simulate_nba(history, target, slate_date, draws=draws, seed=seed)
+    ranges = outcomes.lineup_ranges(rosters)
+    points = target.set_index('fanduel_id').projected_fd_points
+    totals = rosters.assign(reviewed_fd=rosters.fanduel_id.map(points)).groupby('lineup').reviewed_fd.sum()
+    ranges.insert(1, 'reviewed_fd', ranges.lineup.map(totals))
+    return ranges, outcomes.compare_lineups(rosters), len(_history_rows(history))
