@@ -27,16 +27,17 @@ def synthetic_exports(*, missing_daily=False, salary_mismatch=False):
         pos = positions[i % 5]
         name = f"Fixture Player {i}"
         salary = 6000
+        team, game = [("ATL","ATL@BOS"),("BOS","ATL@BOS"),("NYK","NYK@CHI"),("CHI","NYK@CHI")][i%4]
         contest.append({
             "Id": f"99999-{i+1000}", "Nickname": name,
-            "Game": "ATL@BOS", "Team": "ATL",
+            "Game": game, "Team": team,
             "Salary": str(salary), "Position": pos,
             "Roster Position": f"{pos}/G/F/UTIL" if pos != "C" else "C/F/UTIL",
             "Injury Indicator": "",
         })
         if not (missing_daily and i == 0):
             daily.append({
-                "player": name, "team": "Atlanta Hawks", "gameInfo": "ATL @ BOS",
+                "player": name, "team": team, "gameInfo": game,
                 "salary": str(salary + (100 if salary_mismatch and i == 0 else 0)),
                 "minutes": "30", "fantasy": str(50-i),
             })
