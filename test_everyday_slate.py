@@ -270,7 +270,10 @@ def test_weighted_blend_requires_agreement_and_yields_to_late_news():
     assert sum(row['points'] * row['weight'] for row in inputs) / sum(
         row['weight'] for row in inputs) == pytest.approx(result.iloc[0].independent_fd_points)
     assert all(pd.Timestamp(row['observed_at']) <= AS_OF for row in inputs)
-    assert pd.Timestamp(result.iloc[0].projection_scored_at_utc) == AS_OF
+    later, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()),
+                           [], estimates + [reviewed], AS_OF + timedelta(minutes=1))
+    assert later.iloc[0].projection_sources_json == result.iloc[0].projection_sources_json
+    assert later.iloc[0].adjusted_fd_points == result.iloc[0].adjusted_fd_points
     assert result.iloc[0].blended_fd_points == pytest.approx(baseline + .4 * (0.5 + 3 + 2) / 2.5)
     conflict = [estimates[0], dict(estimates[1], points=baseline + 10)]
     result, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], AS_OF.date()), [], conflict, AS_OF)
