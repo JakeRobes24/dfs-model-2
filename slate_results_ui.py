@@ -121,6 +121,30 @@ def render_post_slate():
             except SOURCE_ERRORS:
                 st.warning('Multi-slate evidence could not be verified. No policy was changed.')
 
+    with st.expander('Multi-slate candidate selection evaluation'):
+        st.caption('Compare two fixed four-entry selection policies from the same eight legal candidates on up to eight earlier dates. Training uses at most five strictly earlier available dates. Bounded solves may skip dates; every skip is shown.')
+        if st.button('Evaluate tournament candidate policies', key='portfolio_walkforward'):
+            from nba_archive_training import load_prior_replays
+            from nba_portfolio_walkforward import walk_forward_portfolios
+            try:
+                with st.spinner('Checking saved captures and evaluating chronological candidate policies…'):
+                    earlier, archive_coverage, captures = load_prior_replays(
+                        history, datetime.now(ET).date(), token, limit=8, include_captures=True)
+                    detail, aggregate, evaluation_coverage = walk_forward_portfolios(captures, earlier)
+                st.dataframe(archive_coverage, hide_index=True)
+                if not evaluation_coverage.empty:
+                    st.dataframe(evaluation_coverage, hide_index=True)
+                if aggregate.empty:
+                    st.info('No completed paired portfolio evaluations.')
+                else:
+                    st.caption('Differences are simulation minus projection in actual FanDuel points; dates receive equal weight. These are not contest ranks, profits or evidence of a validated edge.')
+                    st.dataframe(aggregate.round(2), hide_index=True)
+                    st.dataframe(detail.round(2), hide_index=True)
+                    st.download_button('Download tournament policy evaluation', detail.to_csv(index=False),
+                                       'portfolio_walkforward.csv', mime='text/csv')
+            except SOURCE_ERRORS:
+                st.warning('The historical tournament evaluation could not be verified.')
+
     available = {}
     if history is not None and not history.empty:
         rows = history[['slate_date', 'fanduel_id']].drop_duplicates()
