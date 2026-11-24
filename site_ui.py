@@ -559,7 +559,7 @@ def render_slate(history_slot):
         show_results(scored, lineups, comparison, alternative)
         if not started and not lineups.empty:
             with st.expander('Prepare injury contingencies'):
-                st.caption('Prepare before lock. These are hypothetical single-player OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
+                st.caption('Prepare before lock. These are hypothetical single-player and paired OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
                 contingency_key = (signature, sha256(lineups.to_csv(index=False).encode()).hexdigest())
                 if st.button('Prepare scratch alternatives', key='slate_contingencies_run'):
                     try:
@@ -586,7 +586,8 @@ def render_slate(history_slot):
                         if budget <= 0:
                             raise ValueError('Too close to lock to prepare new scratch scenarios.')
                         report = prepare_contingencies(scored, lineups, time_budget_seconds=budget,
-                            max_overlap=overlap, exclude_uncertain=exclude, objective_column=objective)
+                            max_overlap=overlap, exclude_uncertain=exclude, objective_column=objective,
+                            max_joint_scenarios=1)
                         if slate == datetime.now(ET).date():
                             fresh_started, _ = started_contest_games(schedule, pool.game, datetime.now(ET))
                             if fresh_started:
@@ -598,6 +599,8 @@ def render_slate(history_slot):
                 if saved is not None and saved[0] == contingency_key:
                     report = saved[1]
                     st.caption(f"{report['completed_scenarios']}/{report['uncertain_selected_players']} selected uncertain players have complete alternative portfolios.")
+                    if report['joint_scenarios_possible']:
+                        st.caption(f"Paired scratch coverage: {report['joint_scenarios_completed']}/{report['joint_scenarios_requested']} requested; {report['joint_scenarios_possible']} possible pairs.")
                     if report['scenarios']:
                         st.dataframe(pd.DataFrame([{k:v for k,v in scenario.items() if k!='candidates'}
                                                     for scenario in report['scenarios']]), hide_index=True)
