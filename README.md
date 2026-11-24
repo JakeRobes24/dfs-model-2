@@ -12,6 +12,21 @@ Run: `pip install -r requirements.txt` then `streamlit run app.py`.
 
 Inputs: reconciled contest/DAILY CSV with `fanduel_id,fanduel_name,salary,roster_eligibility,injury_flag,projected_minutes,projected_fd_points`; independent sources CSV `player,source,minutes,independent_group,observed_at`; optional historical CSV `player,season_mpg,last5_mpg,last10_mpg`.
 
+## Development release candidate — November 24, 2026
+
+The development branch is not the production deployment. The current NBA workflow reconciles exact contest IDs and DAILY inputs, reviews the full eligible pool, applies timestamped independent point estimates (60% DAILY / 40% consensus when the blend gate passes), and checks official availability and rotation evidence. The optimizer enforces nine distinct players, positional eligibility, $60,000, a maximum of four per team and at least three teams. Missing evidence remains explicit.
+
+The owner can opt into private pre-tip capture and review official final results. Historical replay requires the original pre-tip snapshot and cannot reconstruct unavailable source estimates. Research diagnostics cover role, teammate absence, pace, ownership, candidate ceilings and equal-entry retrospective portfolio experiments. These are experimental; no predictive advantage or contest win probability is established. The default optimizer still uses reviewed mean scores.
+
+Release checks:
+- The full regression workflow compiles tracked Python and runs fixture-independent tests when private databases are absent. Private-history tests excluded by this workflow remain unverified.
+- A separate fixture-independent real Streamlit widget test exercises the current CSV import, blended scores, candidate generation and unauthorized post-slate access without external source requests.
+- Confirm production branch changes against the merge base; do not force-push or replace production.
+- Before releasing, verify authenticated private archive read/write/backup, current provider availability, fresh lock checks and a complete live-like slate in staging. Synthetic fixtures are not a substitute for these checks.
+- The NBA build still needs the authorized contest and DAILY files. There is no automatic FanDuel submission, authenticated provider download, or completed NFL production pipeline.
+
+The versioned notes below describe historical checkpoints, not the current development capability.
+
 ## Evidence rules
 - Independently sourced estimates count as agreement only when two independent groups are within four minutes. Duplicate syndication is grouped by `independent_group`.
 - Consensus uses median of available independent estimates. If disagreement or single-source evidence exists, use history where available and mark confidence lower.
