@@ -162,6 +162,8 @@ def read_box(game, url):
     game_day = pd.to_datetime(game.get('gameTimeUTC'), utc=True, errors='coerce')
     if pd.isna(game_day) or game.get('gameStatus') != 3:
         return rows
+    from nba_matchup_context import team_box_context
+    context = team_box_context(game)
     for club in (away, home):
         team = team_code(club['teamTricode'])
         players = club.get('players', [])
@@ -176,6 +178,7 @@ def read_box(game, url):
                                  started=str(player['starter']) == '1' if 'starter' in player else None,
                                  nba_id=str(player.get('personId') or ''), source=url,
                                  teammates_played=tuple(sorted(played)), teammates_absent=tuple(sorted(absent)),
+                                 **context.get(team, {}),
                                  **{key: stats.get(key) for key in ('points', 'reboundsTotal', 'assists',
                                      'steals', 'blocks', 'turnovers', 'fieldGoalsAttempted', 'freeThrowsAttempted')}))
     return rows
