@@ -36,3 +36,30 @@ def test_walk_forward_omits_games_with_multiple_saved_contests_or_missing_box_re
     assert report.test_games.eq(3).all()
     assert (report.prior_mse > report.zero_mse).all()
     assert walk_forward_dependence(later).empty
+
+
+def test_reviewed_dependence_uses_adjusted_errors_and_verified_prior_dates():
+    from nba_dependence import reviewed_dependence_evidence
+
+    def verified(day, contest):
+        frame = archived_day(day, contest, [5, -5, 5, -5])
+        # DAILY errors alternate within teams; reviewed errors align within teams.
+        return frame.assign(adjusted_fd_points=frame.actual_points - [5, 5, -5, -5] * 5,
+            adjusted_minutes=25, verified_outcome='played', nba_source='NBA final box',
+            replay_before_full_slate_tip=True, replay_timing='before_scheduled_tip',
+            replay_captured_at_utc=day+'T18:00:00Z', replay_cutoff_utc=day+'T23:00:00Z')
+
+    first = verified('2026-11-18', '123')
+    second = verified('2026-11-20', '456')
+    same = verified('2026-11-24', '789')
+    bad = verified('2026-11-19', '111').assign(replay_before_full_slate_tip=False)
+    details, summary = reviewed_dependence_evidence(pd.concat([first, second, same, bad]), '2026-11-24')
+    assert set(details.slate_date) == {'2026-11-20'}
+    assert details.training_games.eq(5).all()
+    assert details.set_index('relationship').loc['teammate','prior_cross_product'] == pytest.approx(1)
+    assert details.set_index('relationship').loc['opponent','prior_cross_product'] == pytest.approx(-1)
+    assert summary.status.eq('Insufficient held-out evidence').all()
+    assert summary.prior_mse.eq(0).all()
+    assert summary.zero_mse.eq(1).all()
+    assert reviewed_dependence_evidence(pd.concat([first, first, second]), '2026-11-24')[0].empty
+    assert reviewed_dependence_evidence(pd.concat([first.assign(nba_source=''), second]), '2026-11-24')[0].empty
