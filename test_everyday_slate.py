@@ -325,3 +325,54 @@ def test_verified_suffix_alias_matches_public_and_historical_research():
     assert history.iloc[0].history_games == 2
     assert history.iloc[0].recent_mpg == 23
     assert historical_context(conflict, prior, [box], AS_OF.date()).empty
+
+
+def test_prepared_contingency_runtime_survives_news_refresh():
+    """Controlled Streamlit runtime test; no real network or entry submission."""
+    contest, daily = uploads()
+    contest['Injury Indicator'] = ''
+    scratch = contest.loc[0, 'Id']
+    contest.loc[0, ['Injury Indicator', 'Salary']] = ['Q', 3500]
+    daily.loc[0, ['fantasy', 'minutes']] = [85., 40.]
+    schedule = [dict(awayTeam={'teamTricode':'BOS'}, homeTeam={'teamTricode':'NYK'},
+                     gameTimeUtc=(datetime.now(ET)+timedelta(minutes=45)).isoformat(), gameStatus=1)]
+    with (patch('site_ui.public_research', return_value=([], [], [])) as news,
+          patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('site_ui.public_slate_schedule', return_value=schedule) as clock):
+        app = AppTest.from_file(str(ROOT/'app_staging.py'),default_timeout=60).run()
+        app.file_uploader(key='slate_contest').upload('contest.csv',contest.to_csv(index=False).encode(),'text/csv')
+        app.file_uploader(key='slate_daily').upload('DAILY.csv',daily.to_csv(index=False).encode(),'text/csv').run()
+        app.button(key='slate_optimize').click().run()
+        assert not app.exception and not app.error
+        lineups=app.session_state['slate_results'][1][0]
+        entered=lineups.loc[lineups.lineup.eq(1),['slot','fanduel_id']]
+        assert scratch in entered.fanduel_id.tolist()
+        app.button(key='slate_contingencies_run').click().run()
+        assert not app.exception and not app.error
+        saved=app.session_state['prepared_contingency_archive']
+        assert saved[1]['completed_scenarios']==1
+        app.file_uploader(key='prepared_entered_roster').upload('entry.csv',entered.to_csv(index=False).encode(),'text/csv').run()
+        app.checkbox(key='prepared_activate').check()
+        app.button(key='prepared_validate').click().run()
+        assert any('not confirmed' in w.value for w in app.warning)
+        assert not any('validated_at_snapshot' in c.value for c in app.caption)
+        app.checkbox(key='prepared_activate').uncheck()
+        app.button(key='prepared_validate').click().run()
+        assert any('hypothetical_preview' in c.value for c in app.caption)
+        note=dict(player=contest.loc[0,'Nickname'],team='BOS',game='BOS@NYK',
+                  fanduel_id=scratch,source='NBA',independent_group='nba',official=True,
+                  status='out',starter='',role='',minutes=None,
+                  observed_at=(datetime.now(ET)-timedelta(minutes=1)).isoformat())
+        news.return_value=([note],[],[])
+        app.run()
+        assert not app.exception
+        assert app.session_state['prepared_contingency_archive'][0]==saved[0]
+        app.checkbox(key='prepared_activate').check()
+        app.button(key='prepared_validate').click().run()
+        assert not app.exception and not app.error
+        assert any('validated_at_snapshot' in c.value for c in app.caption)
+        clock.return_value=[dict(schedule[0],gameStatus=2)]
+        app.run()
+        app.button(key='prepared_validate').click().run()
+        assert not app.exception
+        assert not any('validated_at_snapshot' in c.value for c in app.caption)
