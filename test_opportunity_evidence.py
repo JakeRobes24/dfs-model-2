@@ -77,3 +77,23 @@ def test_absence_rate_evidence_uses_complete_stats_and_excludes_conflicting_part
     assert splits.loc[0, 'Games without teammate'] == 1
     assert splits.loc[0, 'Complete FD games with'] == 1
     assert splits.loc[0, 'FD rate evidence'] == 'Small or incomplete sample'
+
+
+def test_role_comparison_excludes_unknown_starter_status():
+    slate = date(2026, 11, 20)
+    pool = pd.DataFrame([dict(team='BOS', fanduel_id='1', fanduel_name='Player A',
+                              prelock_status='', eligible=True)])
+    logs = [dict(team='BOS', player='Player A', nba_id='1',
+                 game_date=slate-timedelta(days=i), started=role, source='NBA box',
+                 minutes=minutes, points=points, reboundsTotal=0, assists=0,
+                 steals=0, blocks=0, turnovers=0, fieldGoalsAttempted=10, freeThrowsAttempted=0)
+            for i, (role, minutes, points) in enumerate(
+                [(True, 30, 45), (False, 20, 20), (None, 40, 100)], start=1)]
+    summary, _ = opportunity_evidence(pool, logs, slate)
+    row = summary.iloc[0]
+    assert row['Games observed'] == 3
+    assert row['Games with starter status'] == 2
+    assert row['Minutes as starter'] == 30 and row['Minutes off bench'] == 20
+    assert row['FD/min as starter'] == 1.5 and row['FD/min off bench'] == 1
+    assert row['Starter complete FD games'] == row['Bench complete FD games'] == 1
+    assert row['Starter/bench FD rate evidence'] == 'Small or incomplete sample'
