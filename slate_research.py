@@ -701,8 +701,9 @@ def points_consensus(projections, evidence, as_of):
         )].copy()
         affecting['time'] = pd.to_datetime(affecting.observed_at, utc=True, errors='coerce', format='mixed')
         newest = affecting.loc[affecting.time.le(as_of)].groupby('fanduel_id').time.max()
-        cutoff = frame.fanduel_id.map(newest)
-        frame = frame.loc[cutoff.isna() | frame.time.ge(cutoff)].copy()
+        if not newest.empty and not frame.empty:
+            cutoff = frame.fanduel_id.map(newest)
+            frame = frame.loc[cutoff.isna() | frame.time.ge(cutoff)].copy()
     frame = frame.sort_values('time')
     frame = frame.loc[~frame.duplicated(['fanduel_id', 'family', 'time'], keep=False)]
     frame = frame.drop_duplicates(['fanduel_id', 'family'], keep='last')
@@ -751,8 +752,9 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     changes = fresh.loc[fresh.official & (fresh.status.str.casefold().isin(OFFICIAL_STATUS)
                                          | fresh.starter.str.casefold().isin({'starter', 'bench'}))]
     latest_news = changes.groupby('fanduel_id').observed_at.max()
-    cutoff = candidates.fanduel_id.map(latest_news)
-    candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
+    if not latest_news.empty and not candidates.empty:
+        cutoff = candidates.fanduel_id.map(latest_news)
+        candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
     groups = ['fanduel_id', 'independent_group']
     candidates = candidates.loc[candidates.observed_at.eq(candidates.groupby(groups).observed_at.transform('max'))]
     # Conflicting latest estimates from the same provider are not corroboration.
