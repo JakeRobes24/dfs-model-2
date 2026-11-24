@@ -13,7 +13,7 @@ def paired_gap_breakdown(daily_points, daily_minutes, encoded):
     The weighted average describes only providers with paired data.
     """
     empty = dict(paired_source_count=0, paired_point_gap=None, time_effect=None,
-                 rate_effect=None, paired_gap_driver='Paired evidence unavailable')
+                 rate_effect=None, paired_projected_fppm=None, paired_gap_driver='Paired evidence unavailable')
     try:
         p, m = float(daily_points), float(daily_minutes)
         notes = json.loads(encoded)
@@ -38,7 +38,7 @@ def paired_gap_breakdown(daily_points, daily_minutes, encoded):
         rate, baseline_rate = points / minutes, p / m
         time_effect = (minutes - m) * (rate + baseline_rate) / 2
         rate_effect = (rate - baseline_rate) * (minutes + m) / 2
-        rows.append((weight, points - p, time_effect, rate_effect))
+        rows.append((weight, points - p, time_effect, rate_effect, rate))
     if not rows:
         return empty
     total = sum(row[0] for row in rows)
@@ -54,7 +54,8 @@ def paired_gap_breakdown(daily_points, daily_minutes, encoded):
     else:
         driver = 'Mixed minutes and production rate'
     return dict(paired_source_count=len(rows), paired_point_gap=gap, time_effect=time,
-                rate_effect=rate, paired_gap_driver=driver)
+                rate_effect=rate, paired_projected_fppm=sum(row[0] * row[4] for row in rows) / total,
+                paired_gap_driver=driver)
 
 
 def disagreement_queue(scored):
@@ -91,7 +92,7 @@ def disagreement_queue(scored):
     breakdown = [paired_gap_breakdown(row.projected_fd_points, row.projected_minutes,
                                       getattr(row, 'projection_sources_json', '[]'))
                  for row in q.itertuples()]
-    fields = ['paired_source_count', 'paired_point_gap', 'time_effect', 'rate_effect', 'paired_gap_driver']
+    fields = ['paired_source_count', 'paired_point_gap', 'time_effect', 'rate_effect', 'paired_projected_fppm', 'paired_gap_driver']
     for field in fields:
         q[field] = [row[field] for row in breakdown]
     columns = ['fanduel_id','fanduel_name','salary','projected_fd_points','independent_fd_points',
@@ -99,3 +100,38 @@ def disagreement_queue(scored):
                'projection_source_spread','projected_minutes','independent_minutes','recent_mpg',
                'minute_gap','history_gap','blend_status','review_reason', *fields, 'research_priority']
     return q.sort_values(['research_priority','fanduel_id'], ascending=[False,True])[columns]
+
+
+def attach_rate_context(queue, summaries):
+    """Compare paired projections with observed, minutes-weighted box-score production.
+
+    Descriptive evidence only: recent historical rates are not forecasts, and
+    cannot isolate the effects of matchup, usage or future lineup changes.
+    """
+    result = queue.copy()
+    fields = {'FD points per minute': 'observed_fppm',
+              'Games with complete FD stats': 'observed_rate_games',
+              'Minutes with complete FD stats': 'observed_rate_minutes',
+              'Shot/FT/turnover opportunities per minute': 'observed_opportunity_rate',
+              'Box-score sources': 'observed_rate_sources'}
+    if summaries.empty:
+        for target in fields.values():
+            result[target] = None
+    else:
+        if summaries.fanduel_id.duplicated().any():
+            raise ValueError('Historical rate evidence must identify unique players.')
+        result = result.merge(summaries[['fanduel_id', *fields]].rename(columns=fields),
+                              on='fanduel_id', how='left', validate='one_to_one')
+    daily_minutes = pd.to_numeric(result.projected_minutes, errors='coerce')
+    result['daily_fppm'] = result.projected_fd_points / daily_minutes.where(daily_minutes.gt(0))
+    observed = pd.to_numeric(result.observed_fppm, errors='coerce')
+    paired = pd.to_numeric(result.paired_projected_fppm, errors='coerce')
+    result['daily_rate_vs_history'] = result.daily_fppm - observed
+    result['paired_rate_vs_history'] = paired - observed
+    games = pd.to_numeric(result.observed_rate_games, errors='coerce')
+    minutes = pd.to_numeric(result.observed_rate_minutes, errors='coerce')
+    result['historical_rate_context'] = 'No complete historical rate evidence'
+    result.loc[observed.notna(), 'historical_rate_context'] = 'Small observed sample'
+    result.loc[observed.notna() & games.ge(3) & minutes.ge(60),
+               'historical_rate_context'] = 'Recent observed rate; role and matchup still require review'
+    return result
