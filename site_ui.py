@@ -444,6 +444,7 @@ def render_slate(history_slot):
     if not started:
         render_challenger(scored, exclude_uncertain=exclude)
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
+    prepared_key = (str(contest_id), str(slate), sha256(contest.getvalue()).hexdigest())
     if started and complete and len(started) < pool.game.map(matchup_key).nunique():
         with st.expander('Find a late swap'):
             locked_ids = set(scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id'])
@@ -593,6 +594,7 @@ def render_slate(history_slot):
                             if fresh_started:
                                 raise ValueError('Contest reached tip during the solve; do not apply these pre-tip alternatives.')
                         st.session_state['slate_contingencies_result'] = (contingency_key, report)
+                        st.session_state['prepared_contingency_archive'] = (prepared_key, report)
                     except (ValueError, KeyError) as exc:
                         st.warning(str(exc))
                 saved = st.session_state.get('slate_contingencies_result')
@@ -639,6 +641,60 @@ def render_slate(history_slot):
 
     else:
         st.caption('Generated lineups and their alternatives appear here.')
+    prepared = st.session_state.get('prepared_contingency_archive')
+    if prepared is not None and prepared[0] == prepared_key:
+        usable = [case for case in prepared[1]['scenarios']
+                  if case['status']=='complete' and not case['candidates'].empty]
+        if usable:
+            with st.expander('Check a prepared alternative against your current entry'):
+                st.caption('Saved for this contest during this session. Refresh research first. Only complete saved scenarios are shown; current scores, status and locks are rechecked. This is a single-entry check, not portfolio optimization.')
+                chosen = st.selectbox('Prepared scenario', range(len(usable)),
+                                     format_func=lambda i: usable[i]['player']+' OUT',
+                                     key='prepared_case_selection')
+                upload = st.file_uploader('Current entered roster CSV', type='csv',
+                                          key='prepared_entered_roster')
+                st.caption('CSV: slot and fanduel_id, with the two UTIL rows in entry order.')
+                activate = st.checkbox('Check confirmed scratch against live entry (not a hypothetical preview)',
+                                       key='prepared_activate')
+                if st.button('Validate prepared alternative', key='prepared_validate'):
+                    try:
+                        from nba_contingency_execution import plan_contingency_entry
+                        entry = read_optional(upload, {'slot','fanduel_id'}, id_column='fanduel_id')
+                        if entry is None:
+                            raise ValueError('Supply the exact current entered roster.')
+                        case = usable[chosen]
+                        current = datetime.now(ET)
+                        current_started, current_complete = (started_contest_games(
+                            public_slate_schedule(slate), pool.game, current)
+                            if slate == current.date() else (set(), False))
+                        if activate and (slate != current.date() or not current_complete):
+                            raise ValueError('Live validation needs verified current contest tip times.')
+                        locks = set(scored.loc[scored.game.map(matchup_key).isin(current_started), 'fanduel_id'])
+                        report = plan_contingency_entry(scored, entry, case['candidates'],
+                            case['out_ids'], closed_players=locks, preview=not activate,
+                            schedule_verified=current_complete, audit=audit, as_of=current)
+                        if activate:
+                            final_started, final_complete = started_contest_games(
+                                public_slate_schedule(slate), pool.game, datetime.now(ET))
+                            if final_started != current_started or not final_complete:
+                                raise ValueError('Lock state changed during validation. Refresh and recheck.')
+                        if not report['options']:
+                            st.warning('No verified direct transition from this entry. Keep the entry or use a fresh lock-aware solve; check any scratch in FanDuel.')
+                        else:
+                            best = report['options'][0]
+                            st.caption(f"{report['status']} · Candidate {best['candidate']} · Salary ${best['salary']:,}")
+                            if best['current_fd_points'] is not None:
+                                st.caption(f"Current projected FD: {best['current_fd_points']:.2f}")
+                            if not activate:
+                                st.info('Hypothetical preview only. Do not apply without current official scratch and FanDuel lock verification.')
+                            else:
+                                st.warning('Validated at this snapshot only. Verify FanDuel locks and all remaining availability before any edit. Recheck if news or entry changes.')
+                            if best['steps']:
+                                st.dataframe(pd.DataFrame(best['steps']), hide_index=True)
+                            else:
+                                st.info('No edits required for this candidate.')
+                    except (ValueError, KeyError, TypeError) as exc:
+                        st.warning(str(exc))
     hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
