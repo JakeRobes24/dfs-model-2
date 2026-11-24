@@ -175,6 +175,23 @@ def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False)
                            exclude_uncertain=exclude_uncertain)
     if replacement.empty:
         raise ValueError('No legal late-swap lineup fits the locked slots and remaining projected pool.')
+    from swap_execution import assign_for_execution
+    players = {row.fanduel_id: {'salary': row.salary,
+                               'slots': allowed_slots(row.roster_eligibility),
+                               'name': row.fanduel_name,
+                               'team': getattr(row, 'team', '')}
+               for row in pool.itertuples()}
+    roster, execution = assign_for_execution(
+        entries.fanduel_id.tolist(), replacement.fanduel_id.tolist(),
+        players, closed_players)
+    replacement = replacement.set_index('fanduel_id').loc[list(roster)].reset_index()
+    replacement['slot'] = SLOTS
+    sequence = {step['slot']: i+1 for i, step in enumerate(execution['steps'])}
+    slot_labels = SLOTS[:7] + ['UTIL 1', 'UTIL 2']
+    replacement['execution_order'] = [sequence.get(label, 0) for label in slot_labels]
+    replacement['execution_mode'] = execution['mode']
+    replacement['team'] = [players[pid]['team'] for pid in roster]
+    replacement['entered_team'] = [players[pid]['team'] for pid in entries.fanduel_id]
     locked = replacement.fanduel_id.isin(fixed.values())
     changed = replacement.fanduel_id.ne(entries.fanduel_id)
     original_points = entries.adjusted_fd_points.round(2)
