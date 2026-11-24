@@ -189,11 +189,16 @@ def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points
 
 
 def show_results(pool, lineups, comparison, alternative):
+    from nba_classic_rules import validate_team_roster
     total = 0 if lineups.empty else lineups.lineup.nunique()
     if total < 4:
         st.warning(f'{total} legal lineups found with the current overlap setting and usable projections.')
     if not total:
         return
+    for candidate in (lineups, alternative):
+        if not candidate.empty:
+            for _, roster in candidate.groupby('lineup'):
+                validate_team_roster(pool, roster.fanduel_id, require_teams=True)
     status = pool.set_index('fanduel_id')
     if not lineups.solver_optimal.all():
         st.warning('The optimizer reached its time limit for at least one candidate.')
@@ -208,6 +213,8 @@ def show_results(pool, lineups, comparison, alternative):
                 name = re.sub(r'([\\`*_{}\[\]<>()#|])', r'\\\1', row.player)
                 players.append(rf'- **{row.slot}** · {name} · \${row.salary:,} · {row.adjusted_fd_points:.1f} FD')
             st.markdown('\n'.join(players))
+            counts = status.loc[roster.fanduel_id, 'team'].value_counts()
+            st.caption('Team composition: ' + ' · '.join(f'{team} {count}' for team,count in counts.items()))
             uncertain = status.loc[roster.fanduel_id]
             review = uncertain[(uncertain.confidence.isin(['low', 'missing']))
                                | uncertain.research_attention.str.contains('Availability|disagreement|Role')]
