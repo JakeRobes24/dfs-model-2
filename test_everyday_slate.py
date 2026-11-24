@@ -1,6 +1,6 @@
 """Exercise the default two-file workflow with controlled sources."""
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -165,7 +165,11 @@ def test_streamlit_late_swap_compares_entered_and_candidate_slots():
     daily.loc[:6, 'gameInfo'] = 'BOS @ CHI'
     with (patch('site_ui.public_research', return_value=([], [], [])),
           patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
-          patch('site_ui.public_slate_schedule', return_value=[]),
+          patch('site_ui.public_slate_schedule', return_value=[
+              dict(awayTeam={'teamTricode': 'BOS'}, homeTeam={'teamTricode': opponent},
+                   gameTimeUtc=(datetime.now(ET) + timedelta(minutes=45)).isoformat(), gameStatus=1)
+              for opponent in ('CHI', 'NYK')
+          ]),
           patch('site_ui.started_contest_games', return_value=(set(), True)) as game_state):
         app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
         app.file_uploader(key='slate_contest').upload('contest.csv', contest.to_csv(index=False).encode(), 'text/csv')
