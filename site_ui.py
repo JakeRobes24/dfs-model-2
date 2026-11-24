@@ -1,6 +1,7 @@
 """Shared Streamlit entry point for production and development preview."""
 from datetime import date, datetime, timedelta
 from functools import partial
+from time import monotonic
 from hashlib import sha256
 import json
 import re
@@ -153,15 +154,24 @@ def manual_inputs(as_of):
         return minutes, history, prelock, ceiling, exclude, overlap, reviewed_points
 
 
-def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points'):
+def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points', *, time_budget_seconds=None):
+    deadline = None if time_budget_seconds is None else monotonic() + time_budget_seconds
     solve = partial(optimize, pool, exclude_uncertain=exclude, objective_column=objective)
-    lineups = solve(number=4, max_overlap=overlap)
+    if deadline is None:
+        lineups = solve(number=4, max_overlap=overlap)
+    else:
+        remaining = deadline - monotonic()
+        lineups = solve(number=4, max_overlap=overlap, time_budget_seconds=remaining) if remaining > 0 else pd.DataFrame()
     if lineups.empty:
         return lineups, pd.DataFrame(), pd.DataFrame()
     # Lineup 1 has the best unconstrained objective. A single extra solve finds
     # its best distinct rival. Lineup 1 is itself a distinct rival to every other lineup.
     first = lineups[lineups.lineup.eq(1)]
-    alternative = solve(number=1, exclude_rosters=(first.fanduel_id,))
+    if deadline is None:
+        alternative = solve(number=1, exclude_rosters=(first.fanduel_id,))
+    else:
+        remaining = deadline - monotonic()
+        alternative = solve(number=1, exclude_rosters=(first.fanduel_id,), time_budget_seconds=remaining) if remaining > 0 else pd.DataFrame()
     scores = pool.set_index('fanduel_id')[objective]
     comparisons = []
     for number, roster in lineups.groupby('lineup'):
@@ -203,6 +213,8 @@ def show_results(pool, lineups, comparison, alternative):
                                | uncertain.research_attention.str.contains('Availability|disagreement|Role')]
             if len(review):
                 st.caption('Review before entry: ' + ', '.join(review.fanduel_name))
+    if total and alternative.empty:
+        st.warning('The distinct alternative to the leading lineup was not produced; full alternative comparison is incomplete.')
     if not comparison.empty:
         with st.expander('Compare against the full pool'):
             st.caption('Each comparison uses a different legal roster from players with usable projections. Reusing the strongest rival across lineups measures the cost of portfolio overlap.')
@@ -412,10 +424,15 @@ def render_slate(history_slot):
         st.caption('Ranks by adjusted FanDuel points. Review ceiling, correlation and ownership as GPP inputs become available.')
     else:
         st.caption('Ranks by 75% adjusted points and 25% reviewed ceiling. This score does not estimate ownership or correlation.')
+    # Research can take time: calculate lock state from a fresh clock.
+    now = datetime.now(ET)
     started = set()
     research_replay = slate < now.date()
+    schedule = []
+    complete = False
     if slate == now.date():
-        started, complete = started_contest_games(public_slate_schedule(slate), pool.game, now)
+        schedule = public_slate_schedule(slate)
+        started, complete = started_contest_games(schedule, pool.game, now)
         if started:
             st.warning(f'{len(started)} contest games have reached tip. Fresh lineup generation is closed.')
             if not complete:
@@ -501,7 +518,32 @@ def render_slate(history_slot):
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
         try:
             with st.spinner('Optimizing and checking legal alternatives…'):
-                st.session_state[key] = (signature, generate_and_challenge(scored, overlap, exclude, objective))
+                budget = 180.0
+                if slate == datetime.now(ET).date() and complete:
+                    current = datetime.now(ET)
+                    current_started, still_complete = started_contest_games(schedule, pool.game, current)
+                    if current_started or not still_complete:
+                        raise ValueError('Contest lock changed. Refresh before generating or entering a lineup.')
+                    matchups = {matchup_key(game) for game in pool.game}
+                    tips = [pd.to_datetime(entry.get('gameTimeUtc'), utc=True, errors='coerce')
+                            for entry in schedule
+                            if matchup_key('@'.join(team_code((entry.get(side) or {}).get('teamTricode', ''))
+                                                      for side in ('awayTeam', 'homeTeam'))) in matchups]
+                    tips = [tip for tip in tips if pd.notna(tip) and tip.tz_convert(ET).date() == current.date()]
+                    if not tips:
+                        raise ValueError('Cannot verify the first contest tip.')
+                    budget = min(budget, (min(tips) - current).total_seconds() - 30)
+                    if budget <= 0:
+                        raise ValueError('Too close to contest lock for a new solve; recheck existing entries.')
+                result = generate_and_challenge(scored, overlap, exclude, objective, time_budget_seconds=budget)
+                if slate == datetime.now(ET).date() and complete:
+                    fresh_started, fresh_complete = started_contest_games(schedule, pool.game, datetime.now(ET))
+                    if fresh_started or not fresh_complete:
+                        raise ValueError('Lock changed during optimization. Do not enter these pre-tip candidates.')
+                if not result[0].empty:
+                    st.session_state[key] = (signature, result)
+                else:
+                    st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
             st.error(str(exc))
     if key in st.session_state and st.session_state[key][0] != signature:
