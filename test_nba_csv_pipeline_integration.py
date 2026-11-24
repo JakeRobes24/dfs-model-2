@@ -157,5 +157,48 @@ class CsvToLineupsTests(unittest.TestCase):
             reconcile_exports(contest, daily)
 
 
+def test_independent_blend_reaches_optimizer_and_reviewed_simulation():
+    from datetime import datetime
+    import pytest
+    from nba_simulation import simulate_reviewed_candidates
+    from slate_research import DFF, PROPSIMS, ET, historical_context, score_slate
+
+    contest, daily = synthetic_exports()
+    pool, _, _ = reconcile_exports(contest, daily)
+    now = datetime(2026, 11, 23, 18, 0, tzinfo=ET)
+    estimates = [
+        dict(fanduel_id=row.fanduel_id, source=source,
+             points=row.projected_fd_points + delta, observed_at=now.isoformat())
+        for row in pool.itertuples()
+        for source, delta in [(DFF, 2), (PROPSIMS, 4)]
+    ]
+    reviewed, _ = score_slate(pool, historical_context(pool, pd.DataFrame(), [], now.date()),
+                              [], estimates, now)
+    assert reviewed.blend_status.eq('60/40 blend applied').all()
+    assert reviewed.adjusted_fd_points.tolist() == pytest.approx(
+        (reviewed.projected_fd_points + 1.2).tolist())
+    candidates = optimize(reviewed, number=4, max_overlap=7)
+    assert len(candidates) == 36
+    lookup = reviewed.set_index('fanduel_id')
+    assert candidates.adjusted_fd_points.tolist() == pytest.approx(
+        lookup.loc[candidates.fanduel_id, 'adjusted_fd_points'].tolist())
+    history = pd.DataFrame({
+        'slate_date': '2026-11-22', 'fanduel_id': [f'old-{i}' for i in range(24)],
+        'eligible': True, 'daily_minutes': 30, 'daily_points': 30,
+        'actual_minutes': 30, 'actual_points': 30, 'verified_outcome': 'played',
+        'nba_source': 'NBA official box', 'replay_before_full_slate_tip': True,
+        'replay_captured_at_utc': '2026-11-22T18:00:00Z',
+        'replay_cutoff_utc': '2026-11-22T23:00:00Z',
+    })
+    ranges, pairs, count = simulate_reviewed_candidates(
+        history, reviewed, candidates, now.date(), draws=32)
+    expected = candidates.groupby('lineup').adjusted_fd_points.sum()
+    assert count == 24 and len(pairs) == 6
+    assert ranges.reviewed_fd.tolist() == pytest.approx(ranges.lineup.map(expected).tolist())
+    # Zero-residual fixture: every outcome should equal the reviewed score,
+    # rather than the lower DAILY score or the lineup selection objective.
+    assert ranges.fd_p50.tolist() == pytest.approx(ranges.reviewed_fd.tolist())
+
+
 if __name__ == "__main__":
     unittest.main()
