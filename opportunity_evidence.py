@@ -11,10 +11,30 @@ FD_WEIGHTS = {'points': 1, 'reboundsTotal': 1.2, 'assists': 1.5,
               'steals': 3, 'blocks': 3, 'turnovers': -1}
 
 
+OPPORTUNITY_WEIGHTS = {'fieldGoalsAttempted': 1, 'freeThrowsAttempted': .44, 'turnovers': 1}
+
+
+def complete_stat_rows(rows, weights):
+    return [row for row in rows if all(type(row.get(stat)) in (int, float)
+                                       and 0 <= row[stat] <= 150 for stat in weights)]
+
+
+def rate_comparison(present, absent, weights):
+    """Report observed and shrunk gaps with separate complete-stat denominators."""
+    left, right = (complete_stat_rows(rows, weights) for rows in (present, absent))
+    left_minutes, right_minutes = (sum(row['minutes'] for row in rows) for rows in (left, right))
+    first, second = stat_rate(left, weights), stat_rate(right, weights)
+    n = min(len(left), len(right))
+    gap = second - first if first is not None and second is not None else None
+    return dict(with_rate=first, without_rate=second, with_games=len(left), without_games=len(right),
+                with_minutes=left_minutes, without_minutes=right_minutes,
+                gap=gap, shrunk_gap=gap * n / (n + 5) if gap is not None else None,
+                sufficient=n >= 3 and min(left_minutes, right_minutes) >= 60)
+
+
 def stat_rate(rows, weights):
     """Minutes-weighted production using only rows with complete stat coverage."""
-    available = [row for row in rows if all(type(row.get(stat)) in (int, float)
-                                            and 0 <= row[stat] <= 150 for stat in weights)]
+    available = complete_stat_rows(rows, weights)
     if not available:
         return None
     return sum(sum(row[stat] * weight for stat, weight in weights.items()) for row in available) / sum(
@@ -66,8 +86,10 @@ def opportunity_evidence(pool, rotations, slate):
             'Box-score sources': ' · '.join(sorted({row['source'] for row in logs})),
         })
         for teammate, display in unavailable[player.team]:
-            with_player = [row for row in logs if teammate in row.get('teammates_played', ())]
-            without_player = [row for row in logs if teammate in row.get('teammates_absent', ())]
+            with_player = [row for row in logs if teammate in row.get('teammates_played', ())
+                           and teammate not in row.get('teammates_absent', ())]
+            without_player = [row for row in logs if teammate in row.get('teammates_absent', ())
+                              and teammate not in row.get('teammates_played', ())]
             if not without_player:
                 continue
             absent_mean = mean(row['minutes'] for row in without_player)
@@ -75,13 +97,30 @@ def opportunity_evidence(pool, rotations, slate):
             smaller = min(len(with_player), len(without_player))
             # Shrink small matched samples toward no change. This comparison is descriptive.
             shift = (absent_mean - present_mean) * smaller / (smaller + 5) if smaller else None
+            fd = rate_comparison(with_player, without_player, FD_WEIGHTS)
+            opportunity = rate_comparison(with_player, without_player, OPPORTUNITY_WEIGHTS)
             splits.append({
                 'fanduel_id': player.fanduel_id, 'Player': player.fanduel_name, 'Out teammate': display,
                 'Games with teammate': len(with_player), 'Games without teammate': len(without_player),
                 'Minutes with': present_mean, 'Minutes without': absent_mean,
                 'Minutes gap (shrunk)': shift,
-                'FD/min with': stat_rate(with_player, FD_WEIGHTS),
-                'FD/min without': stat_rate(without_player, FD_WEIGHTS),
+                'FD/min with': fd['with_rate'],
+                'FD/min without': fd['without_rate'],
+                'FD/min gap': fd['gap'],
+                'FD/min gap (shrunk)': fd['shrunk_gap'],
+                'Complete FD games with': fd['with_games'],
+                'Complete FD games without': fd['without_games'],
+                'Complete FD minutes with': fd['with_minutes'],
+                'Complete FD minutes without': fd['without_minutes'],
+                'FD rate evidence': 'Observed comparison' if fd['sufficient'] else 'Small or incomplete sample',
+                'Opportunities/min with': opportunity['with_rate'],
+                'Opportunities/min without': opportunity['without_rate'],
+                'Opportunities/min gap (shrunk)': opportunity['shrunk_gap'],
+                'Complete opportunity games with': opportunity['with_games'],
+                'Complete opportunity games without': opportunity['without_games'],
+                'Complete opportunity minutes with': opportunity['with_minutes'],
+                'Complete opportunity minutes without': opportunity['without_minutes'],
+                'Opportunity rate evidence': 'Observed comparison' if opportunity['sufficient'] else 'Small or incomplete sample',
                 'Evidence': 'Small sample' if smaller < 3 else 'Observed comparison',
                 'Box-score sources': ' · '.join(sorted({row['source'] for row in with_player + without_player})),
             })
