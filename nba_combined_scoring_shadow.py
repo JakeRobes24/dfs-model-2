@@ -53,3 +53,23 @@ def reviewed_minutes_shadow(pool):
             pass
         output.append(row)
     return pd.DataFrame(output)
+
+
+def compare_combined_shadow(pool, replay):
+    """Evaluate frozen source evidence only, on identical verified played rows."""
+    shadow = reviewed_minutes_shadow(pool)
+    needed = {'fanduel_id','verified_outcome','nba_source','actual_points','daily_points','adjusted_fd_points'}
+    if not needed <= set(replay) or not replay.fanduel_id.is_unique:
+        raise ValueError('Use one verified full-slate replay.')
+    frame = replay.merge(shadow, on='fanduel_id', validate='one_to_one')
+    cols = ['actual_points','daily_points','adjusted_fd_points','shadow_combined_fd']
+    frame[cols] = frame[cols].apply(pd.to_numeric, errors='coerce')
+    finite = frame[cols].apply(lambda x: x.map(math.isfinite)).all(axis=1)
+    paired = frame.loc[finite & frame.verified_outcome.eq('played')
+                       & frame.nba_source.fillna('').ne('')].copy()
+    if paired.empty:
+        return pd.DataFrame()
+    errors = paired[cols[1:]].sub(paired.actual_points, axis=0).abs().mean()
+    return pd.DataFrame([{'Paired players':len(paired),'DAILY MAE':errors.daily_points,
+        'Reviewed MAE':errors.adjusted_fd_points,'Experimental MAE':errors.shadow_combined_fd,
+        'MAE improvement vs reviewed':errors.adjusted_fd_points-errors.shadow_combined_fd}])
