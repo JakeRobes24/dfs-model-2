@@ -175,7 +175,7 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
     return pd.DataFrame(out)
 
 
-def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False):
+def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False, time_budget_seconds=None):
     """Rebuild one entered lineup with started players fixed in their original slots."""
     if not {'slot', 'fanduel_id'} <= set(lineup) or Counter(lineup.slot) != Counter(SLOTS):
         raise ValueError('Provide one lineup with all nine FanDuel slots in entry order.')
@@ -195,7 +195,7 @@ def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False)
         raise ValueError('Late swap requires at least one closed contest game.')
     fixed = entries.loc[entries.fanduel_id.isin(closed_players), 'fanduel_id'].to_dict()
     replacement = optimize(pool, number=1, fixed_slots=fixed, closed_players=closed_players,
-                           exclude_uncertain=exclude_uncertain)
+                           exclude_uncertain=exclude_uncertain, time_budget_seconds=time_budget_seconds)
     if replacement.empty:
         raise ValueError('No legal late-swap lineup fits the locked slots and remaining projected pool.')
     from nba_swap_execution import find_executable_layout, LABELS
