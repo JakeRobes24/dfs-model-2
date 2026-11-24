@@ -8,8 +8,7 @@ from test_nba_injury_contingency import fixture
 AS_OF='2026-11-23T23:00:00Z'
 def inputs():
     p,b=fixture()
-    p['team']='CHA'
-    p.loc[p.fanduel_id.eq('11'),'team']='BOS'
+    p['team']=['CHA','CHA','BOS','NYK','BOS','NYK','BOS','NYK','CHA','NYK','CHA','BOS']
     e=pd.DataFrame([dict(out_ids='0',fanduel_id='10',source='reviewed conditional fixture',
                          observed_at='2026-11-23T22:55:00Z',minutes=36,fd_points=60)])
     return p,b,e
