@@ -52,3 +52,28 @@ def test_partial_does_not_replace_baseline(monkeypatch):
     report=c.prepare_contingencies(p,b)
     assert report['scenarios'][0]['status']=='partial_or_infeasible'
     pd.testing.assert_frame_equal(report['baseline'],b)
+
+
+def test_joint_scratch_removes_both_and_preserves_single_coverage():
+    p,b=fixture()
+    p.loc[p.fanduel_id.eq('1'),'prelock_status']='questionable'
+    report=c.prepare_contingencies(p,b,time_budget_seconds=20,max_joint_scenarios=1)
+    assert report['uncertain_selected_players']==2
+    assert report['completed_scenarios']==2
+    assert report['joint_scenarios_possible']==1
+    assert report['joint_scenarios_completed']==1
+    joint=next(r for r in report['scenarios'] if len(r['out_ids'])==2)
+    assert joint['affected_baseline_entries']==1
+    assert not set(joint['out_ids']) & set(joint['candidates'].fanduel_id)
+    assert joint['candidates'].salary.sum()<=60000
+    pd.testing.assert_frame_equal(report['baseline'],b)
+
+def test_joint_budget_expiry_keeps_explicit_coverage(monkeypatch):
+    p,b=fixture()
+    p.loc[p.fanduel_id.eq('1'),'prelock_status']='questionable'
+    ticks=iter([0.,2.,2.,2.])
+    monkeypatch.setattr(c,'monotonic',lambda:next(ticks))
+    report=c.prepare_contingencies(p,b,time_budget_seconds=1,max_joint_scenarios=1)
+    assert report['joint_scenarios_requested']==1
+    assert report['joint_scenarios_completed']==0
+    assert all(r['status']=='not_run_budget_or_limit' for r in report['scenarios'])
