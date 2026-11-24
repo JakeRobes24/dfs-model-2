@@ -789,6 +789,19 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     blend = .60 * result.projected_fd_points + .40 * result.independent_fd_points
     result['blended_fd_points'] = blend.where(use_blend)
     result.loc[use_blend, 'adjusted_fd_points'] = result.loc[use_blend, 'blended_fd_points']
+    result['blend_status'] = 'Blend not verified'
+    # Assign in reverse priority so every exclusion has a useful reason.
+    for mask, label in [
+        (use_blend, '60/40 blend applied'),
+        (result.fd_disagreement.abs().ge(5), 'Independent vs DAILY disagreement'),
+        (result.projection_source_count.lt(2), 'Fewer than two fresh point sources'),
+        (~result.minutes_method.eq('DAILY_only_unverified'), 'Minutes/status adjustment takes priority'),
+        (source_conflict, 'Independent sources disagree'),
+        (uncertain, 'Availability uncertain'),
+        (~result.projected_fd_points.gt(0), 'Missing DAILY baseline'),
+        (~result.eligible, 'Ineligible'),
+    ]:
+        result.loc[mask, 'blend_status'] = label
     result['projection_method'] = 'DAILY with applicable minutes and status checks'
     result.loc[use_blend, 'projection_method'] = '60% DAILY / 40% independent blend'
     disputes = (source_conflict | result.fd_disagreement.abs().ge(5) | minute_gap.abs().gt(5)
