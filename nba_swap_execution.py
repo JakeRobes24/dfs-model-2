@@ -63,3 +63,52 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
                       "in_salary": int(players[new]["salary"]),
                       "remaining_salary": cap - salary(state)})
     return steps
+
+
+def find_executable_layout(pool, before, after, closed_players=(), max_layouts=500):
+    """Try alternative slot assignments of the SAME target IDs, preserving locks.
+
+    Prefer retaining existing positions; never introduce an unrequested player.
+    Return (final ordered IDs, steps) or (None, None). Bounded search is not
+    a proof that no sequence exists beyond the searched assignments.
+    """
+    before, after = tuple(before), tuple(after)
+    closed = set(closed_players)
+    # Validate the supplied candidate first, including the original locked slots.
+    # A legal target roster with a positional cycle is permitted here.
+    direct = plan_direct_swaps(pool, before, after, closed)
+    if not isinstance(max_layouts, int) or max_layouts < 1:
+        raise ValueError("max_layouts must be positive")
+    if direct == []:
+        return after, direct
+    target = set(after)
+    lookup = pool.set_index("fanduel_id")
+    choices = []
+    for i, slot in enumerate(SLOTS):
+        if before[i] in closed:
+            choices.append([before[i]])
+        else:
+            possible = [p for p in after if p not in closed
+                        and slot in allowed_slots(lookup.at[p, "roster_eligibility"])]
+            possible.sort(key=lambda p: (p != before[i], p != after[i], str(p)))
+            choices.append(possible)
+    best = (after, direct) if direct is not None else (None, None)
+    lower_bound = len(target - set(before))
+    if direct is not None and len(direct) == lower_bound:
+        return best
+    tested = 0
+    def visit(prefix, used):
+        nonlocal tested, best
+        if tested >= max_layouts or (best[1] is not None and len(best[1]) == lower_bound):
+            return
+        if len(prefix) == len(SLOTS):
+            tested += 1
+            steps = plan_direct_swaps(pool, before, prefix, closed)
+            if steps is not None and (best[1] is None or len(steps) < len(best[1])):
+                best = (tuple(prefix), steps)
+            return
+        for p in choices[len(prefix)]:
+            if p not in used:
+                visit(prefix + (p,), used | {p})
+    visit((), set())
+    return best
