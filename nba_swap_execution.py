@@ -1,5 +1,6 @@
 """Exact-ID, lock-aware direct swap planning. Does not place contest entries."""
 from functools import lru_cache
+from math import isfinite
 from model import SLOTS, allowed_slots
 
 LABELS = tuple(SLOTS[:7]) + ("UTIL 1", "UTIL 2")
@@ -18,8 +19,13 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
     closed = set(closed_players)
     if not closed <= players.keys():
         raise ValueError("Unknown closed player ID")
+    def cost(p):
+        value = players[p]["salary"]
+        if isinstance(value, bool) or not isfinite(value) or value < 0 or int(value) != value:
+            raise ValueError("Invalid contest salary")
+        return int(value)
     def salary(ids):
-        return sum(int(players[p]["salary"]) for p in ids)
+        return sum(cost(p) for p in ids)
     def legal(ids):
         return (len(ids) == len(SLOTS) and len(set(ids)) == len(SLOTS)
                 and all(p in players and slot in allowed_slots(players[p]["roster_eligibility"])
@@ -27,17 +33,19 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
                 and salary(ids) <= cap)
     if not legal(before) or not legal(after):
         raise ValueError("Invalid entry or candidate: ID, slot, uniqueness or salary")
+    if any(p not in closed and players[p].get("eligible") != True for p in after):
+        raise ValueError("Replacement or retained open player is not eligible")
     changed = [i for i in range(len(SLOTS)) if before[i] != after[i]]
     for i in changed:
         if before[i] in closed or after[i] in closed:
-            raise ValueError("Cannot change a closed player or locked slot")
+            raise ValueError("Started player cannot change a closed player or locked slot")
         if players[after[i]].get("eligible") != True:
             raise ValueError("Replacement is not eligible")
     @lru_cache(None)
     def search(state):
         if state == after:
             return ()
-        for i in changed:
+        for i in sorted(changed, key=lambda j: (cost(after[j])-cost(before[j]), j)):
             if state[i] == after[i] or after[i] in state:
                 continue
             candidate = state[:i] + (after[i],) + state[i+1:]
@@ -56,16 +64,16 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
         state[i] = new
         steps.append({"slot": LABELS[i], "out_id": old, "in_id": new,
                       "out_player": players[old]["fanduel_name"],
-                      "out_team": players[old]["team"],
+                      "out_team": players[old].get("team", ""),
                       "out_salary": int(players[old]["salary"]),
                       "in_player": players[new]["fanduel_name"],
-                      "in_team": players[new]["team"],
+                      "in_team": players[new].get("team", ""),
                       "in_salary": int(players[new]["salary"]),
                       "remaining_salary": cap - salary(state)})
     return steps
 
 
-def find_executable_layout(pool, before, after, closed_players=(), max_layouts=500):
+def find_executable_layout(pool, before, after, closed_players=(), max_layouts=500, *, cap=60000):
     """Try alternative slot assignments of the SAME target IDs, preserving locks.
 
     Prefer retaining existing positions; never introduce an unrequested player.
@@ -76,8 +84,8 @@ def find_executable_layout(pool, before, after, closed_players=(), max_layouts=5
     closed = set(closed_players)
     # Validate the supplied candidate first, including the original locked slots.
     # A legal target roster with a positional cycle is permitted here.
-    direct = plan_direct_swaps(pool, before, after, closed)
-    if not isinstance(max_layouts, int) or max_layouts < 1:
+    direct = plan_direct_swaps(pool, before, after, closed, cap)
+    if isinstance(max_layouts, bool) or not isinstance(max_layouts, int) or max_layouts < 1:
         raise ValueError("max_layouts must be positive")
     if direct == []:
         return after, direct
@@ -103,7 +111,7 @@ def find_executable_layout(pool, before, after, closed_players=(), max_layouts=5
             return
         if len(prefix) == len(SLOTS):
             tested += 1
-            steps = plan_direct_swaps(pool, before, prefix, closed)
+            steps = plan_direct_swaps(pool, before, prefix, closed, cap)
             if steps is not None and (best[1] is None or len(steps) < len(best[1])):
                 best = (tuple(prefix), steps)
             return
