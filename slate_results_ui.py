@@ -189,6 +189,16 @@ def render_post_slate():
                 st.info('Some games are pending. These errors cover currently verified results.')
             errors = compare_frozen_projections(replay)
             st.dataframe(errors.round(2), hide_index=True)
+            from nba_shadow_research import compare_shadow_forecasts
+            if len(finals) == len(games):
+                shadow = compare_shadow_forecasts(replay)
+                if not shadow.empty:
+                    st.caption('Exploratory fixed policies, compared on identical supported played-player rows. No scoring weights are changed. Coverage differs between policies; single-slate results do not validate a policy.')
+                    st.dataframe(shadow.round(2), hide_index=True)
+                    st.download_button('Download experimental research comparison', shadow.to_csv(index=False),
+                                       f'{slate}_{contest}_{version[:12]}_shadow_research.csv', mime='text/csv')
+                else:
+                    st.caption('This capture predates the frozen research features; experimental comparisons are unavailable.')
             decisions = audit_player_decisions(replay)
             decision_summary = summarize_player_decisions(decisions)
             st.caption('Player-by-player projection changes, error improvements and regressions. '
