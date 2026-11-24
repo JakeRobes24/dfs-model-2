@@ -235,19 +235,48 @@ def show_results(pool, lineups, comparison, alternative):
 def render_slate(history_slot):
     st.header('1. Upload your slate')
     st.caption('FanDuel NBA classic · nine unique players · $60,000 cap')
+    from slate_upload_session import SlateUpload, select_upload_pair
+    # Widget metadata can outlive its uploaded bytes on a rerun. Keep the exact
+    # reconciled pair in this user's session, never in a shared Streamlit cache.
+    if st.button('Clear slate files and results', key='slate_clear_uploads'):
+        for key in ('slate_contest','slate_daily','slate_retained_uploads','slate_results',
+                    'last_complete_portfolio','late_swap_result'):
+            st.session_state.pop(key, None)
     contest = st.file_uploader('FanDuel contest CSV', type='csv', key='slate_contest')
     daily = st.file_uploader('DAILY projection CSV', type='csv', key='slate_daily')
     now = datetime.now(ET)
-    if not (contest and daily):
-        with history_slot:
-            render_history_panel()
-        return
+    def snapshot(upload):
+        if upload is None:
+            return None
+        data = upload.getvalue()
+        if len(data) > 8 * 1024 * 1024:
+            raise ValueError('Each slate CSV must be smaller than 8 MiB.')
+        return SlateUpload(upload.name, data)
     try:
-        pool, contest_id, extra = reconcile_exports(contest.getvalue(), daily.getvalue())
+        incoming = (snapshot(contest), snapshot(daily))
+        retained = st.session_state.get('slate_retained_uploads')
+        pair, recovered = select_upload_pair(*incoming, retained)
+        if pair is None:
+            if any(item is not None for item in incoming):
+                st.info('Both matching CSV files must be available. A changed or incomplete pair cannot be mixed with earlier inputs.')
+            elif retained is None:
+                st.caption('Upload both CSVs to begin. If filenames remain visible but research disappears, reload the two files.')
+            with history_slot:
+                render_history_panel()
+            return
+        if not recovered and pair != retained:
+            st.session_state.pop('slate_retained_uploads', None)
+        contest_copy, daily_copy = pair
+        contest_bytes, daily_bytes = contest_copy.data, daily_copy.data
+        pool, contest_id, extra = reconcile_exports(contest_bytes, daily_bytes)
+        st.session_state['slate_retained_uploads'] = pair
+        if recovered:
+            st.warning('Recovered the last reconciled CSV pair from this session. Check the filenames and contest below; use Clear slate files and results to replace them.')
+            st.caption(f'{contest_copy.name} · {daily_copy.name}')
     except (ValueError, OSError, KeyError) as exc:
         st.error(str(exc))
         return
-    filename_date = re.search(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)', contest.name)
+    filename_date = re.search(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)', contest_copy.name)
     suggested_date = now.date()
     if filename_date:
         try:
@@ -506,7 +535,7 @@ def render_slate(history_slot):
     if not started:
         render_challenger(scored, exclude_uncertain=exclude)
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
-    prepared_key = (str(contest_id), str(slate), sha256(contest.getvalue()).hexdigest())
+    prepared_key = (str(contest_id), str(slate), sha256(contest_bytes).hexdigest())
     if started and complete and len(started) < pool.game.map(matchup_key).nunique():
         with st.expander('Find a late swap'):
             locked_ids = set(scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id'])
@@ -890,7 +919,7 @@ def render_slate(history_slot):
                                    'candidate_ownership_exposure.csv', mime='text/csv')
             except (ValueError, TypeError, KeyError) as exc:
                 st.warning(f'Ownership comparison unavailable: {exc}')
-    hashes = (sha256(contest.getvalue()).hexdigest(), sha256(daily.getvalue()).hexdigest())
+    hashes = (sha256(contest_bytes).hexdigest(), sha256(daily_bytes).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
     archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
