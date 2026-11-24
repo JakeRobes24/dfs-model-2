@@ -47,6 +47,21 @@ class LiveFragilityTests(unittest.TestCase):
         self.lineups.loc[0,"adjusted_fd_points"]=99
         with self.assertRaises(ValueError):
             rank_fragility(self.pool,self.lineups)
+    def test_optimizer_rounding_accepted_but_baseline_uses_unrounded_pool(self):
+        self.pool.loc[9,"adjusted_fd_points"]=30.004965034965035
+        self.lineups["adjusted_fd_points"]=self.lineups.fanduel_id.map(
+            self.pool.set_index("fanduel_id").adjusted_fd_points).round(2)
+        result=rank_fragility(self.pool,self.lineups)
+        self.assertEqual(result["baseline_leader"],"2")
+        self.lineups.loc[self.lineups.fanduel_id.eq("9"),"adjusted_fd_points"]=30.01
+        with self.assertRaisesRegex(ValueError,"projection mismatch"):
+            rank_fragility(self.pool,self.lineups)
+
+    def test_nonfinite_pool_points_rejected(self):
+        self.pool.loc[9,"adjusted_fd_points"]=float("nan")
+        with self.assertRaisesRegex(ValueError,"projection mismatch"):
+            rank_fragility(self.pool,self.lineups)
+
     def test_missing_player(self):
         self.lineups.loc[0,"fanduel_id"]="missing"
         with self.assertRaises(ValueError):
