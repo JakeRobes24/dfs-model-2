@@ -313,6 +313,17 @@ def render_slate(history_slot):
         st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
         st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
 
+    from nba_research_triage import disagreement_queue
+    queue = disagreement_queue(scored)
+    with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
+        st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers.')
+        if queue.empty:
+            st.info('No flagged discrepancies in available evidence; this does not certify complete source coverage.')
+        else:
+            st.dataframe(queue.drop(columns='research_priority'), hide_index=True)
+            st.download_button('Download disagreement review CSV', queue.to_csv(index=False),
+                               file_name=f'{slate}-research-disagreements.csv', mime='text/csv')
+
     archived_ownership = None
     archived_market_events = ()
     with st.expander('Sources and checks'):
