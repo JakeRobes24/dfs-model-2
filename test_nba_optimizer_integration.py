@@ -15,6 +15,7 @@ def fixture_pool():
             "fanduel_id": f"fixture-{i}",
             "fanduel_name": f"Fixture Player {i}",
             "salary": 6000,
+            "team": ["CHA","BOS","NYK","TOR"][i%4],
             "roster_eligibility": "C/PG/SG/SF/PF/F/G/UTIL",
             "eligible": True,
             "adjusted_fd_points": float(50 - i),
