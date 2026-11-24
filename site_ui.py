@@ -495,9 +495,9 @@ def render_slate(history_slot):
                         layout, steps = None, None
                     if steps is None:
                         st.warning('No verified direct replacement sequence found within the search limit. Keep your current entry.')
-                    elif not steps:
-                        st.info('Keep the current lineup; no replacements required.')
                     else:
+                        if not steps:
+                            st.info('Keep the current lineup; no replacements required.')
                         lookup = scored.set_index('fanduel_id')
                         final = lookup.loc[list(layout), ['fanduel_name', 'team', 'salary']].reset_index()
                         final.insert(0, 'slot', list(LABELS))
@@ -508,12 +508,13 @@ def render_slate(history_slot):
                         if swap.fd_points_delta.notna().all():
                             st.caption(f'Projected points change {swap.fd_points_delta.sum():+.2f}')
                         st.dataframe(final, hide_index=True)
-                        st.caption('Apply these replacements in order. Recheck every game lock and player status in FanDuel first.')
-                        st.dataframe(pd.DataFrame(steps), hide_index=True)
-                        st.download_button('Download ordered swap instructions', pd.DataFrame(steps).to_csv(index=False),
-                                           'late_swap_steps.csv', key='slate_swap_steps_download')
-                        st.download_button('Download late-swap candidate', final.to_csv(index=False),
-                                           'late_swap_candidate.csv', key='slate_late_swap_download')
+                        if steps:
+                            st.caption('Apply these replacements in order. Recheck every game lock and player status in FanDuel first.')
+                            st.dataframe(pd.DataFrame(steps), hide_index=True)
+                            st.download_button('Download ordered swap instructions', pd.DataFrame(steps).to_csv(index=False),
+                                               'late_swap_steps.csv', key='slate_swap_steps_download')
+                            st.download_button('Download late-swap candidate', final.to_csv(index=False),
+                                               'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
     if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
         try:
