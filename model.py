@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import milp, Bounds, LinearConstraint
 from scipy.sparse import lil_matrix, vstack
+from nba_classic_rules import canonical_teams, legal_team_counts, validate_team_roster, MAX_PER_TEAM
 
 SLOTS = ['PG','SG','SF','PF','C','G/F','F/C','UTIL','UTIL']
 
@@ -86,6 +87,8 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
             or not np.isfinite(time_budget_seconds) or time_budget_seconds <= 0):
         raise ValueError('Optimization time budget must be finite and positive')
     deadline = None if time_budget_seconds is None else monotonic() + float(time_budget_seconds)
+    teams = canonical_teams(pool)
+    team_lookup = dict(zip(pool.fanduel_id, teams, strict=True)) if teams is not None else None
     a=pool[pool.eligible & pool.adjusted_fd_points.notna() & (pool.adjusted_fd_points>0)].copy()
     if exclude_uncertain:a=a[~a.confidence.isin(['low','missing'])]
     fixed_slots = fixed_slots or {}
@@ -143,6 +146,13 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         inds={i for i,name in enumerate(normalized_names) if name in names}
         if len(inds)==2:blocked_indices.append(inds)
     low=np.r_[np.ones(9),np.zeros(len(a)),0];high=np.r_[np.ones(9),np.ones(len(a)),60000]
+    # Nine unique players with at most four per team necessarily span >=3 teams.
+    if team_lookup is not None:
+        codes = np.array([team_lookup[p] for p in player_ids])
+        team_rows = np.array([(codes[player_index] == team).astype(int) for team in sorted(set(codes))])
+        A = vstack([A.tocsr(), lil_matrix(team_rows).tocsr()]).tolil()
+        low = np.r_[low, np.zeros(len(team_rows))]
+        high = np.r_[high, np.full(len(team_rows), MAX_PER_TEAM)]
     excluded = [set(roster) for roster in exclude_rosters]
     sets=[];out=[]
     for t in range(number):
@@ -171,7 +181,9 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         ids={i for k,(i,j) in enumerate(pairs) if sol.x[k]>.5};sets.append(ids)
         assert len(selected)==9 and len({r.fanduel_id for _,r in selected})==9
         assert sum(int(r.salary) for _,r in selected)<=60000
-        for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id,'solver_optimal':sol.status==0})
+        if team_lookup is not None and not legal_team_counts(team_lookup[r.fanduel_id] for _,r in selected):
+            raise ValueError('Solver returned invalid team composition')
+        for slot,r in selected:out.append({'lineup':t+1,'slot':slot,'player':r.fanduel_name,'salary':int(r.salary),'adjusted_minutes':round(float(r.adjusted_minutes),2),'adjusted_fd_points':round(float(r.adjusted_fd_points),2),'confidence':r.confidence,'method':r.minutes_method,'injury_flag':r.injury_flag,'fanduel_id':r.fanduel_id,'solver_optimal':sol.status==0,'team_rules_verified':team_lookup is not None})
     return pd.DataFrame(out)
 
 
@@ -188,6 +200,7 @@ def optimize_late_swap(pool, lineup, closed_players, *, exclude_uncertain=False,
     if (entries.salary.sum() > 60000
             or any(row.slot not in allowed_slots(row.roster_eligibility) for row in entries.itertuples())):
         raise ValueError('The entered lineup exceeds the salary cap or has an invalid slot.')
+    validate_team_roster(pool, lineup.fanduel_id)
     # Stable ordering keeps the first and second UTIL rows distinct.
     entries = entries.sort_values('slot', key=lambda slots: slots.map(SLOTS.index), kind='stable').reset_index(drop=True)
     closed_players = set(closed_players)
