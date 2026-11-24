@@ -630,6 +630,32 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        if not lineups.empty:
+            with st.expander('Experimental simulated candidate comparison'):
+                st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
+                files = st.file_uploader('Earlier verified player_replay.csv exports', type='csv',
+                                         accept_multiple_files=True, key='slate_simulation_history')
+                if files and st.button('Simulate current candidates', key='slate_simulation_run'):
+                    try:
+                        from nba_simulation import simulate_reviewed_candidates
+                        if sum(file.size for file in files) > 8 * 1024 * 1024:
+                            raise ValueError('Combined replay files must be smaller than 8 MiB.')
+                        training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
+                                              for file in files], ignore_index=True).drop_duplicates()
+                        candidates = lineups[['lineup', 'fanduel_id']].copy()
+                        candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
+                        if not alternative.empty:
+                            candidates = pd.concat([candidates, alternative[['fanduel_id']].assign(
+                                lineup='Best distinct alternative')], ignore_index=True)
+                        ranges, pairs, count = simulate_reviewed_candidates(training, scored, candidates, slate)
+                        st.caption(f'{count} earlier verified played training rows; 4,000 shared outcome draws.')
+                        st.dataframe(ranges, hide_index=True)
+                        if not pairs.empty:
+                            st.dataframe(pairs, hide_index=True)
+                    except (ValueError, KeyError, TypeError, OSError) as exc:
+                        st.warning(f'Simulation unavailable: {exc}')
+                elif not files:
+                    st.info('Verified earlier replay exports are required. The existing history view does not expose original DAILY points for this training method.')
         if not started and not lineups.empty:
             with st.expander('Prepare injury contingencies'):
                 st.caption('Prepare before lock. These are hypothetical single-player and paired OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
