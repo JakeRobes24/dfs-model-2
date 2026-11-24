@@ -65,3 +65,22 @@ def test_duplicate_rejected():
 def test_unchanged_locked_roster():
     p,b=fixture()
     assert plan_direct_swaps(p,b,b,set(b))==[]
+
+
+def test_alternative_layout_preserves_existing_slots():
+    from nba_swap_execution import find_executable_layout
+    p,b=fixture();a=list(b);a[7],a[8]=a[8],a[7]
+    layout,steps=find_executable_layout(p,b,a)
+    assert tuple(layout)==b
+    assert steps==[]
+
+def test_alternative_layout_keeps_same_players_and_minimizes_moves():
+    from nba_swap_execution import find_executable_layout
+    p,b=fixture()
+    p.loc[p.fanduel_id.eq("1"),"roster_eligibility"]="SG/UTIL"
+    a=list(b);a[1]="8";a[8]="quickley"
+    # Quickley is only UTIL eligible, so no direct one-step replacement
+    # of SG player can attain the same roster. The two-step sequence is valid.
+    layout,steps=find_executable_layout(p,b,a)
+    assert set(layout)==set(a)
+    assert [s["slot"] for s in steps]==["UTIL 2","SG"]
