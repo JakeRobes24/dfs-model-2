@@ -257,6 +257,10 @@ def render_slate(history_slot):
         retained = st.session_state.get('slate_retained_uploads')
         pair, recovered = select_upload_pair(*incoming, retained)
         if pair is None:
+            # A changed or invalid partial upload invalidates the old pair;
+            # subsequent widget loss must not resurrect the previous slate.
+            if retained is not None:
+                st.session_state.pop('slate_retained_uploads', None)
             if any(item is not None for item in incoming):
                 st.info('Both matching CSV files must be available. A changed or incomplete pair cannot be mixed with earlier inputs.')
             elif retained is None:
