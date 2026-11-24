@@ -367,6 +367,25 @@ def test_prepared_contingency_runtime_survives_news_refresh():
         app.run()
         assert not app.exception
         assert app.session_state['prepared_contingency_archive'][0]==saved[0]
+        old = app.session_state['last_complete_portfolio'][2]
+        pd.testing.assert_frame_equal(old,lineups)
+        assert any('Earlier candidate snapshot' in w.value for w in app.warning)
+        assert any('current_eligible' in d.value.columns for d in app.dataframe)
+        # A failed new solve cannot remove or certify the old four entries.
+        with patch('site_ui.generate_and_challenge', return_value=(pd.DataFrame(),pd.DataFrame(),pd.DataFrame())):
+            app.button(key='slate_optimize').click().run()
+            assert not app.exception
+            pd.testing.assert_frame_equal(app.session_state['last_complete_portfolio'][2],lineups)
+            assert any('Earlier candidate snapshot' in w.value for w in app.warning)
+        # A partial current result does not replace the last complete snapshot.
+        partial_rows=lineups.loc[lineups.lineup.eq(2)].copy()
+        partial_rows=partial_rows.assign(lineup=1)
+        with patch('site_ui.generate_and_challenge', return_value=(partial_rows,pd.DataFrame(),pd.DataFrame())):
+            app.button(key='slate_optimize').click().run()
+            assert not app.exception
+            pd.testing.assert_frame_equal(app.session_state['last_complete_portfolio'][2],lineups)
+            assert any('Earlier candidate snapshot' in w.value for w in app.warning)
+
         app.checkbox(key='prepared_activate').check()
         app.button(key='prepared_validate').click().run()
         assert not app.exception and not app.error
