@@ -4,7 +4,7 @@ from swap_execution import plan_edits, assign_for_execution, SLOTS
 
 def fixture():
     before = tuple(str(i) for i in range(9))
-    players = {p: dict(salary=6500, slots={s}, name=p, team='CHA')
+    players = {p: dict(salary=6500, slots={s}, name=p, team=['CHA','BOS','CHA','BOS','NYK','NYK','CHA','BOS','NYK'][int(p)])
                for p,s in zip(before,SLOTS)}
     players['3']['slots'].update({'C','UTIL'})
     players['4']['slots'].update({'PF','UTIL'})
