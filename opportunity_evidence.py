@@ -54,6 +54,13 @@ def opportunity_evidence(pool, rotations, slate):
             'Last 5 minutes': mean(minutes[-5:]) if len(logs) >= 5 else None,
             'Last 10 minutes': mean(minutes[-10:]) if len(logs) >= 10 else None,
             'FD points per minute': stat_rate(logs, FD_WEIGHTS),
+            'Games with complete FD stats': sum(all(type(row.get(stat)) in (int, float)
+                                                    and 0 <= row[stat] <= 150
+                                                    for stat in FD_WEIGHTS) for row in logs),
+            'Minutes with complete FD stats': sum(row['minutes'] for row in logs
+                                                  if all(type(row.get(stat)) in (int, float)
+                                                         and 0 <= row[stat] <= 150
+                                                         for stat in FD_WEIGHTS)),
             'Shot/FT/turnover opportunities per minute': stat_rate(
                 logs, {'fieldGoalsAttempted': 1, 'freeThrowsAttempted': .44, 'turnovers': 1}),
             'Box-score sources': ' · '.join(sorted({row['source'] for row in logs})),
