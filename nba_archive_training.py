@@ -25,7 +25,7 @@ def prior_contests(history, target_day, *, limit=3):
 
 def load_prior_replays(history, target_day, token, *, limit=3, version_limit=8,
                        list_packets=list_slate_packets, load_packet=load_slate_packet,
-                       final_boxes=collect_final_boxes):
+                       final_boxes=collect_final_boxes, include_captures=False):
     """Use latest chronologically valid full pre-tip capture for each earlier date.
 
     Every packet is checksum-verified by the archive loader, and outcomes come
@@ -34,7 +34,7 @@ def load_prior_replays(history, target_day, token, *, limit=3, version_limit=8,
     """
     if not token or type(target_day) is not date or not 1 <= limit <= 5 or not 1 <= version_limit <= 12:
         raise ValueError('A verified archive connection and bounded prior-slate scan are required.')
-    replays, report = [], []
+    replays, report, captures = [], [], []
     for day, contest in prior_contests(history, target_day, limit=limit):
         row = {'date': day.isoformat(), 'contest': contest, 'played_rows': 0, 'version': ''}
         try:
@@ -73,8 +73,11 @@ def load_prior_replays(history, target_day, token, *, limit=3, version_limit=8,
             row.update(version=version[:12], played_rows=int(replay.verified_outcome.eq('played').sum()),
                        status='Verified frozen capture and final games')
             replays.append(replay)
+            if include_captures:
+                captures.append((day, contest, version, pool, results))
         except SOURCE_ERRORS as exc:
             row['status'] = 'Unavailable or unverified archive/final results'
         report.append(row)
-    return (pd.concat(replays, ignore_index=True) if replays else pd.DataFrame(),
-            pd.DataFrame(report, columns=['date', 'contest', 'version', 'played_rows', 'status']))
+    output = (pd.concat(replays, ignore_index=True) if replays else pd.DataFrame(),
+              pd.DataFrame(report, columns=['date', 'contest', 'version', 'played_rows', 'status']))
+    return (*output, captures) if include_captures else output
