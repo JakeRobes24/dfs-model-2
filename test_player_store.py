@@ -23,4 +23,30 @@ class TestPlayerStore(unittest.TestCase):
             pd.DataFrame([{'fanduel_id':'contest-11','actual_minutes':26,'actual_fd_points':20}]).to_csv(actual,index=False)
             with self.assertRaises(ValueError):import_actuals(db,actual,'2026-11-20')
             db.close()
+    def test_slate_membership_and_idempotent_provenance(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td); db=connect(p/'history.sqlite')
+            research=p/'research.csv'; actual=p/'actual.csv'
+            base=dict(fanduel_name='A',salary=5000,position='PG',roster_eligibility='PG',adjusted_fd_points=25)
+            for day,ids in [('2026-11-20',['c-1','c-2']),('2026-11-21',['c-3'])]:
+                pd.DataFrame([dict(base,fanduel_id=i) for i in ids]).to_csv(research,index=False)
+                import_snapshot(db,research,day)
+            row=dict(fanduel_id='c-1',actual_minutes=30,actual_fd_points=25,actuals_source='first evidence')
+            pd.DataFrame([row]).to_csv(actual,index=False)
+            import_actuals(db,actual,'2026-11-20')
+            original=db.execute('SELECT * FROM actuals').fetchall()
+            pd.DataFrame([dict(row,actuals_source='retry evidence')]).to_csv(actual,index=False)
+            self.assertEqual(import_actuals(db,actual,'2026-11-20')['unchanged'],1)
+            self.assertEqual(db.execute('SELECT * FROM actuals').fetchall(),original)
+            pd.DataFrame([dict(row,fanduel_id='c-2'),dict(row,fanduel_id='c-3')]).to_csv(actual,index=False)
+            with self.assertRaisesRegex(ValueError,'this slate'):
+                import_actuals(db,actual,'2026-11-20')
+            self.assertEqual(db.execute('SELECT * FROM actuals').fetchall(),original)
+            for col,val in [('actual_minutes',-1),('actual_minutes',float('inf')),('actual_fd_points',float('-inf'))]:
+                pd.DataFrame([dict(row,**{col:val})]).to_csv(actual,index=False)
+                with self.assertRaisesRegex(ValueError,'Invalid actual numeric'):
+                    import_actuals(db,actual,'2026-11-20',allow_overwrite=True)
+            self.assertEqual(db.execute('SELECT * FROM actuals').fetchall(),original)
+            db.close()
+
 if __name__=='__main__':unittest.main()
