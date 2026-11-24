@@ -2,6 +2,7 @@
 from functools import lru_cache
 from math import isfinite
 from model import SLOTS, allowed_slots
+from nba_classic_rules import canonical_teams, legal_team_counts
 
 LABELS = tuple(SLOTS[:7]) + ("UTIL 1", "UTIL 2")
 
@@ -17,6 +18,8 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
         raise ValueError("Contest IDs must be unique and present")
     players = pool.set_index("fanduel_id").to_dict("index")
     closed = set(closed_players)
+    teams = canonical_teams(pool)
+    team_lookup = dict(zip(pool.fanduel_id, teams, strict=True)) if teams is not None else None
     if not closed <= players.keys():
         raise ValueError("Unknown closed player ID")
     def cost(p):
@@ -30,9 +33,10 @@ def plan_direct_swaps(pool, before, after, closed_players=(), cap=60000):
         return (len(ids) == len(SLOTS) and len(set(ids)) == len(SLOTS)
                 and all(p in players and slot in allowed_slots(players[p]["roster_eligibility"])
                         for p, slot in zip(ids, SLOTS))
-                and salary(ids) <= cap)
+                and salary(ids) <= cap
+                and (team_lookup is None or legal_team_counts(team_lookup[p] for p in ids)))
     if not legal(before) or not legal(after):
-        raise ValueError("Invalid entry or candidate: ID, slot, uniqueness or salary")
+        raise ValueError("Invalid entry or candidate: ID, slot, uniqueness, salary or team composition")
     if any(p not in closed and players[p].get("eligible") != True for p in after):
         raise ValueError("Replacement or retained open player is not eligible")
     changed = [i for i in range(len(SLOTS)) if before[i] != after[i]]
