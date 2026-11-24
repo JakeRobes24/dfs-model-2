@@ -7,6 +7,7 @@ from math import isfinite
 from collections import Counter
 import pandas as pd
 from model import SLOTS, allowed_slots
+from nba_classic_rules import validate_team_roster
 from nba_swap_execution import find_executable_layout
 
 OUT={'out','inactive','suspended'}
@@ -54,6 +55,7 @@ def plan_contingency_entry(pool, entered, candidates, out_ids, *, closed_players
     if sum(lookup.loc[list(before),'salary'])>60000 or any(
             s not in allowed_slots(lookup.at[p,'roster_eligibility']) for s,p in zip(SLOTS,before)):
         raise ValueError('Invalid current entry')
+    validate_team_roster(pool, before, require_teams=True)
     if not preview:
         cutoff=pd.Timestamp(as_of)
         if (not schedule_verified or as_of is None or pd.isna(cutoff)
