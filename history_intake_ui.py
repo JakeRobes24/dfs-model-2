@@ -50,15 +50,22 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                                            market_events)).encode()).hexdigest()
                 saved = st.session_state.get('history_auto_saved', set())
                 if fingerprint not in saved:
-                    schedule = games_for_date(slate_date)
-                    archived = capture_pool(pool, audit, schedule, slate_date, datetime.now(timezone.utc),
-                                            input_hashes, market_events=market_events)
-                    if not archived.replay_before_full_slate_tip.all():
+                    pending = st.session_state.get('history_auto_pending', {})
+                    packet = pending.get(fingerprint)
+                    if packet is None:
+                        schedule = games_for_date(slate_date)
+                        archived = capture_pool(pool, audit, schedule, slate_date, datetime.now(timezone.utc),
+                                                input_hashes, market_events=market_events)
+                        if archived.replay_before_full_slate_tip.all():
+                            packet = make_submission(archived, slate_date, lineups=lineup_csv)
+                            st.session_state['history_auto_pending'] = {fingerprint: packet}
+                    if packet is None:
                         st.info('Automatic preservation skipped: full-slate pre-tip timing is not verified.')
                     else:
-                        path, raw = make_submission(archived, slate_date, lineups=lineup_csv)
+                        path, raw = packet
                         commit = submit_reviewed_slate(token, path, raw)
                         st.session_state['history_auto_saved'] = saved | {fingerprint}
+                        st.session_state.pop('history_auto_pending', None)
                         st.success('Reviewed pre-tip candidates submitted to private history; backup verification is separate.')
                 else:
                     st.caption('Unchanged reviewed candidates already submitted this session.')
