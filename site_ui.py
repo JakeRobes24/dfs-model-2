@@ -313,10 +313,13 @@ def render_slate(history_slot):
         st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
         st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
 
-    from nba_research_triage import disagreement_queue
+    from nba_research_triage import attach_rate_context, disagreement_queue
     queue = disagreement_queue(scored)
+    if not queue.empty:
+        recent_rates, _ = opportunity_evidence(scored, rotations, slate)
+        queue = attach_rate_context(queue, recent_rates)
     with st.expander(f'Full-pool disagreement review ({len(queue)} eligible players)'):
-        st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers. Time and rate effects use only same-provider paired points/minutes, and may cover fewer sources than the overall point consensus.')
+        st.caption('Research priority only: large point/minute discrepancies and missing projections are surfaced without changing scores. Agreement against DAILY is distinct from conflict between independent providers. Time and rate effects use only same-provider paired points/minutes, and may cover fewer sources than the overall point consensus. Historical production is minutes-weighted over complete recent official box scores; sample size is shown. This is descriptive evidence, not a matchup or usage-adjusted forecast.')
         if queue.empty:
             st.info('No flagged discrepancies in available evidence; this does not certify complete source coverage.')
         else:
