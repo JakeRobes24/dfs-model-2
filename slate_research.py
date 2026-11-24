@@ -346,7 +346,7 @@ def propsims_research(slate, as_of):
             continue
         common = dict(player=name.get_text(strip=True), team=team, game=f'{team}@{opponent}',
                       source=PROPSIMS, observed_at=stamp.isoformat())
-        projections.append(dict(common, points=points))
+        projections.append(dict(common, points=points, paired_minutes=minutes))
         notes.append(dict(common, independent_group='propsims', official=False, status='',
                           starter='', role='', minutes=minutes))
     if not projections:
@@ -402,7 +402,7 @@ def rotogrinders_research(slate, as_of):
                           source=ROTOGRINDERS, observed_at=stamp.isoformat())
             notes.append(dict(common, independent_group='rotogrinders', official=False,
                               status='', starter='', role='', minutes=minutes))
-            projections.append(dict(common, points=round(sum(stats[key] * weight for key, weight in weights.items()), 2)))
+            projections.append(dict(common, points=round(sum(stats[key] * weight for key, weight in weights.items()), 2), paired_minutes=minutes))
     if not notes:
         raise ValueError('No verifiable public RotoGrinders estimates for upcoming games')
     return (notes, projections), f'{len(notes)} pre-tip estimates · updated {stamp:%I:%M %p ET}'
@@ -691,6 +691,9 @@ def points_consensus(projections, evidence, as_of):
     has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
     frame['time'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
     frame['points'] = pd.to_numeric(frame.points, errors='coerce')
+    # Minutes are paired only when supplied alongside the same provider's points.
+    frame['paired_minutes'] = pd.to_numeric(frame.get('paired_minutes', pd.Series(index=frame.index, dtype=float)), errors='coerce')
+    frame['paired_minutes'] = frame.paired_minutes.where(frame.paired_minutes.gt(0) & frame.paired_minutes.le(60))
     age = (pd.Timestamp(as_of) - frame.time).dt.total_seconds() / 3600
     frame = frame.loc[frame.family.notna() & age.between(0, 6) & frame.points.between(0, 150)].copy()
     news = pd.DataFrame(evidence)
@@ -717,7 +720,7 @@ def points_consensus(projections, evidence, as_of):
                             observed_at=group.time.max().isoformat(), source=', '.join(group.source),
                             source_count=len(group), spread=group.points.max() - group.points.min(),
                             detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()),
-                            inputs_json=group[['source', 'family', 'points', 'time', 'weight']]
+                            inputs_json=group[['source', 'family', 'points', 'time', 'weight', 'paired_minutes']]
                                 .rename(columns={'time': 'observed_at'})
                                 .to_json(orient='records', date_format='iso', double_precision=15))
     return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json'])
