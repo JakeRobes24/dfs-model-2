@@ -317,8 +317,15 @@ def render_slate(history_slot):
     queue = disagreement_queue(scored)
     from nba_matchup_context import matchup_context
     from nba_shadow_research import freeze_research_features
-    recent_rates, recent_absences = opportunity_evidence(scored, rotations, slate)
-    matchup = matchup_context(scored, rotations, slate)
+    with st.expander('Historical research window'):
+        st.caption('The longer window feeds both discrepancy review and frozen experimental evidence. Reviewed live scoring continues to use its established recent rotation inputs.')
+        longer = st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}')
+    rotation_rows, coverage = rotations, rotation_status
+    if longer:
+        with st.spinner('Checking up to ten recent team games…'):
+            rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
+    recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
+    matchup = matchup_context(scored, rotation_rows, slate)
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
@@ -436,11 +443,7 @@ def render_slate(history_slot):
             st.dataframe(audit[['fanduel_id', 'source', 'observed_at', 'status', 'starter', 'role', 'review']],
                          hide_index=True)
     with st.expander('Rotation and injury opportunity evidence'):
-        rotation_rows, coverage = rotations, rotation_status
-        if st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}'):
-            with st.spinner('Checking up to ten recent team games…'):
-                rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
-        rotation_summary, absence_splits = opportunity_evidence(scored, rotation_rows, slate)
+        rotation_summary, absence_splits = recent_rates, recent_absences
         st.caption(coverage)
         if rotation_summary.empty:
             st.info('No verified prior box scores matched this player pool.')
