@@ -23,3 +23,13 @@ Develop, test, validate, freeze the scoring policy, execute the normal full-pool
 5. Reduce manual uploads, improve lock-aware workflow and archive reliability; then extend NFL integration using its own contest rules and evidence.
 
 Review priorities after every slate. This checkpoint is not a final injury check, proof of a tournament edge, or deployment approval.
+
+## Approved three-sport architecture
+
+The long-term goal is one shared self-calibrating DFS platform for NBA, NFL and MLB, not three independent infrastructure implementations.
+
+- Reuse contest reconciliation interfaces, source provenance, versioned immutable pre-lock captures, verified outcome ingestion, paired error measurement, chronological validation, calibration registries, promotion gates, rollback and audit tooling.
+- Keep scoring rules, player identity, opportunity features, eligibility, roster constraints, uncertainty, game correlation and tournament objectives sport- and contest-specific. Do not pool incomparable raw errors or transfer learned weights across sports without separate validation.
+- Begin with NBA, then extend NFL, then MLB as the shared foundation becomes reliable. NBA need not be perfect before extension.
+- Use prospective, chronological held-out evaluation with adequate samples, compare against the current policy on matched observations, and retain the incumbent if improvement is unsupported. Automatic recalibration is a development goal, not a currently validated capability. Preserve model versions and rollback; do not silently promote experiments.
+- Prioritize work by likely decision-quality impact, strength of evidence, and reuse across sports. Freeze stable scoring before each slate and resume development after verified outcomes, without delaying normal pre-lock checks.
