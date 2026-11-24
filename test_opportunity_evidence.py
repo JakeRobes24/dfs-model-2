@@ -43,3 +43,37 @@ def test_rotation_splits_exclude_unknown_games_and_shrink_small_comparisons():
     assert splits.loc[0, 'Games with teammate'] == splits.loc[0, 'Games without teammate'] == 1
     assert splits.loc[0, 'Minutes gap (shrunk)'] == 2
     assert splits.loc[0, 'Evidence'] == 'Small sample'
+
+
+def test_absence_rate_evidence_uses_complete_stats_and_excludes_conflicting_participation():
+    from opportunity_evidence import rate_comparison, FD_WEIGHTS, OPPORTUNITY_WEIGHTS
+    def game(minutes, points, complete=True):
+        return dict(minutes=minutes, points=points, reboundsTotal=0, assists=0,
+                    steals=0, blocks=0, turnovers=0,
+                    fieldGoalsAttempted=10 if complete else None, freeThrowsAttempted=0)
+    present = [game(20, 20), game(30, 30), game(20, 20)]
+    absent = [game(20, 30), game(30, 45), game(20, 30, False)]
+    fd = rate_comparison(present, absent, FD_WEIGHTS)
+    assert fd['sufficient']
+    assert fd['gap'] == pytest.approx(.5)
+    assert fd['shrunk_gap'] == pytest.approx(.5 * 3 / 8)
+    opp = rate_comparison(present, absent, OPPORTUNITY_WEIGHTS)
+    assert not opp['sufficient']
+    assert opp['without_games'] == 2 and opp['without_minutes'] == 50
+    assert rate_comparison([], absent, FD_WEIGHTS)['gap'] is None
+
+    slate = date(2026, 11, 20)
+    pool = pd.DataFrame([
+        dict(team='BOS', fanduel_id='1', fanduel_name='Player A', prelock_status='', eligible=True),
+        dict(team='BOS', fanduel_id='2', fanduel_name='Player B', prelock_status='out', eligible=False),
+    ])
+    logs = [dict(game(30, 30), team='BOS', player='Player A', nba_id='1',
+                 game_date=slate-timedelta(days=i), started=True, source='NBA box',
+                 teammates_played=('playerb',) if i != 2 else (),
+                 teammates_absent=('playerb',) if i != 1 else ())
+            for i in (1, 2, 3)]
+    _, splits = opportunity_evidence(pool, logs, slate)
+    assert splits.loc[0, 'Games with teammate'] == 1
+    assert splits.loc[0, 'Games without teammate'] == 1
+    assert splits.loc[0, 'Complete FD games with'] == 1
+    assert splits.loc[0, 'FD rate evidence'] == 'Small or incomplete sample'
