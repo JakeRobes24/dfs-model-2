@@ -766,10 +766,10 @@ KEELSTATS = 'https://keelstats.com/nba/usage'
 
 
 def keelstats_reference(slate, as_of):
-    """Dated minutes reference only: provider explicitly omits returning players' impact."""
+    """Dated minutes reference only; returning-player impact is not modeled."""
     soup = BeautifulSoup(fetch(KEELSTATS), 'html.parser')
     page = soup.get_text(' ', strip=True)
-    if f'{slate:%A, %B} {slate.day}' not in page:
+    if slate != as_of.astimezone(ET).date() or f'{slate:%A, %B} {slate.day}' not in page:
         raise ValueError('KeelStats slate date unavailable')
     stamp_match = re.search(r'Updated ([A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M) (E[DS]T)', page)
     if not stamp_match:
@@ -784,7 +784,49 @@ def keelstats_reference(slate, as_of):
         game_heading = table.find_previous('h2')
         if not game_heading:
             continue
-        match = re.search(r'(.+?) at (.+?)(?:\s+\d{1,2}:\d{2}\s*[AP]M)?
+        match = re.fullmatch(r'(.+?) at (.+?)(?:\s*\d{1,2}:\d{2}\s*[AP]M)?', game_heading.get_text(' ', strip=True))
+        if not match:
+            continue
+        away, home = map(team_code, match.groups())
+        team = team_code(caption.get_text(' ', strip=True).split(':',1)[0]) if caption else ''
+        if not team and heading:
+            team = team_code(heading.get_text(' ', strip=True))
+        if not away or not home or away == home or team not in (away, home):
+            continue
+        headers = [cell.get_text(' ', strip=True) for cell in table.select('thead th')]
+        if not {'Player','L10','Tonight','USG%','GS'} <= set(headers) or len(set(headers)) != len(headers):
+            continue
+        for row in table.select('tbody tr'):
+            cells = [cell.get_text(' ', strip=True) for cell in row.find_all(['td','th'], recursive=False)]
+            if len(cells) != len(headers):
+                continue
+            fields = dict(zip(headers,cells))
+            try:
+                minutes = float(fields['Tonight'])
+            except ValueError:
+                continue
+            if not fields['Player'] or not 0 <= minutes <= 48:
+                continue
+            records.append(dict(player=fields['Player'], team=team, game=f'{away}@{home}',
+                                reference_minutes=minutes, reference_l10=fields['L10'],
+                                reference_usage=fields['USG%'], reference_starts=fields['GS']))
+    if not records:
+        raise ValueError('KeelStats minutes table unavailable')
+    return records, stamp
+
+
+def compare_keelstats(scored, records):
+    """Keep historical context and projected minutes separate from scoring inputs."""
+    matches = pd.DataFrame(match_public(scored, records))
+    if matches.empty:
+        return matches
+    compared = scored.loc[scored.eligible, ['fanduel_id','fanduel_name','adjusted_minutes']].merge(
+        matches.drop_duplicates('fanduel_id',keep=False), on='fanduel_id', validate='one_to_one')
+    compared['minutes_gap'] = (compared.reference_minutes - compared.adjusted_minutes).round(2)
+    return compared.sort_values('minutes_gap',key=lambda col:col.abs(),ascending=False)
+
+
+def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
     if slate != as_of.astimezone(ET).date():
         return {}, {name: 'Historical slate: current reference not checked' for name in
