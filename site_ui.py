@@ -897,6 +897,7 @@ def render_slate(history_slot):
                             training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
                                                   for file in files], ignore_index=True).drop_duplicates()
                         from nba_source_accuracy import review_source_dates
+                        source_summary = pd.DataFrame()
                         try:
                             source_details, source_daily, source_summary = review_source_dates(training, slate)
                         except ValueError as exc:
@@ -911,6 +912,15 @@ def render_slate(history_slot):
                                                    mime='text/csv', key='slate_prior_source_accuracy')
                             else:
                                 st.caption('No qualifying frozen independent provider forecasts in these earlier replays.')
+                        if not source_summary.empty:
+                            from nba_source_rate_accuracy import review_source_rates
+                            rate_details, rate_daily, rate_summary = review_source_rates(training, slate, source_details=source_details)
+                            if not rate_summary.empty:
+                                st.caption('Same-provider FD points per minute accuracy; minimum ten projected and actual minutes. Matched samples, equal weight per date, descriptive only.')
+                                st.dataframe(rate_summary.round(3), hide_index=True)
+                                st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
+                                                   file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
+                                                   key='slate_prior_rate_accuracy')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
