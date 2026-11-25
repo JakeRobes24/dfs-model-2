@@ -761,6 +761,368 @@ def reference_review_queue(scored, boards, as_of):
                               ascending=[False, False, True, True]).drop(columns=['_missing','_gap']).reset_index(drop=True)
 
 
+
+KEELSTATS = 'https://keelstats.com/nba/usage'
+
+
+def keelstats_reference(slate, as_of):
+    """Dated minutes reference only: provider explicitly omits returning players' impact."""
+    soup = BeautifulSoup(fetch(KEELSTATS), 'html.parser')
+    page = soup.get_text(' ', strip=True)
+    if f'{slate:%A, %B} {slate.day}' not in page:
+        raise ValueError('KeelStats slate date unavailable')
+    stamp_match = re.search(r'Updated ([A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M) (E[DS]T)', page)
+    if not stamp_match:
+        raise ValueError('KeelStats update timestamp unavailable')
+    stamp = datetime.strptime(stamp_match[1], '%b %d, %Y, %I:%M %p').replace(tzinfo=ET)
+    if stamp.tzname() != stamp_match[2] or not as_of - timedelta(hours=6) <= stamp <= as_of:
+        raise ValueError('KeelStats timestamp is stale or invalid')
+    records = []
+    for table in soup.select('table'):
+        caption = table.find('caption')
+        heading = table.find_previous('h3')
+        game_heading = table.find_previous('h2')
+        if not game_heading:
+            continue
+        match = re.search(r'(.+?) at (.+?)(?:\s+\d{1,2}:\d{2}\s*[AP]M)?
+    """Refresh public reference boards independently, without accepting scoring inputs."""
+    if slate != as_of.astimezone(ET).date():
+        return {}, {name: 'Historical slate: current reference not checked' for name in
+                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors')}
+    jobs = (
+        ('LineupExperts', lambda: (lineupexperts_reference(slate, slate), None)),
+        ('FantasySportsEdge', lambda: fantasysportsedge_reference(slate, as_of)),
+        ('Fantasy Team Advisors', lambda: fta_nba_reference(slate, as_of, contest_games)),
+    )
+    boards, status = {}, {}
+    with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
+        futures = [workers.submit(job) for _, job in jobs]
+        for (name, _), future in zip(jobs, futures):
+            try:
+                result = future.result()
+                if not result[0]:
+                    status[name] = 'Reference checked: no public rows'
+                    continue
+                boards[name] = result
+                status[name] = f'Reference checked: {len(result[0])} returned rows; not scoring evidence'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+                status[name] = 'Reference unavailable for this slate or source format changed'
+    return boards, status
+
+
+def get_public_research(slate, as_of):
+    """Return evidence plus report-level status. Never infer an injury from an absent row."""
+    jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
+            ('RotoWire starters and minutes', lambda: rotowire_research(slate, as_of), []),
+            ('Daily Fantasy Fuel', lambda: dff_projections(slate, as_of), []),
+            ('PropSims', lambda: propsims_research(slate, as_of), ([], [])),
+            ('RotoGrinders', lambda: rotogrinders_research(slate, as_of), ([], [])),
+            ('NBA House projected minutes', lambda: nba_house_minutes(slate, as_of), ([], []))]
+    results, status = [], []
+    with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
+        futures = [workers.submit(job) for _, job, _ in jobs]
+        for (label, _, empty), future in zip(jobs, futures):
+            try:
+                data, detail = future.result()
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+                data, detail = empty, 'Unavailable for this slate or source format changed'
+            results.append(data)
+            status.append((label, detail))
+    injuries, starters, projections, *additional = results
+    for minutes, points in additional:
+        starters.extend(minutes)
+        projections.extend(points)
+    return injuries + starters, projections, status
+
+
+def match_public(pool, records):
+    identities = {}
+    for row in pool.itertuples():
+        for name in contest_player_keys(row.fanduel_name, row.fanduel_id):
+            key = (name, row.team, matchup_key(row.game))
+            identities.setdefault(key, []).append(row.fanduel_id)
+    matched = []
+    for row in records:
+        key = (player_key(row['player']), row['team'], matchup_key(row['game']))
+        ids = identities.get(key, [])
+        if len(ids) == 1:
+            matched.append(dict(row, fanduel_id=ids[0]))
+    return matched
+
+
+
+def public_coverage(pool, notes, projections):
+    """Measure actual contest matches, separately from accepted scoring evidence."""
+    eligible = set(pool.loc[pool.eligible.eq(True), 'fanduel_id'])
+    rows = []
+    for kind, records, providers in (
+        ('Points', projections, (DFF, PROPSIMS, ROTOGRINDERS)),
+        ('Minutes', [row for row in notes if row.get('minutes') is not None],
+         (RW_MINUTES, NBA_HOUSE, PROPSIMS, ROTOGRINDERS)),
+    ):
+        for source in providers:
+            raw = [row for row in records if row.get('source') == source]
+            matched = match_public(pool, raw)
+            ids = {row['fanduel_id'] for row in matched}
+            covered = ids & eligible
+            rows.append({
+                'Evidence': kind, 'Provider': source, 'Returned rows': len(raw),
+                'Matched rows': len(matched), 'Unmatched rows': len(raw) - len(matched),
+                'Eligible players matched': len(covered), 'Eligible players': len(eligible),
+                'Eligible players missing': len(eligible) - len(covered),
+            })
+    return pd.DataFrame(rows)
+
+
+def historical_context(pool, verified, rotations, slate):
+    archive = verified.copy()
+    if not archive.empty:
+        archive['day'] = pd.to_datetime(archive.slate_date, errors='coerce').dt.date
+        archive['minutes'] = pd.to_numeric(archive.get('official_minutes', archive.actual_minutes), errors='coerce')
+        archive['minutes'] = archive.minutes.where(archive.minutes.notna(), pd.to_numeric(archive.actual_minutes, errors='coerce'))
+        archive['suffix'] = archive.fanduel_id.str.extract(r'^\d+-(\d+)$')[0]
+        archive['name_key'] = archive.name.map(player_key)
+    identities = [contest_player_keys(row.fanduel_name, row.fanduel_id) for row in pool.itertuples()]
+    name_counts = Counter(name for keys in identities for name in keys)
+    records = []
+    for player, keys in zip(pool.itertuples(), identities):
+        if any(name_counts[key] > 1 for key in keys):
+            continue
+        logs = [row for row in rotations if player_key(row['player']) in keys and row['team'] == player.team
+                and slate - timedelta(days=21) <= row['game_date'] < slate and row['nba_id']]
+        if len({row['nba_id'] for row in logs}) > 1:
+            logs = []
+        samples = {row['game_date']: row['minutes'] for row in logs}
+        sources = ['NBA official box scores'] if logs else []
+        if not archive.empty:
+            same_suffix = archive[archive.suffix.eq(player.fanduel_id.rsplit('-', 1)[-1]) & archive.day.lt(slate)]
+            # Reuse matching evidence only. Any conflicting archived name vetoes the suffix.
+            if len(same_suffix) and same_suffix.name_key.isin(keys).all():
+                verified_minutes = same_suffix[same_suffix.minutes.between(1, 60)]
+                for day, values in verified_minutes.groupby('day').minutes:
+                    if day >= slate - timedelta(days=21) and values.nunique() == 1 and day not in samples:
+                        samples[day] = values.iloc[0]
+                        if 'Verified private history' not in sources:
+                            sources.append('Verified private history')
+        if samples:
+            dates = sorted(samples)
+            mean = sum(samples[day] for day in dates[-3:]) / min(3, len(dates))
+            records.append(dict(player=player.fanduel_name, season_mpg=None, last5_mpg=None, last10_mpg=None,
+                                history_games=len(samples), history_latest=dates[-1].isoformat(),
+                                history_source=' + '.join(sources), recent_starts=sum(row['started'] is True for row in logs)
+                                if any(row['started'] is not None for row in logs) else None, recent_mpg=mean))
+    return pd.DataFrame(records, columns=HISTORY_COLUMNS + ['recent_mpg'])
+
+
+POINT_SOURCE_GROUPS = {
+    DFF: 'daily-fantasy-fuel', PROPSIMS: 'propsims', ROTOGRINDERS: 'rotogrinders',
+    LINEUPEXPERTS_TODAY: 'lineupexperts',
+}
+
+
+def points_consensus(projections, evidence, as_of):
+    """Weight verified point estimates by recency and count each source family once."""
+    frame = pd.DataFrame(projections)
+    if frame.empty:
+        return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json', 'propsims_distribution_json'])
+    frame['family'] = frame.source.map(POINT_SOURCE_GROUPS)
+    dated = frame.observed_at.astype('string').fillna('').str.strip()
+    has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
+    frame['time'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
+    frame['points'] = pd.to_numeric(frame.points, errors='coerce')
+    # Minutes are paired only when supplied alongside the same provider's points.
+    frame['paired_minutes'] = pd.to_numeric(frame.get('paired_minutes', pd.Series(index=frame.index, dtype=float)), errors='coerce')
+    frame['paired_minutes'] = frame.paired_minutes.where(frame.paired_minutes.gt(0) & frame.paired_minutes.le(60))
+    age = (pd.Timestamp(as_of) - frame.time).dt.total_seconds() / 3600
+    frame = frame.loc[frame.family.notna() & age.between(0, 6) & frame.points.between(0, 150)].copy()
+    news = pd.DataFrame(evidence)
+    if not news.empty:
+        affecting = news.loc[news.official.eq(True) & (
+            news.status.str.casefold().isin(OFFICIAL_STATUS) |
+            news.starter.isin(['starter', 'bench'])
+        )].copy()
+        affecting['time'] = pd.to_datetime(affecting.observed_at, utc=True, errors='coerce', format='mixed')
+        newest = affecting.loc[affecting.time.le(as_of)].groupby('fanduel_id').time.max()
+        if not newest.empty and not frame.empty:
+            cutoff = frame.fanduel_id.map(newest)
+            frame = frame.loc[cutoff.isna() | frame.time.ge(cutoff)].copy()
+    frame = frame.sort_values('time')
+    frame = frame.loc[~frame.duplicated(['fanduel_id', 'family', 'time'], keep=False)]
+    frame = frame.drop_duplicates(['fanduel_id', 'family'], keep='last')
+    # Relative recency weights are mathematically equivalent to absolute age weights.
+    # Anchoring to each player's latest accepted estimate avoids clock-only score drift.
+    relative_age = (frame.groupby('fanduel_id').time.transform('max') - frame.time).dt.total_seconds() / 3600
+    frame['weight'] = 2 ** (-relative_age / 3)
+    rows = {}
+    for player, group in frame.groupby('fanduel_id'):
+        distribution = []
+        for item in group.loc[group.source.eq(PROPSIMS)].to_dict('records'):
+            optional = {}
+            for field, upper in (('fd_p10', 150), ('fd_p85', 150), ('play_probability', 1),
+                                 ('conditional_fd_median', 150)):
+                value = pd.to_numeric(item.get(field), errors='coerce')
+                if pd.notna(value) and 0 <= value <= upper:
+                    optional[field] = float(value)
+            if not (optional.get('fd_p10', float('inf')) <= item['points']
+                    <= optional.get('fd_p85', -1)):
+                optional.pop('fd_p10', None)
+                optional.pop('fd_p85', None)
+            if optional:
+                distribution.append(dict(source=PROPSIMS, observed_at=item['time'].isoformat(),
+                                         fd_median=float(item['points']), **optional))
+        rows[player] = dict(propsims_distribution_json=json.dumps(distribution), points=(group.points * group.weight).sum() / group.weight.sum(),
+                            observed_at=group.time.max().isoformat(), source=', '.join(group.source),
+                            source_count=len(group), spread=group.points.max() - group.points.min(),
+                            detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()),
+                            inputs_json=group[['source', 'family', 'points', 'time', 'weight', 'paired_minutes']]
+                                .rename(columns={'time': 'observed_at'})
+                                .to_json(orient='records', date_format='iso', double_precision=15))
+    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json', 'propsims_distribution_json'])
+
+
+def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=None, manual_history=None):
+    """Keep DAILY as the baseline and apply only bounded, corroborated changes."""
+    pool = pool.copy()
+    history = history.copy()
+    if manual_history is not None:
+        existing = {norm(name) for name in manual_history.player}
+        history = pd.concat([history.loc[~history.player.map(norm).isin(existing)], manual_history], ignore_index=True)
+    result = consensus(pool, manual_minutes, history)
+    if 'recent_mpg' not in result:
+        result['recent_mpg'] = None
+    # History alone is context. A moderate, same-direction discrepancy in an independent
+    # points model can support a small, explicitly provisional minutes adjustment.
+    reviewed = review_prelock_evidence(pool, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
+    fresh = reviewed.loc[reviewed.review.eq('Reviewed')].copy()
+    independent = points_consensus(projections, fresh.to_dict('records'), as_of)
+    for target, field in {
+        'independent_fd_points': 'points', 'independent_projection_at': 'observed_at',
+        'independent_projection_source': 'source', 'projection_source_spread': 'spread',
+        'projection_source_count': 'source_count', 'projection_source_estimates': 'detail',
+        'projection_sources_json': 'inputs_json',
+        'propsims_distribution_json': 'propsims_distribution_json',
+    }.items():
+        result[target] = result.fanduel_id.map(independent[field])
+    result['projection_source_count'] = result.projection_source_count.fillna(0).astype(int)
+    result['projection_sources_json'] = result.projection_sources_json.fillna('[]')
+    result['propsims_distribution_json'] = result.propsims_distribution_json.fillna('[]')
+    result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
+    baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
+    minute_gap = historical - baseline
+    counts = pd.to_numeric(result.get('history_games', pd.Series(0, index=result.index)), errors='coerce')
+    official = fresh.loc[fresh.official & fresh.status.str.casefold().isin(OFFICIAL_STATUS)]
+    newest_status = official.loc[official.observed_at.eq(official.groupby('fanduel_id').observed_at.transform('max'))]
+    official_out = set(newest_status.loc[newest_status.status.str.casefold().isin(
+        {'out', 'inactive', 'suspended', 'doubtful', 'questionable'}), 'fanduel_id'])
+    candidates = fresh.loc[fresh.source.isin({RW_MINUTES, PROPSIMS, ROTOGRINDERS, NBA_HOUSE})
+                           & fresh.minutes.notna() & fresh.independent_group.ne('')].copy()
+    changes = fresh.loc[fresh.official & (fresh.status.str.casefold().isin(OFFICIAL_STATUS)
+                                         | fresh.starter.str.casefold().isin({'starter', 'bench'}))]
+    latest_news = changes.groupby('fanduel_id').observed_at.max()
+    if not latest_news.empty and not candidates.empty:
+        cutoff = candidates.fanduel_id.map(latest_news)
+        candidates = candidates.loc[cutoff.isna() | candidates.observed_at.ge(cutoff)]
+    groups = ['fanduel_id', 'independent_group']
+    candidates = candidates.loc[candidates.observed_at.eq(candidates.groupby(groups).observed_at.transform('max'))]
+    # Conflicting latest estimates from the same provider are not corroboration.
+    conflicts = candidates.groupby(groups).minutes.transform('nunique').gt(1)
+    conflicted_ids = set(candidates.loc[conflicts, 'fanduel_id'])
+    candidates = candidates.loc[~conflicts].drop_duplicates(groups)
+    by_id = candidates.groupby('fanduel_id').minutes.apply(list).to_dict()
+    result['independent_minutes'] = result.fanduel_id.map(
+        {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
+    )
+    minutes_agree = ((result.independent_minutes - historical).abs().le(3)
+                     & (result.independent_minutes - baseline).abs().between(2, 6))
+    points_agree = (result.fd_disagreement.abs().between(2, 8)
+                    & (minute_gap * result.fd_disagreement).gt(0))
+    source_conflict = result.projection_source_spread.ge(5) | result.fanduel_id.isin(conflicted_ids) | result.fanduel_id.isin(
+        key for key, values in by_id.items() if max(values) - min(values) > 3
+    )
+    corroborated = (~source_conflict & ~result.fanduel_id.isin(official_out) & result.eligible & result.minutes_method.eq('DAILY_only_unverified')
+                    & counts.ge(3) & minute_gap.abs().between(2, 6) & result.fppm.gt(0)
+                    & (minutes_agree | points_agree))
+    result.loc[corroborated, 'adjusted_minutes'] = baseline + (minute_gap / 3).clip(-2, 2)
+    result.loc[corroborated, 'adjusted_fd_points'] = result.fppm * result.adjusted_minutes
+    result.loc[corroborated, 'minutes_method'] = 'provisional_corroborated_rotation'
+    result.loc[corroborated, 'projection_warning'] = 'Provisional adjustment based on recent rotations and independent estimates'
+    result, audit = apply_prelock(result, pd.DataFrame(evidence, columns=sorted(REQUIRED)), as_of)
+    uncertain = result.prelock_status.isin(['questionable', 'doubtful']) | result.injury_flag.isin(['Q', 'D', 'GTD'])
+    # Verified minutes adjustments and official scratches have priority.
+    use_blend = (result.eligible & ~uncertain & ~source_conflict
+                 & result.minutes_method.eq('DAILY_only_unverified')
+                 & result.projection_source_count.ge(2) & result.projected_fd_points.gt(0)
+                 & result.fd_disagreement.abs().lt(5))
+    blend = .60 * result.projected_fd_points + .40 * result.independent_fd_points
+    result['blended_fd_points'] = blend.where(use_blend)
+    result.loc[use_blend, 'adjusted_fd_points'] = result.loc[use_blend, 'blended_fd_points']
+    result['blend_status'] = 'Blend not verified'
+    # Assign in reverse priority so every exclusion has a useful reason.
+    for mask, label in [
+        (use_blend, '60/40 blend applied'),
+        (result.fd_disagreement.abs().ge(5), 'Independent vs DAILY disagreement'),
+        (result.projection_source_count.lt(2), 'Fewer than two fresh point sources'),
+        (~result.minutes_method.eq('DAILY_only_unverified'), 'Minutes/status adjustment takes priority'),
+        (source_conflict, 'Independent sources disagree'),
+        (uncertain, 'Availability uncertain'),
+        (~result.projected_fd_points.gt(0), 'Missing DAILY baseline'),
+        (~result.eligible, 'Ineligible'),
+    ]:
+        result.loc[mask, 'blend_status'] = label
+    result['projection_method'] = 'DAILY with applicable minutes and status checks'
+    result.loc[use_blend, 'projection_method'] = '60% DAILY / 40% independent blend'
+    disputes = (source_conflict | result.fd_disagreement.abs().ge(5) | minute_gap.abs().gt(5)
+                | (result.independent_minutes - baseline).abs().gt(5))
+    result['research_attention'] = ''
+    result.loc[result.prelock_starter.eq(''), 'research_attention'] += 'Starter unconfirmed. '
+    result.loc[uncertain, 'research_attention'] += 'Availability uncertain. '
+    result.loc[disputes, 'research_attention'] += 'Review source disagreement. '
+    role_changed = result.prelock_starter.eq('starter') & result.prelock_role.eq('Projected bench')
+    result.loc[role_changed, 'research_attention'] += 'Role change: confirmed starter against bench estimate. '
+    result.loc[~result.adjusted_fd_points.gt(0) & result.eligible, 'research_attention'] += 'Missing usable points. '
+    return result, audit
+, game_heading.get_text(' ', strip=True))
+        if not match:
+            continue
+        away, home = map(team_code, match.groups())
+        team = team_code(caption.get_text(' ', strip=True).split(':',1)[0]) if caption else ''
+        if not team and heading:
+            team = team_code(heading.get_text(' ', strip=True))
+        if not away or not home or away == home or team not in (away, home):
+            continue
+        headers = [cell.get_text(' ', strip=True) for cell in table.select('thead th')]
+        if not {'Player','L10','Tonight','USG%','GS'} <= set(headers) or len(set(headers)) != len(headers):
+            continue
+        for row in table.select('tbody tr'):
+            cells = [cell.get_text(' ', strip=True) for cell in row.find_all(['td','th'], recursive=False)]
+            if len(cells) != len(headers):
+                continue
+            fields = dict(zip(headers,cells))
+            try:
+                minutes = float(fields['Tonight'])
+            except ValueError:
+                continue
+            if not fields['Player'] or not 0 <= minutes <= 48:
+                continue
+            records.append(dict(player=fields['Player'], team=team, game=f'{away}@{home}',
+                                reference_minutes=minutes,
+                                reference_l10=fields['L10'], reference_usage=fields['USG%'],
+                                reference_starts=fields['GS']))
+    if not records:
+        raise ValueError('KeelStats minutes table unavailable')
+    return records, stamp
+
+
+def compare_keelstats(scored, records):
+    """Keep historical context and projected minutes separate from scoring inputs."""
+    matches = pd.DataFrame(match_public(scored, records))
+    if matches.empty:
+        return matches
+    compared = scored.loc[scored.eligible, ['fanduel_id','fanduel_name','adjusted_minutes']].merge(
+        matches.drop_duplicates('fanduel_id',keep=False), on='fanduel_id', validate='one_to_one')
+    compared['minutes_gap'] = (compared.reference_minutes - compared.adjusted_minutes).round(2)
+    return compared.sort_values('minutes_gap',key=lambda col:col.abs(),ascending=False)
+
 def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
     if slate != as_of.astimezone(ET).date():
