@@ -410,6 +410,11 @@ def render_slate(history_slot):
 
     archived_ownership = None
     archived_market_events = ()
+    with st.expander('Complete saved NBA research checklist'):
+        from research_source_registry import research_checklist
+        checklist = research_checklist('NBA', source_status)
+        st.caption('This is the full saved research stack, not just accepted numerical estimates. A reference or manual source is not marked verified merely because it is listed.')
+        st.dataframe(checklist, hide_index=True)
     with st.expander('Sources and checks'):
         st.caption(f'Research checked {checked_at:%b %d, %I:%M %p ET}. Statuses and starters only count when sourced.')
         for name, status in source_status:
