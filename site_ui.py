@@ -961,6 +961,28 @@ def render_slate(history_slot):
                         st.warning(f'Simulation unavailable: {exc}')
                 elif not use_archive and not files:
                     st.info('Sign in to use eligible private archives, or supply verified earlier replay exports. Generic historical results are not substitutes for frozen DAILY points.')
+        if not started and not lineups.empty and lineups.lineup.nunique() >= 2:
+            with st.expander('Experimental shared lineup-core challenge'):
+                st.caption('Find the strongest legal alternative with one heavily shared player omitted, and one joint omission. No scratch is assumed and no diversification rule is applied. Compare projection cost before considering a change.')
+                if st.button('Challenge shared lineup cores', key='shared_core_challenge'):
+                    from nba_core_challenge import challenge_shared_core
+                    try:
+                        if not can_reuse_candidates((lineups, comparison, alternative)):
+                            raise ValueError('Complete and verify the original candidate comparison first.')
+                        with st.spinner('Checking alternate roster cores…'):
+                            core_report, core_alternatives = challenge_shared_core(
+                                scored,lineups,exclude_uncertain=exclude,objective_column=objective)
+                        if core_report.empty:
+                            st.info('No players shared by multiple candidates.')
+                        else:
+                            st.dataframe(core_report.round(2),hide_index=True)
+                        if not core_alternatives.empty:
+                            st.dataframe(core_alternatives,hide_index=True)
+                            st.download_button('Download alternative cores',core_alternatives.to_csv(index=False),
+                                               'core_challenge_candidates.csv',mime='text/csv')
+                        st.caption('Research alternatives only; refresh availability and lock status before entry. Original candidates remain unchanged.')
+                    except (ValueError,TypeError,KeyError,OSError) as exc:
+                        st.warning(f'Core challenge unavailable: {exc}')
         if not started and not lineups.empty:
             with st.expander('Prepare injury contingencies'):
                 st.caption('Prepare before lock. These are hypothetical single-player and paired OUT portfolios, not news or late-swap instructions. Other players retain the reviewed projections.')
