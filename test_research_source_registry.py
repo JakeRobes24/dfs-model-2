@@ -242,3 +242,21 @@ def test_propsims_distribution_is_separate_from_weighted_points():
     assert len(data) == 1 and data[0]['fd_p85'] == 44
     assert data[0]['fd_median'] == 30 and data[0]['source'] == PROPSIMS
     assert json.loads(initial.loc['100-1','propsims_distribution_json']) == []
+
+
+def test_recovered_legacy_sources_are_retained_but_not_verified():
+    nba = research_checklist('NBA', [('MatchWiz','claimed projections'),
+                                    ('TheCapper','claimed projections'),
+                                    ('KeelStats','claimed estimates')]).set_index('Source')
+    nfl = research_checklist('NFL').set_index('Source')
+    for name, link in {
+        'MatchWiz': 'https://matchwiz.ai/nba/lineups',
+        'TheCapper': 'https://thecapper.io/nba/projections/',
+        'KeelStats': 'https://keelstats.com/nba/usage',
+    }.items():
+        assert name in nba.index and name not in nfl.index
+        assert nba.loc[name,'Integration'] == 'Manual research'
+        assert nba.loc[name,'Historical reference link'] == link
+        assert nba.loc[name,'Verified access link'] == ''
+        assert 'Not verified' in nba.loc[name,'Refresh evidence']
+    assert 'partial stat lines' in nba.loc['MatchWiz','Research purpose']
