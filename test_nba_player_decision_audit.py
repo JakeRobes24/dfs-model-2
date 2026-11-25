@@ -1,6 +1,6 @@
 import unittest
 import pandas as pd
-from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
+from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions, summarize_error_attribution
 
 
 class PlayerDecisionAuditTests(unittest.TestCase):
@@ -39,6 +39,36 @@ class PlayerDecisionAuditTests(unittest.TestCase):
         self.assertEqual(summary.loc["Changed projections", "Improved"], 2)
         self.assertEqual(summary.loc["Changed projections", "Worsened"], 1)
         self.assertAlmostEqual(summary.loc["Changed projections", "MAE improvement"], 1/3)
+
+    def test_attribution_exact_and_paired(self):
+        data = self.fixture().assign(nba_source="NBA official box")
+        original = data.copy(deep=True)
+        audit = audit_player_decisions(data).set_index("fanduel_id")
+        for prefix, projected in (("daily", "daily_points"), ("adjusted", "adjusted_fd_points")):
+            for pid in ("1-1", "1-2"):
+                row = audit.loc[pid]
+                self.assertAlmostEqual(row[f"{prefix}_minutes_effect"] +
+                                       row[f"{prefix}_rate_effect"],
+                                       row.actual_points_audit - row[projected])
+            self.assertTrue(pd.isna(audit.loc["1-3", f"{prefix}_rate_effect"]))
+            self.assertTrue(pd.isna(audit.loc["1-4", f"{prefix}_rate_effect"]))
+        summary = summarize_error_attribution(audit)
+        self.assertEqual(summary["Paired players"].tolist(), [2, 2])
+        pd.testing.assert_frame_equal(data, original)
+
+    def test_attribution_missing_source_invalid_minutes_and_negative_scores(self):
+        data = self.fixture().assign(nba_source="NBA official box")
+        data.loc[0, "nba_source"] = ""
+        data.loc[1, "daily_minutes"] = 0
+        report = summarize_error_attribution(audit_player_decisions(data))
+        self.assertEqual(report["Paired players"].tolist(), [0, 0])
+        data.loc[0, "nba_source"] = "NBA official box"
+        data.loc[0, "actual_points"] = -2
+        audit = audit_player_decisions(data).set_index("fanduel_id")
+        self.assertAlmostEqual(audit.loc["1-1", "adjusted_minutes_effect"] +
+                               audit.loc["1-1", "adjusted_rate_effect"], -30)
+        self.assertTrue(pd.isna(audit.loc["1-2", "adjusted_rate_effect"]))
+        self.assertEqual(summarize_error_attribution(audit)["Paired players"].tolist(), [1, 1])
 
     def test_reject_duplicate_and_missing_columns(self):
         data = self.fixture()
