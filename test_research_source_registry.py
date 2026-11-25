@@ -184,3 +184,31 @@ def test_lineupexperts_relative_day_must_match_explicit_date():
     with patch('slate_research.fetch', return_value=html.replace(b'11/24', b'11/25')):
         with pytest.raises(ValueError, match='reference table unavailable'):
             lineupexperts_reference(slate, slate)
+
+
+def test_propsims_fresh_previous_evening_run_is_valid_for_exact_current_slate():
+    from datetime import date, datetime, timedelta
+    from unittest.mock import patch
+    import pytest
+    from slate_research import ET, propsims_research
+    slate = date(2026, 11, 25)
+    now = datetime(2026, 11, 25, 2, tzinfo=ET)
+    html = """<h1>NBA DFS projections: Wednesday, November 25</h1>
+    <div class="updstamp"><time datetime="2026-11-24T21:41:00-06:00"></time></div>
+    <table><tr><td class="player"><a>Alpha Player</a><span class="msub">BOS · G vs NYK</span></td>
+    <td data-f="fd_p50" data-v="34.5"></td><td data-f="min_p50" data-v="31.0"></td></tr></table>"""
+    with patch('slate_research.fetch', return_value=html.encode()):
+        (notes, points), _ = propsims_research(slate, now)
+        assert notes[0]['minutes'] == 31.0
+        assert points[0]['points'] == 34.5 and points[0]['paired_minutes'] == 31.0
+        assert points[0]['observed_at'] == '2026-11-24T22:41:00-05:00'
+        with pytest.raises(ValueError, match='stale'):
+            propsims_research(slate, now + timedelta(hours=4))
+        with pytest.raises(ValueError, match='date unavailable'):
+            propsims_research(slate - timedelta(days=1), now)
+    with patch('slate_research.fetch', return_value=html.replace('-06:00', '').encode()):
+        with pytest.raises(ValueError, match='timezone-aware'):
+            propsims_research(slate, now)
+    with patch('slate_research.fetch', return_value=html.replace('21:41:00-06:00', '23:41:00-09:00').encode()):
+        with pytest.raises(ValueError, match='stale'):
+            propsims_research(slate, now)
