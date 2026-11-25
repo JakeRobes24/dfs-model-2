@@ -75,3 +75,20 @@ def test_frozen_pool_to_optimized_candidates_to_simulation():
     assert rosters.groupby('lineup').fanduel_id.nunique().eq(9).all()
     with pytest.raises(ValueError,match='Insufficient earlier'):
         build_experiment(frozen,training.assign(slate_date='2026-11-25'),day)
+
+
+def test_stress_policy_scores_against_same_actuals_with_own_declaration():
+    from nba_portfolio_stress import STRESS_POLICY
+    ids = [f'143-{i}' for i in range(16)]
+    pool = pd.DataFrame({'fanduel_id':ids,'salary':6000,
+        'roster_eligibility':'PG/SG/SF/PF/C/G/F/F/C/UTIL',
+        'team':['BOS','NYK','CLE','ORL']*4})
+    rosters = pd.DataFrame([dict(lineup=i+1,slot=s,fanduel_id=p)
+        for i in range(8) for s,p in zip(SLOTS,ids[i:i+9])])
+    selections = {'Projection ranked':[1,2,3,4],'Simulated P90 ranked':[5,6,7,8],
+                  STRESS_POLICY:[1,3,5,7]}
+    actual = pd.DataFrame(dict(fanduel_id=ids,outcome='Played',nba_fd_points=30,nba_source='NBA box'))
+    report,_ = score_experiment(pool,rosters,selections,actual,date(2026,11,25))
+    assert report.set_index('Policy').loc[STRESS_POLICY,'Period']=='Exploratory'
+    assert report.Entries.eq(4).all()
+    assert report['Best actual FD'].eq(270).all()

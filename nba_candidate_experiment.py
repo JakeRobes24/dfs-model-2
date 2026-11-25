@@ -13,6 +13,7 @@ from model import optimize
 from nba_historical_field import _rosters
 from nba_simulation import simulate_reviewed_candidates
 from slate_replay_capture import build_replay_rows
+from nba_portfolio_stress import stress_portfolio, STRESS_POLICY, STRESS_DECLARED
 
 DECLARED = date(2026, 11, 24)
 CANDIDATES = 8
@@ -58,16 +59,19 @@ def build_experiment(pool, history, slate, *, time_budget_seconds=45):
             or not rosters.solver_optimal.all() or not rosters.team_rules_verified.all()):
         raise ValueError('Eight certified optimal candidates were not available within the solve budget.')
     _rosters(frozen, rosters, 'lineup')
-    ranges, _, training_count = simulate_reviewed_candidates(history, frozen, rosters, slate)
+    ranges, _, training_count, draws = simulate_reviewed_candidates(
+        history, frozen, rosters, slate, return_draws=True)
     selected = select_portfolios(ranges)
+    selected[STRESS_POLICY], _ = stress_portfolio(draws, frozen, rosters, ranges)
     return rosters, ranges, selected, training_count
 
 
 def score_experiment(pool, rosters, selections, results, slate):
     """Score both fixed portfolios against identical verified official outcomes."""
     sets = _rosters(pool, rosters, 'lineup')
-    if set(selections) != {'Projection ranked','Simulated P90 ranked'}:
-        raise ValueError('Expected two fixed ranking policies.')
+    original = {'Projection ranked','Simulated P90 ranked'}
+    if set(selections) not in (original, original | {STRESS_POLICY}):
+        raise ValueError('Expected the fixed portfolio policies.')
     for labels in selections.values():
         if len(labels) != ENTRIES or len(set(labels)) != ENTRIES or not set(labels) <= sets.keys():
             raise ValueError('Both policies must select four distinct supplied candidates.')
@@ -86,7 +90,7 @@ def score_experiment(pool, rosters, selections, results, slate):
     for policy, labels in selections.items():
         values = [totals[label] for label in labels]
         reports.append({'Policy': policy, 'Date': slate.isoformat(),
-                        'Period': 'Prospective' if slate > DECLARED else 'Exploratory',
+                        'Period': 'Prospective' if slate > (STRESS_DECLARED if policy == STRESS_POLICY else DECLARED) else 'Exploratory',
                         'Entries': len(labels), 'Selected candidates': ', '.join(map(str,labels)),
                         'Best actual FD': max(values), 'Average actual FD': np.mean(values),
                         'Worst actual FD': min(values)})

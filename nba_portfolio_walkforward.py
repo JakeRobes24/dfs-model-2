@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from nba_candidate_experiment import build_experiment, score_experiment, ENTRIES
+from nba_portfolio_stress import STRESS_POLICY, STRESS_DECLARED
 
 
 def summarize_portfolio_experiments(reports):
@@ -14,6 +15,18 @@ def summarize_portfolio_experiments(reports):
     required = {'Policy','Date','Period','Entries','Best actual FD','Average actual FD','Worst actual FD'}
     if not required <= set(reports) or reports.duplicated(['Date','Policy']).any():
         raise ValueError('Use one paired experiment per date.')
+    # Keep original two-policy statistics comparable, and separately test
+    # the new fixed policy against the same projection portfolio.
+    if STRESS_POLICY in set(reports.Policy):
+        stress = reports.loc[reports.Policy.eq(STRESS_POLICY)].copy()
+        baseline = reports.loc[reports.Policy.eq('Projection ranked') & reports.Date.isin(stress.Date)].copy()
+        baseline['Period'] = baseline.Date.map(stress.set_index('Date').Period)
+        stress['Policy'] = 'Simulated P90 ranked'
+        new = summarize_portfolio_experiments(pd.concat([baseline,stress],ignore_index=True))
+        new['Comparison'] = STRESS_POLICY
+        original = summarize_portfolio_experiments(reports.loc[~reports.Policy.eq(STRESS_POLICY)])
+        original['Comparison'] = 'Simulated P90 ranked'
+        return pd.concat([original,new],ignore_index=True)
     policies = ['Projection ranked','Simulated P90 ranked']
     rows = []
     for (period, day), group in reports.groupby(['Period','Date'], sort=True):
