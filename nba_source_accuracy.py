@@ -130,3 +130,55 @@ def head_to_head(details):
                              common_players=len(both),mae_a=mae_a,mae_b=mae_b,
                              mae_b_minus_a=mae_b-mae_a))
     return pd.DataFrame(rows)
+
+
+def review_source_dates(replay, target_day):
+    """Evaluate one independently scoped frozen contest per earlier date.
+
+    A date with conflicting player rows or multiple contests fails closed.
+    Equal-day summaries are descriptive, not training weights.
+    """
+    if replay.empty:
+        return pd.DataFrame(columns=['slate_date', *FIELDS]), pd.DataFrame(), pd.DataFrame()
+    if not {'slate_date','fanduel_id'} <= set(replay):
+        raise ValueError('Dated frozen replay required.')
+    days = pd.to_datetime(replay.slate_date, errors='coerce')
+    target = pd.Timestamp(target_day)
+    if days.isna().any() or target.tzinfo is not None or (days.dt.normalize() >= target.normalize()).any():
+        raise ValueError('Source history must contain only earlier dated slates.')
+    output = []
+    for day, group in replay.assign(_day=days.dt.date).groupby('_day'):
+        group = group.drop(columns='_day').drop_duplicates()
+        contests = group.fanduel_id.astype(str).str.extract(r'^([0-9]+)-[0-9]+$', expand=False)
+        if contests.isna().any() or contests.nunique() != 1:
+            raise ValueError('Source history requires one verified contest per date.')
+        details = review_sources(group)
+        if not details.empty:
+            output.append(details.assign(slate_date=day.isoformat()))
+    if not output:
+        return pd.DataFrame(columns=['slate_date', *FIELDS]), pd.DataFrame(), pd.DataFrame()
+    details = pd.concat(output, ignore_index=True)
+    daily = []
+    for day, group in details.groupby('slate_date'):
+        summary = summarize_sources(group)
+        daily.append(summary.loc[summary.role.eq('all')].assign(slate_date=day))
+    daily = pd.concat(daily, ignore_index=True)
+    aggregate = []
+    for (metric, provider), group in daily.groupby(['metric','provider']):
+        paired = group.loc[group.paired_forecasts.gt(0)].copy()
+        daily_edge = paired.daily_mae_paired - paired.source_mae_paired
+        reviewed_edge = paired.reviewed_mae_paired - paired.source_mae_paired
+        aggregate.append(dict(metric=metric, provider=provider,
+                              dates=group.slate_date.nunique(),
+                              verified_forecasts=int(group.verified_forecasts.sum()),
+                              paired_dates=paired.slate_date.nunique(),
+                              paired_forecasts=int(paired.paired_forecasts.sum()),
+                              equal_day_mae=group.source_mae.mean(),
+                              equal_day_paired_mae=paired.source_mae_paired.mean(),
+                              equal_day_daily_mae=paired.daily_mae_paired.mean(),
+                              equal_day_reviewed_mae=paired.reviewed_mae_paired.mean(),
+                              equal_day_edge_vs_daily=daily_edge.mean(),
+                              equal_day_edge_vs_reviewed=reviewed_edge.mean(),
+                              days_better_than_daily=int(daily_edge.gt(0).sum()),
+                              days_better_than_reviewed=int(reviewed_edge.gt(0).sum())))
+    return details, daily, pd.DataFrame(aggregate)
