@@ -10,6 +10,18 @@ POLICY_DECLARED = date(2026, 11, 24)
 MIN_DATES = 5
 MIN_PAIRS = 100
 
+RATE_COVERAGE_FIELDS = (
+    'Eligible players reviewed for rate blend',
+    'Eligible with two fresh paired sources',
+    'Eligible supported rate forecasts',
+    'Eligible rate provenance rejected',
+    'Eligible rate invalid team evidence',
+    'Eligible rate uncertain availability',
+    'Eligible rate minutes policy not met',
+    'Eligible rate insufficient paired sources',
+    'Eligible rate disagreement',
+)
+
 
 def compare_across_slates(replays):
     """Return per-date and aggregate paired metrics, weighting dates equally as well as players.
@@ -82,4 +94,16 @@ def compare_across_slates(replays):
                           'Improvement (player weighted)': weighted('MAE improvement vs reviewed'),
                           'Improvement (equal date weight)': equal,
                           'Improved dates': win_days, 'Review status': status})
+        if policy == PAIRED_RATE_POLICY:
+            # Older captures may lack paired-source provenance. Missing counts
+            # are unknown, not zero, and do not enter the coverage denominator.
+            counts = group.reindex(columns=RATE_COVERAGE_FIELDS)
+            known = counts.notna().all(axis=1)
+            totals = counts.loc[known].sum(min_count=1)
+            aggregate[-1]['Dates with known rate coverage'] = int(known.sum())
+            aggregate[-1].update(totals.to_dict())
+            denominator = totals.iloc[0]
+            aggregate[-1]['Supported rate coverage (%)'] = (
+                100 * totals['Eligible supported rate forecasts'] / denominator
+                if pd.notna(denominator) and denominator > 0 else np.nan)
     return daily, pd.DataFrame(aggregate)
