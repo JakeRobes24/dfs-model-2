@@ -127,9 +127,11 @@ def test_paired_source_coverage_keeps_points_only_and_stale_evidence_separate():
     import json
     import pytest
     from nba_research_triage import paired_source_coverage
+    from slate_research import PROPSIMS, ROTOGRINDERS, DFF
     now='2026-11-25T23:00:00Z'
     def note(family,minutes,stamp='2026-11-25T22:00:00Z',points=30):
-        return dict(family=family,points=points,paired_minutes=minutes,observed_at=stamp)
+        source, name = {'a':(PROPSIMS,'propsims'),'b':(ROTOGRINDERS,'rotogrinders'),'c':(DFF,'daily-fantasy-fuel')}[family]
+        return dict(source=source,family=name,points=points,paired_minutes=minutes,observed_at=stamp)
     pool=pd.DataFrame([
         dict(fanduel_id='1-1',eligible=True,projection_sources_json=json.dumps([
             note('a',30),note('b',None),note('c',25,'2026-11-25T15:00:00Z')])),
@@ -142,8 +144,24 @@ def test_paired_source_coverage_keeps_points_only_and_stale_evidence_separate():
     players,providers=paired_source_coverage(pool,now)
     assert players['Paired providers'].tolist()==[1,2,0]
     summary=providers.set_index('Provider')
-    assert summary['Fresh point players'].to_dict()=={'a':2,'b':3}
-    assert summary['Fresh paired players'].to_dict()=={'a':2,'b':1}
+    assert summary['Fresh point players'].to_dict()=={'propsims':2,'rotogrinders':3}
+    assert summary['Fresh paired players'].to_dict()=={'propsims':2,'rotogrinders':1}
     pd.testing.assert_frame_equal(pool,original)
     with pytest.raises(ValueError):
         paired_source_coverage(pool,'2026-11-25 23:00')
+
+
+def test_paired_coverage_rejects_unregistered_or_spoofed_families():
+    import json
+    from nba_research_triage import paired_source_coverage
+    from slate_research import PROPSIMS, ROTOGRINDERS
+    base = dict(source=PROPSIMS,family='propsims',points=30,paired_minutes=30,
+                observed_at='2026-11-25T22:00:00Z')
+    notes = [base, dict(base, family='rotogrinders'),
+             dict(base, source='https://unknown.example/',family='unknown'),
+             dict(base, source=ROTOGRINDERS,family='invented')]
+    pool = pd.DataFrame([dict(fanduel_id='1-1', eligible=True,
+                              projection_sources_json=json.dumps(notes))])
+    players, providers = paired_source_coverage(pool,'2026-11-25T23:00:00Z')
+    assert players['Paired providers'].tolist() == [1]
+    assert providers['Provider'].tolist() == ['propsims']
