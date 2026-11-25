@@ -29,3 +29,26 @@ def test_budgeted_legal_candidate():
     rows=model.optimize(fixture(),number=1,time_budget_seconds=10)
     assert len(rows)==9 and rows.fanduel_id.nunique()==9
     assert rows.salary.sum()<=60000
+
+
+def test_portfolio_budget_reserves_distinct_alternative_time(monkeypatch):
+    import site_ui
+    from test_nba_optimizer_integration import fixture_pool
+    pool = fixture_pool()
+    lineups = model.optimize(pool, number=4, max_overlap=7)
+    alternative = model.optimize(pool, number=1, exclude_rosters=(lineups.loc[lineups.lineup.eq(1),'fanduel_id'],))
+    clock = [0.]
+    calls = []
+    def fake_optimize(_pool, **kwargs):
+        calls.append(kwargs)
+        if kwargs['number'] == 4:
+            clock[0] += kwargs['time_budget_seconds']
+            return lineups
+        return alternative
+    monkeypatch.setattr(site_ui,'monotonic',lambda: clock[0])
+    monkeypatch.setattr(site_ui,'optimize',fake_optimize)
+    result = site_ui.generate_and_challenge(pool,7,False,time_budget_seconds=60)
+    assert calls[0]['time_budget_seconds'] == pytest.approx(48)
+    assert calls[1]['time_budget_seconds'] == pytest.approx(12)
+    assert len(result[1]) == 4
+    assert set(result[2].fanduel_id) != set(result[0].loc[result[0].lineup.eq(1),'fanduel_id'])
