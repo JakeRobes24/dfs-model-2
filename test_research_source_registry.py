@@ -57,3 +57,27 @@ def test_public_coverage_counts_unique_eligible_exact_matches_and_empty_sources(
     assert coverage.loc[('Minutes',RW_MINUTES),'Eligible players matched'] == 1
     assert coverage.loc[('Minutes',PROPSIMS),'Returned rows'] == 0
     assert coverage.loc[('Points',ROTOGRINDERS),'Eligible players missing'] == 2
+
+
+def test_fantasysportsedge_opponent_only_preview_is_matched_as_reference():
+    from datetime import date, datetime
+    from unittest.mock import patch
+    import pandas as pd
+    from slate_research import ET, fantasysportsedge_reference, compare_reference
+    html = b"""<p>Projections updated November 25, 2026 at 10:00 AM EST</p>
+    <table><thead><tr><th>Player</th><th>Opp</th><th>FD Salary</th><th>Projection</th></tr></thead>
+    <tbody><tr><td>Alpha Player</td><td>NYK</td><td>$4,000</td><td>24.5</td></tr>
+    <tr><td>Beta Player</td><td>MIA</td><td>$4,000</td><td>18</td></tr>
+    <tr><td>Gamma Player</td><td>NYK</td><td>$4,100</td><td>15</td></tr></tbody></table>"""
+    with patch('slate_research.fetch', return_value=html):
+        rows, stamp = fantasysportsedge_reference(date(2026, 11, 25), datetime(2026, 11, 25, 11, tzinfo=ET))
+    assert len(rows) == 3 and 'team' not in rows[0] and 'points' not in rows[0]
+    pool = pd.DataFrame([dict(fanduel_id=f'100-{i}', fanduel_name=name, team='BOS', game='BOS@NYK',
+                              salary=4000, eligible=True, projected_fd_points=20, adjusted_fd_points=20,
+                              adjusted_minutes=22)
+                         for i, name in enumerate(('Alpha Player','Beta Player','Gamma Player'), 1)])
+    matched = compare_reference(pool, rows)
+    assert list(matched.fanduel_id) == ['100-1']
+    assert matched.iloc[0].reference_points == 24.5
+    duplicate = pd.concat([pool, pool.iloc[[0]].assign(fanduel_id='100-99')], ignore_index=True)
+    assert compare_reference(duplicate, rows).empty
