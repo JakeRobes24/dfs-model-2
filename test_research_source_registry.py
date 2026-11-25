@@ -259,7 +259,8 @@ def test_recovered_legacy_sources_are_retained_but_not_verified():
         assert nba.loc[name,'Historical reference link'] == link
         assert nba.loc[name,'Verified access link'] == link
         assert 'Not verified' in nba.loc[name,'Refresh evidence']
-    assert 'partial stat lines' in nba.loc['MatchWiz','Research purpose']
+    assert 'partial PTS/REB/AST' in nba.loc['MatchWiz','Research purpose']
+    assert 'omits blocks' in nba.loc['TheCapper','Research purpose']
 
 
 def test_keelstats_minutes_reference_matches_game_and_rejects_stale_dates():
