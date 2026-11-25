@@ -177,3 +177,42 @@ def test_source_accuracy_uses_common_players_and_rejects_unverified_evidence():
     assert row.verified_forecasts == 3
     assert row.source_mae == pytest.approx((6+20+30)/3)
     assert review_sources(replay.drop(columns=['projection_sources_json','replay_evidence_json'])).empty
+
+
+def test_matchwiz_archive_and_review_do_not_modify_scores_or_accept_future_evidence():
+    from datetime import date
+    from matchwiz_reference import MATCHWIZ, freeze_matchwiz_reference
+    from nba_matchwiz_review import review_matchwiz, summarize_matchwiz
+    stamp = '2026-11-18T22:55:00Z'
+    base = dict(fanduel_name='Alpha Player', team='DET', game='DET@NOP', eligible=True,
+                daily_minutes=25, adjusted_minutes=28, adjusted_fd_points=30,
+                verified_outcome='played', actual_minutes=31, slate_date='2026-11-18',
+                replay_captured_at_utc='2026-11-18T23:00:00Z',
+                replay_cutoff_utc='2026-11-19T00:00:00Z',
+                replay_timing='before_scheduled_tip', replay_before_full_slate_tip=True)
+    roster = pd.DataFrame([dict(base,fanduel_id='1-1'),
+                           dict(base,fanduel_id='1-2',fanduel_name='Beta Player',verified_outcome='did_not_play'),
+                           dict(base,fanduel_id='1-3',fanduel_name='Gamma Player')])
+    note = dict(source=MATCHWIZ, slate_date='2026-11-18', retrieved_at=stamp,
+                player='Alpha Player',team='DET',game='DET@NOP',provider_player_id='100',
+                reference_minutes=30,reference_role='starter listing')
+    notes = [note,dict(note,player='Beta Player',provider_player_id='101',reference_minutes=5),
+             dict(note,player='Gamma Player',provider_player_id='102',retrieved_at='2026-11-18T23:01:00Z')]
+    frozen = freeze_matchwiz_reference(roster,notes,date(2026,11,18),base['replay_captured_at_utc'])
+    assert frozen.drop(columns='matchwiz_reference_json').equals(roster)
+    assert frozen.matchwiz_reference_json.iloc[2] == ''
+    assert json.loads(frozen.matchwiz_reference_json.iloc[0])['publication_time_verified'] is False
+    reviewed = review_matchwiz(frozen)
+    assert reviewed.fanduel_id.tolist() == ['1-1','1-2']
+    assert reviewed.actual.tolist() == [31,0]
+    assert reviewed.reference_error.tolist() == [-1,5]
+    summary = summarize_matchwiz(reviewed).set_index('sample')
+    assert summary.loc['All verified outcomes','reference_mae'] == 3
+    assert summary.loc['Played','reference_mae'] == 1
+    assert summary.loc['Verified DNP','reference_mae'] == 5
+    duplicate = freeze_matchwiz_reference(roster,[note,note],date(2026,11,18),base['replay_captured_at_utc'])
+    assert duplicate.matchwiz_reference_json.eq('').all()
+    forged = frozen.copy()
+    forged.loc[0,'matchwiz_reference_json'] = json.dumps(dict(
+        json.loads(frozen.matchwiz_reference_json.iloc[0]), retrieved_at='2026-11-18T23:01:00Z'))
+    assert review_matchwiz(forged).fanduel_id.tolist() == ['1-2']
