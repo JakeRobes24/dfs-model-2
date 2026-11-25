@@ -39,13 +39,45 @@ def audit_player_decisions(replay):
         [~(played | dnp), ~paired, dnp, played],
         ["unresolved", "missing_points_pair", "confirmed_dnp", "played"],
         default="unresolved")
+    # Symmetric attribution: actual minus forecast, split into minutes and rate.
+    # Compare DAILY and reviewed on the identical verified played-player sample.
+    # Negative actual fantasy points are valid; zero minutes never defines a rate.
+    source = rows.get("nba_source", pd.Series("", index=rows.index))
+    valid = (played & source.fillna("").astype(str).str.strip().ne("")
+             & rows[["daily_points", "adjusted_fd_points", "actual_points_audit"]]
+                   .apply(lambda col: np.isfinite(col)).all(axis=1)
+             & rows[["daily_minutes", "adjusted_minutes", "actual_minutes"]]
+                   .apply(lambda col: col.gt(0) & col.le(60)).all(axis=1))
+    actual_minutes = rows.actual_minutes.where(valid)
+    actual_rate = rows.actual_points_audit.where(valid) / actual_minutes
+    rows["actual_fppm"] = actual_rate
+    for prefix, point_col, minute_col in [
+        ("daily", "daily_points", "daily_minutes"),
+        ("adjusted", "adjusted_fd_points", "adjusted_minutes"),
+    ]:
+        minutes = rows[minute_col].where(valid)
+        rate = rows[point_col].where(valid) / minutes
+        time_effect = (actual_minutes - minutes) * (actual_rate + rate) / 2
+        rate_effect = (actual_rate - rate) * (actual_minutes + minutes) / 2
+        rows[f"{prefix}_fppm"] = rate
+        rows[f"{prefix}_minutes_effect"] = time_effect
+        rows[f"{prefix}_rate_effect"] = rate_effect
+        small = time_effect.abs().lt(.01) & rate_effect.abs().lt(.01)
+        rows[f"{prefix}_error_driver"] = np.select(
+            [~valid, small, time_effect.abs().ge(2 * rate_effect.abs()),
+             rate_effect.abs().ge(2 * time_effect.abs())],
+            ["unsupported", "negligible", "minutes", "rate"],
+            default="mixed")
     columns = ["fanduel_id"]
     columns += [col for col in ("fanduel_name", "team", "game", "minutes_method", "projection_method") if col in rows]
     columns += ["audit_state", "daily_points", "adjusted_fd_points", "actual_points_audit",
                 "projection_change", "changed_projection", "daily_absolute_error",
                 "adjusted_absolute_error", "points_error_improvement", "daily_minutes",
                 "adjusted_minutes", "actual_minutes", "daily_minutes_error",
-                "adjusted_minutes_error", "minutes_error_improvement"]
+                "adjusted_minutes_error", "minutes_error_improvement",
+                "actual_fppm", "daily_fppm", "adjusted_fppm",
+                "daily_minutes_effect", "daily_rate_effect", "daily_error_driver",
+                "adjusted_minutes_effect", "adjusted_rate_effect", "adjusted_error_driver"]
     return rows[columns].sort_values(["changed_projection", "fanduel_id"], ascending=[False, True]).reset_index(drop=True)
 
 
@@ -61,3 +93,23 @@ def summarize_player_decisions(audit):
                 "Adjusted MAE": rows.adjusted_absolute_error.mean(),
                 "MAE improvement": diffs.mean()}
     return pd.DataFrame([describe(paired, "All paired players"), describe(changed, "Changed projections")])
+
+
+def summarize_error_attribution(audit):
+    """Describe error components on identical supported rows, never learn weights."""
+    rows = []
+    for prefix, label in (("daily", "DAILY"), ("adjusted", "Reviewed")):
+        paired = audit.loc[audit[f"{prefix}_minutes_effect"].notna()
+                           & audit[f"{prefix}_rate_effect"].notna()]
+        time, rate = paired[f"{prefix}_minutes_effect"], paired[f"{prefix}_rate_effect"]
+        driver = paired[f"{prefix}_error_driver"]
+        rows.append({"Forecast": label, "Paired players": len(paired),
+                     "Mean absolute minutes effect": time.abs().mean(),
+                     "Mean absolute rate effect": rate.abs().mean(),
+                     "Mean signed minutes effect": time.mean(),
+                     "Mean signed rate effect": rate.mean(),
+                     "Minutes-led": int(driver.eq("minutes").sum()),
+                     "Rate-led": int(driver.eq("rate").sum()),
+                     "Mixed": int(driver.eq("mixed").sum()),
+                     "Negligible": int(driver.eq("negligible").sum())})
+    return pd.DataFrame(rows)
