@@ -79,3 +79,45 @@ def test_historical_rate_context_preserves_missing_and_small_samples():
     assert attach_rate_context(queue, pd.DataFrame()).observed_fppm.isna().all()
     with pytest.raises(ValueError):
         attach_rate_context(queue, pd.concat([history, history]))
+
+
+def test_team_news_review_is_contest_scoped_and_nonmutating():
+    import json
+    from nba_research_triage import team_opportunity_review
+    base = dict(team='DET',game='DET@ORL',eligible=True,prelock_status='',
+                prelock_starter='',prelock_role='',adjusted_minutes=24.,
+                adjusted_fd_points=20.,projection_sources_json='[]')
+    pool = pd.DataFrame([dict(base,fanduel_id='1-a',fanduel_name='Absent',eligible=False,prelock_status='out'),
+        dict(base,fanduel_id='1-b',fanduel_name='Replacement',prelock_starter='starter',prelock_role='Projected bench'),
+        dict(base,fanduel_id='1-c',fanduel_name='Teammate',projection_sources_json=json.dumps([
+            dict(family='a',points=22,observed_at='2026-11-24T23:02:00Z'),
+            dict(family='b',points=23,observed_at='2026-11-24T23:03:00Z'),
+            dict(family='c',points=25,observed_at='2026-11-24T23:30:00Z')])),
+        dict(base,fanduel_id='1-d',fanduel_name='Opponent',team='ORL'),
+        dict(base,fanduel_id='1-e',fanduel_name='Other game',game='DET@BOS')])
+    def note(pid,stamp,**kw):
+        return dict(dict(fanduel_id=pid,official=False,review='Reviewed',observed_at=stamp,
+                         status='',starter='',minutes=None,independent_group=''),**kw)
+    notes = pd.DataFrame([
+        note('1-a','2026-11-24T22:50:00Z',official=True,status='out'),
+        note('1-b','2026-11-24T23:00:00Z',official=True,starter='starter'),
+        note('1-b','2026-11-24T22:55:00Z',minutes=20,independent_group='a'),
+        note('1-b','2026-11-24T23:01:00Z',minutes=28,independent_group='a'),
+        note('1-c','2026-11-24T23:01:00Z',minutes=25,independent_group='a'),
+        note('1-c','2026-11-24T23:02:00Z',minutes=26,independent_group='b'),
+        note('1-c','2026-11-24T23:30:00Z',minutes=28,independent_group='c'),
+        note('1-c','2026-11-24T23:04:00Z',minutes=24,independent_group='d',review='Stale')])
+    original=pool.copy(deep=True)
+    result=team_opportunity_review(pool,notes,'2026-11-24T23:10:00Z').set_index('fanduel_id')
+    assert set(result.index)=={'1-b','1-c'}
+    assert result.loc['1-b','Minutes families since confirmation']==1
+    assert result.loc['1-b','Points families since confirmation']==0
+    assert result.loc['1-c','Minutes families since confirmation']==2
+    assert result.loc['1-c','Points families since confirmation']==2
+    assert 'Recheck production' in result.loc['1-b','Opportunity review']
+    assert 'incorporated news' in result.loc['1-c','Opportunity review']
+    pd.testing.assert_frame_equal(pool,original)
+    conflict=note('1-a','2026-11-24T22:50:00Z',official=True,status='available')
+    out=team_opportunity_review(pool,pd.concat([notes,pd.DataFrame([conflict])]),'2026-11-24T23:10:00Z')
+    assert not out['Confirmed events'].str.contains('Absent').any()
+    assert team_opportunity_review(pool,notes.iloc[0:0],'2026-11-24T23:10:00Z').empty
