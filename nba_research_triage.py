@@ -135,3 +135,106 @@ def attach_rate_context(queue, summaries):
     result.loc[observed.notna() & games.ge(3) & minutes.ge(60),
                'historical_rate_context'] = 'Recent observed rate; role and matchup still require review'
     return result
+
+
+def team_opportunity_review(scored, audit, as_of):
+    """Flag eligible teammates for review after official OUT/role confirmation.
+
+    A confirmation is not necessarily new information. Post-confirmation source
+    timestamps establish timing, not that providers incorporated the news.
+    Never assign vacated minutes, adjust points, or infer a replacement role.
+    """
+    columns = ['fanduel_id', 'Player', 'Team', 'Game', 'Confirmed events',
+               'Latest confirmation UTC', 'Minutes families since confirmation',
+               'Points families since confirmation', 'Adjusted minutes',
+               'Adjusted FD', 'Opportunity review']
+    needed = {'fanduel_id', 'fanduel_name', 'team', 'game', 'eligible',
+              'prelock_status', 'prelock_starter', 'prelock_role',
+              'adjusted_minutes', 'adjusted_fd_points', 'projection_sources_json'}
+    audit_fields = {'fanduel_id', 'official', 'review', 'observed_at',
+                    'status', 'starter', 'minutes', 'independent_group'}
+    if not needed <= set(scored) or not audit_fields <= set(audit):
+        raise ValueError('Use a reviewed contest pool and its audited source evidence.')
+    if scored.fanduel_id.isna().any() or not scored.fanduel_id.is_unique:
+        raise ValueError('Opportunity review requires unique contest IDs.')
+    cutoff = pd.Timestamp(as_of)
+    if pd.isna(cutoff) or cutoff.tzinfo is None:
+        raise ValueError('Opportunity review requires a timezone-aware as-of time.')
+    notes = audit.loc[audit.review.eq('Reviewed') & audit.fanduel_id.isin(scored.fanduel_id)].copy()
+    notes['time'] = pd.to_datetime(notes.observed_at, utc=True, errors='coerce', format='mixed')
+    notes = notes.loc[notes.time.le(cutoff) & notes.time.ge(cutoff-pd.Timedelta(hours=6))]
+    official = notes.loc[notes.official.eq(True)]
+    by_id = dict(tuple(notes.groupby('fanduel_id')))
+    official_by_id = dict(tuple(official.groupby('fanduel_id')))
+    events = {}
+    for player in scored.itertuples():
+        own = official_by_id.get(player.fanduel_id)
+        if own is None:
+            continue
+        key = (player.team, player.game)
+        if not all(isinstance(v, str) and v.strip() for v in key):
+            continue
+        for field, allowed in [('status', {'out','inactive','suspended','available','probable','questionable','doubtful'}),
+                               ('starter', {'starter','bench'})]:
+            values = own[field].astype(str).str.casefold()
+            decisions = own.loc[values.isin(allowed)]
+            if decisions.empty:
+                continue
+            stamp = decisions.time.max()
+            latest = set(decisions.loc[decisions.time.eq(stamp), field].astype(str).str.casefold())
+            if len(latest) != 1:
+                continue
+            value = next(iter(latest))
+            if field == 'status':
+                relevant = value in {'out','inactive','suspended'} and value == player.prelock_status
+            else:
+                opposite = {'starter':'projected bench', 'bench':'projected starter'}[value]
+                relevant = value == player.prelock_starter and str(player.prelock_role).casefold() == opposite
+            if relevant:
+                events.setdefault(key, []).append((stamp, f'{player.fanduel_name}: {value}'))
+    rows = []
+    for player in scored.loc[scored.eligible.eq(True)].itertuples():
+        group = events.get((player.team, player.game), [])
+        if not group:
+            continue
+        stamp = max(t for t, _ in group)
+        own = by_id.get(player.fanduel_id)
+        minute_count = 0
+        if own is not None:
+            mins = own.loc[own.time.ge(stamp) & own.independent_group.fillna('').ne('')].copy()
+            mins['value'] = pd.to_numeric(mins.minutes, errors='coerce')
+            mins = mins.loc[mins.value.between(0,48)]
+            latest = mins.loc[mins.time.eq(mins.groupby('independent_group').time.transform('max'))]
+            minute_count = int(latest.groupby('independent_group').value.nunique().eq(1).sum())
+        point_families = {}
+        try:
+            estimates = json.loads(player.projection_sources_json)
+            if isinstance(estimates, list):
+                for estimate in estimates:
+                    try:
+                        family = estimate['family']
+                        t = pd.Timestamp(estimate['observed_at'])
+                        points = float(estimate['points'])
+                        if (isinstance(family,str) and family.strip() and t.tzinfo is not None
+                                and stamp <= t <= cutoff and math.isfinite(points) and 0 <= points <= 150):
+                            point_families.setdefault(family, []).append((t,points))
+                    except (ValueError,TypeError,KeyError,OverflowError):
+                        continue
+        except (ValueError,TypeError):
+            pass
+        point_count = sum(len({v for t,v in values if t == max(x[0] for x in values)}) == 1
+                          for values in point_families.values())
+        reasons = []
+        if minute_count < 2:
+            reasons.append('Recheck minutes')
+        if point_count < 2:
+            reasons.append('Recheck production')
+        if not reasons:
+            reasons.append('Check whether refreshed providers incorporated news')
+        rows.append([player.fanduel_id,player.fanduel_name,player.team,player.game,
+                     ' | '.join(sorted({label for _,label in group})),stamp.isoformat(),
+                     minute_count,point_count,player.adjusted_minutes,player.adjusted_fd_points,
+                     '; '.join(reasons)])
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ['Minutes families since confirmation','Points families since confirmation','fanduel_id']
+    ).reset_index(drop=True)
