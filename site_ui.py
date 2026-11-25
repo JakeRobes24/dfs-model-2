@@ -317,9 +317,29 @@ def render_slate(history_slot):
         saved_refresh = (research_scope, datetime.now(ET))
         st.session_state[refresh_key] = saved_refresh
     checked_at = max(window, saved_refresh[1]) if isinstance(saved_refresh, tuple) and saved_refresh[0] == research_scope else window
-    with st.spinner('Checking official reports, recent rotations and independent projections…'):
-        notes, projections, source_status = public_research(slate, checked_at)
-        rotations, rotation_status = public_rotations(slate, tuple(sorted(set(pool.game))))
+    from nba_research_acquisition import acquire_research
+    from slate_research import get_reference_research
+    games = tuple(sorted(set(pool.game)))
+    reference_key = ('slate_reference_boards', *research_scope, checked_at.isoformat(), games)
+    saved_reference = st.session_state.get('slate_reference_snapshot')
+    reference_retry = False
+    if slate == now.date():
+        reference_retry = st.button('Recheck reference boards only', key='slate_all_references')
+    need_reference = (slate == now.date() and
+                      (refresh or reference_retry or saved_reference is None or saved_reference[0] != reference_key))
+    reference_loader = (lambda: get_reference_research(slate, datetime.now(ET), games)) if need_reference else None
+    with st.spinner('Checking official reports, rotations, independent projections and reference boards…'):
+        live, recent, refs, timing = acquire_research(
+            lambda: public_research(slate, checked_at),
+            lambda: public_rotations(slate, games), reference_loader)
+    notes, projections, source_status = live
+    rotations, rotation_status = recent
+    if need_reference:
+        st.session_state['slate_reference_snapshot'] = (reference_key, refs)
+    with st.expander('Research retrieval timing'):
+        st.caption(f'Acquisition wall time: {timing["elapsed_seconds"]:.2f}s. Task times overlap and include cache access; not publication times.')
+        st.dataframe(pd.DataFrame([{'Research batch': name, 'Seconds': round(seconds, 3)}
+                                  for name, seconds in timing['tasks'].items()]), hide_index=True)
     source_status = [*source_status, ('NBA recent box scores', rotation_status)]
     manual = manual_inputs(now)
     if manual is None:
@@ -452,16 +472,7 @@ def render_slate(history_slot):
     reference_status = {}
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
-            from slate_research import get_reference_research
             st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
-            reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat(),
-                             tuple(sorted(set(pool.game))))
-            reference_retry = st.button('Recheck reference boards only', key='slate_all_references')
-            saved_reference = st.session_state.get('slate_reference_snapshot')
-            if refresh or reference_retry or saved_reference is None or saved_reference[0] != reference_key:
-                with st.spinner('Checking public reference boards…'):
-                    st.session_state['slate_reference_snapshot'] = (
-                        reference_key, get_reference_research(slate, datetime.now(ET), tuple(sorted(set(pool.game)))))
             now = datetime.now(ET)
             saved_reference = st.session_state.get('slate_reference_snapshot')
             if saved_reference is not None and saved_reference[0] == reference_key:
