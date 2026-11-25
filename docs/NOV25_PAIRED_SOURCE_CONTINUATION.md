@@ -20,3 +20,23 @@ Next: inspect remaining saved candidate providers for explicitly dated, pre-tip,
 - FantasySportsEdge public board https://fantasysportsedge.com/nba/projections confirms FanDuel main-slate scoring but no paired minutes in the inspected table; retain reference-only provenance restrictions.
 - TheCapper https://thecapper.io/nba/projections/ explicitly withholds blocks on Nov 25 and publishes conditional projections. Keep incomplete stat lines as manual reference only; never assume missing blocks are zero.
 - Registry updated to retain these access limitations and two documented links; regression test added to ensure manual sources cannot be shown as verified based on claimed refresh status. No scoring changes.
+
+## Archived coverage bottleneck review
+
+Development checkpoint 8d43227185f70dcb5f705a6afd07bc2eef10bb34: four workflows passed, full regression run 45592501743 reported 345 passed, one deselected, 134 warnings.
+
+Read-only examination of the private incoming-app directory found dates Nov 18, 20 and 24. Nov 18 contest 136886 contains 316 research rows (260 eligible) but no full frozen pre-tip replay or paired projection JSON. Nov 20 contest 136961 has a 1.51 MB packet; the connector returned incomplete JSON, so coverage remains unknown. Nov 24 contest 137139 has 70 rows and unknown replay timing; do not count as a verified capture. Nov 24 contest 137128 has 105 rows, 85 eligible, and capture 2026-11-24T11:14:51.162030Z marked before full slate tip. Its results packet has 105 recorded actual rows. The two packets have identical reported research lengths and capture versions; the calculation used the actuals-bearing packet 3a6167f57f3de9a02ddf9aa64620ec69236b045546a0e3ef0566259b502ad984.json.
+
+Read-only JavaScript calculation on archived rows mirrors current paired coverage and rate policy logic; not a Python execution, independent checksum validation, or fresh official result retrieval. No outcome data was used to choose the coverage classifications.
+
+| Eligible players | Count |
+|---|---:|
+| No fresh paired provider | 26 |
+| One fresh paired provider | 59 |
+| Two or more fresh paired providers | 0 |
+| Reviewed minutes policy not met | 44 |
+| Insufficient paired sources after policy gates | 38 |
+| Uncertain availability | 3 |
+| Supported experimental rate forecasts | 0 |
+
+PropSims: 59 eligible fresh paired rows; Daily Fantasy Fuel: 24 eligible fresh points-only rows; RotoGrinders: no accepted fresh point rows in this archive. Coverage is limited to one assessable date; no cross-date accuracy claim. Acquiring genuinely overlapping independent paired estimates is the immediate bottleneck for the paired-rate experiment; do not relax the minutes policy or count points-only sources as paired. Continue regular capture and the existing prospective evidence gates (five dates / 100 matched observations) before independent validation. No live scoring changes.
