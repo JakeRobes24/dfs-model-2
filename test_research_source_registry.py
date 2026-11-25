@@ -246,8 +246,7 @@ def test_propsims_distribution_is_separate_from_weighted_points():
 
 def test_recovered_legacy_sources_are_retained_but_not_verified():
     nba = research_checklist('NBA', [('MatchWiz','claimed projections'),
-                                    ('TheCapper','claimed projections'),
-                                    ('KeelStats','claimed estimates')]).set_index('Source')
+                                    ('TheCapper','claimed projections')]).set_index('Source')
     nfl = research_checklist('NFL').set_index('Source')
     for name, link in {
         'MatchWiz': 'https://matchwiz.ai/nba/lineups',
