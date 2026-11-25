@@ -453,6 +453,17 @@ def render_slate(history_slot):
                         reference_status[name] += f'; {len(matched)} eligible matches'
                 for name, status in reference_status.items():
                     st.write(f'**{name}** · {status}')
+                from slate_research import reference_review_queue
+                reference_queue = reference_review_queue(scored, reference_boards, now)
+                st.caption('Research priorities: missing projections first, then large points or minutes discrepancies. Provider rows are not independent votes; undated estimates require verification.')
+                if reference_queue.empty:
+                    st.info('No actionable reference discrepancies found in the available boards. This does not establish complete coverage.')
+                else:
+                    st.write(f'{reference_queue.fanduel_id.nunique()} eligible players flagged for further research.')
+                    st.dataframe(reference_queue.drop(columns='fanduel_id'), hide_index=True)
+                    st.download_button('Download reference research priorities', reference_queue.to_csv(index=False),
+                                       file_name=f'{slate}-{contest_id}-reference-review.csv', mime='text/csv',
+                                       key='slate_reference_review_download')
     with st.expander('Complete saved NBA research checklist'):
         from research_source_registry import research_checklist
         checklist = research_checklist('NBA', [*source_status, *reference_status.items()])
