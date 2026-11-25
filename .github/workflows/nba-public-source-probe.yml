@@ -45,6 +45,20 @@ jobs:
                   for text in soup.find_all(string=lambda x: x and ('Projected starters' in x or 'Bench Min' in x), limit=2):
                       node = text.parent
                       print('Role section:', str(node.parent)[:1800])
+                  if name == 'MatchWiz':
+                      head = soup.select_one('.nbalu-head')
+                      club = soup.select_one('.nbalu-club')
+                      if head:
+                          print('MatchWiz row siblings:', str(head.parent)[:6500])
+                          print('MatchWiz row container:', head.parent.name, head.parent.get('class', []))
+                          row = head.find_next_sibling()
+                          if row:
+                              print('MatchWiz player row:', str(row)[:4000])
+                      if club:
+                          for parent in list(club.parents)[:4]:
+                              print('MatchWiz team ancestor:', parent.name, parent.attrs, str(parent)[:1000])
+                      for item in soup.find_all(string=lambda x: x and ('NBA games on ' in x or 'Updated Nov' in x), limit=4):
+                          print('MatchWiz date evidence:', str(item.parent)[:800])
                   for node in soup.find_all(string=lambda x: x and x.strip().startswith('Updated '), limit=2):
                       print('Update label:', node.strip()[:160])
                   if name == 'KeelStats':
