@@ -22,6 +22,9 @@ SOURCES = (
     ('RotoQL / stat-api','Manual research','Manual research','Projections, ownership; count shared provenance once'),
     ('Linemate','Manual research','Manual research','App-based player trends and matchup checks; no verified public projection feed'),
     ('WalterPicks','Manual research','Manual research','App-based player projections and matchup validation; no verified public dated feed'),
+    ('MatchWiz','Manual research','Not established','Recovered Nov 20 projected minutes and PTS/REB/AST; partial stat lines are not full FanDuel projections; current access and provenance unverified'),
+    ('TheCapper','Manual research','Not established','Recovered Nov 20 projected box-score preview; current coverage and independent provenance unverified'),
+    ('KeelStats','Manual research','Not established','Recovered Nov 20 Tonight minutes estimates and reported L10 minutes/starts/usage; distinguish projections from observed summaries; current access unverified'),
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
@@ -30,6 +33,12 @@ SOURCES = (
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
 )
 # Verified public access paths; links are not evidence of current coverage.
+# Recovered historical reference paths are not proof of present-day availability.
+HISTORICAL_RESEARCH_LINKS = {
+    'MatchWiz': 'https://matchwiz.ai/nba/lineups',
+    'TheCapper': 'https://thecapper.io/nba/projections/',
+    'KeelStats': 'https://keelstats.com/nba/usage',
+}
 RESEARCH_LINKS = {
     'LineupExperts': 'https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today',
     'Fantasy Team Advisors': 'https://fantasyteamadvisors.com/guides/nba-usage-bump/',
@@ -69,5 +78,6 @@ def research_checklist(sport, source_status=()):
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
         rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,
-                     'Verified access link': RESEARCH_LINKS.get(name, '')})
-    return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link'])
+                     'Verified access link': RESEARCH_LINKS.get(name, ''),
+                     'Historical reference link': HISTORICAL_RESEARCH_LINKS.get(name, '')})
+    return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link','Historical reference link'])
