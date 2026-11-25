@@ -101,7 +101,7 @@ def render_post_slate():
         return
 
     with st.expander('Multi-slate experimental projection evaluation'):
-        st.caption('Compare fixed shadow policies over up to five earlier saved dates. Dates through November 24, 2026 are exploratory; subsequent dates form prospective evidence. No scoring changes are made.')
+        st.caption('Compare fixed shadow policies over up to five earlier saved dates. Dates through each policy's declaration date are exploratory (November 24 for earlier policies, November 25 for paired independent production rates). No scoring changes are made.')
         if st.button('Evaluate earlier verified slates', key='shadow_multislate_review'):
             from nba_archive_training import load_prior_replays
             from nba_shadow_multislate import compare_across_slates
@@ -283,12 +283,15 @@ def render_post_slate():
                     except (ValueError, TypeError, KeyError, OSError) as exc:
                         st.info(f'Candidate policy comparison unavailable: {exc}')
             if len(finals) == len(games):
-                from nba_combined_scoring_shadow import FIELDS, compare_combined_shadow
+                from nba_combined_scoring_shadow import FIELDS, compare_combined_shadow, compare_frozen_paired_rate
                 if set(FIELDS) <= set(pool):
                     combined = compare_combined_shadow(pool, replay)
                     if not combined.empty:
                         st.caption('Experimental 60/40 total-score blend after corroborated minutes. Compared on the same verified played players; no live scoring changes.')
                         st.dataframe(combined.round(2), hide_index=True)
+                paired_rate = compare_frozen_paired_rate(replay)
+                st.caption('Experimental paired independent production rate: requires two fresh same-provider points/minutes pairs after reviewed team confirmations. Reviewed minutes are applied once; no live score changes.')
+                st.dataframe(paired_rate.round(2), hide_index=True)
             decisions = audit_player_decisions(replay)
             decision_summary = summarize_player_decisions(decisions)
             st.caption('Player-by-player projection changes, error improvements and regressions. '
