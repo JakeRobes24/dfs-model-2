@@ -501,7 +501,7 @@ def fantasysportsedge_reference(slate, as_of):
     if stamp.date() != slate or stamp > as_of or stamp.tzname() != match[3]:
         raise ValueError('FantasySportsEdge is for a different slate date')
     records = []
-    required = {'Player', 'Team', 'Opp', 'FD Salary', 'Projection'}
+    required = {'Player', 'Opp', 'FD Salary', 'Projection'}
     for table in soup.select('table'):
         headers = [col.get_text(' ', strip=True) for col in table.select('thead th')]
         if not required.issubset(headers):
@@ -511,15 +511,25 @@ def fantasysportsedge_reference(slate, as_of):
             if len(cells) != len(headers):
                 continue
             data = dict(zip(headers, cells))
-            team, opponent = map(team_code, (data['Team'], data['Opp']))
+            team, opponent = team_code(data.get('Team', '')), team_code(data['Opp'])
             try:
                 salary = int(data['FD Salary'].replace('$', '').replace(',', ''))
                 points = float(data['Projection'])
             except ValueError:
                 continue
-            if team and opponent and team != opponent and 0 < salary <= 60000 and 0 <= points <= 150:
-                records.append(dict(player=data['Player'], team=team, game=f'{team}@{opponent}',
-                                    reference_salary=salary, reference_points=points))
+            if opponent and team != opponent and 0 < salary <= 60000 and 0 <= points <= 150:
+                record = dict(player=data['Player'], reference_salary=salary, reference_points=points)
+                if team:
+                    record.update(team=team, game=f'{team}@{opponent}')
+                elif 'Team' not in data:
+                    # The public table may publish opponent but omit own team.
+                    # Keep this explicitly reference-only; never invent the team.
+                    record['reference_opponent'] = opponent
+                else:
+                    continue
+                records.append(record)
+    if not records:
+        raise ValueError('FantasySportsEdge public projection table unavailable')
     return records, stamp
 
 
@@ -574,8 +584,33 @@ def fta_nba_reference(slate, as_of, contest_games):
     return records, stamp, board['label'], board.get('total', len(records))
 
 
+def match_opponent_reference(pool, records):
+    """Reference-only matching when a board omits the player's own team.
+
+    Require a unique contest name, exact salary and opponent on the contest
+    game. Never transfer these records to the numerical consensus pipeline.
+    """
+    matches = []
+    for record in records:
+        key = player_key(record['player'])
+        opponent = record['reference_opponent']
+        ids = []
+        for row in pool.itertuples():
+            teams = row.game.split('@')
+            if (len(teams) == 2 and len(set(teams)) == 2 and row.team in teams
+                    and opponent in teams and opponent != row.team
+                    and row.salary == record['reference_salary']
+                    and key in contest_player_keys(row.fanduel_name, row.fanduel_id)):
+                ids.append(row.fanduel_id)
+        if len(ids) == 1:
+            matches.append(dict(record, fanduel_id=ids[0]))
+    return matches
+
+
 def compare_reference(pool, records):
-    matches = pd.DataFrame(match_public(pool, records))
+    exact = [row for row in records if 'reference_opponent' not in row]
+    opponent_only = [row for row in records if 'reference_opponent' in row]
+    matches = pd.DataFrame(match_public(pool, exact) + match_opponent_reference(pool, opponent_only))
     if matches.empty:
         return matches
     columns = ['fanduel_id', 'fanduel_name', 'salary', 'eligible', 'projected_fd_points',
