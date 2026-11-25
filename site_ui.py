@@ -81,7 +81,7 @@ def public_fta_reference(slate, as_of, games):
     return fta_nba_reference(slate, as_of, games)
 
 
-def render_reference_board(scored, rows, stamp, source, context):
+def render_reference_board(scored, rows, stamp, source, context, *, key_prefix=''):
     comparison = compare_reference(scored, rows)
     if comparison.empty:
         st.info(f'{source} has no eligible players matched by name, game and FanDuel salary.')
@@ -100,7 +100,8 @@ def render_reference_board(scored, rows, stamp, source, context):
     st.download_button(f'Download {source} comparison',
                        display.assign(reference_provider=source, source_updated_at=stamp.isoformat())
                        [['fanduel_id', *columns, 'reference_provider', 'source_updated_at']].to_csv(index=False),
-                       f"{source.lower().replace(' ', '_')}_comparison.csv", mime='text/csv')
+                       f"{source.lower().replace(' ', '_')}_comparison.csv", mime='text/csv',
+                       key=f'{key_prefix}reference_download_{source}')
     return comparison
 
 
@@ -417,9 +418,43 @@ def render_slate(history_slot):
 
     archived_ownership = None
     archived_market_events = ()
+    reference_status = {}
+    if slate == now.date():
+        with st.expander('Check all public projection reference boards'):
+            from slate_research import get_reference_research
+            st.caption('One refresh checks LineupExperts, FantasySportsEdge and Fantasy Team Advisors together. Reference estimates are not extra independent scoring votes.')
+            reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat())
+            if st.button('Check all three reference boards', key='slate_all_references'):
+                with st.spinner('Checking public reference boards…'):
+                    st.session_state['slate_reference_snapshot'] = (
+                        reference_key, get_reference_research(slate, now, tuple(sorted(set(pool.game)))))
+            saved_reference = st.session_state.get('slate_reference_snapshot')
+            if saved_reference is not None and saved_reference[0] == reference_key:
+                reference_boards, reference_status = saved_reference[1]
+                reference_status = dict(reference_status)
+                for name, result in reference_boards.items():
+                    rows, stamp = result[:2]
+                    if name == 'LineupExperts':
+                        reference = pd.DataFrame(match_public(scored, rows))
+                        if not reference.empty:
+                            reference = reference.drop_duplicates('fanduel_id', keep=False)
+                            compared = scored.loc[scored.eligible, ['fanduel_id','fanduel_name','projected_fd_points','adjusted_fd_points']].merge(
+                                reference[['fanduel_id','reference_fd']], on='fanduel_id', validate='one_to_one')
+                            compared['Reference minus model'] = (compared.reference_fd - compared.adjusted_fd_points).round(2)
+                            st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
+                            matched_count = len(compared)
+                        else:
+                            matched_count = 0
+                        reference_status[name] += f'; {matched_count} eligible matches; publication time unverified'
+                    else:
+                        matched = render_reference_board(scored, rows, stamp, name,
+                                                         'Reference only; independent provenance not verified.', key_prefix='all_refs_')
+                        reference_status[name] += f'; {len(matched)} eligible matches'
+                for name, status in reference_status.items():
+                    st.write(f'**{name}** · {status}')
     with st.expander('Complete saved NBA research checklist'):
         from research_source_registry import research_checklist
-        checklist = research_checklist('NBA', source_status)
+        checklist = research_checklist('NBA', [*source_status, *reference_status.items()])
         st.caption('This is the full saved research stack, not just accepted numerical estimates. A reference or manual source is not marked verified merely because it is listed.')
         st.dataframe(checklist, hide_index=True)
     with st.expander('Sources and checks'):
