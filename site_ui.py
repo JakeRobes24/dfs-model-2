@@ -417,6 +417,7 @@ def render_slate(history_slot):
 
 
     archived_ownership = None
+    archived_matchwiz = None
     archived_market_events = ()
     reference_status = {}
     if slate == now.date():
@@ -503,6 +504,7 @@ def render_slate(history_slot):
                     st.info('MatchWiz current reference unavailable.')
                 else:
                     rows = saved_mw[1]
+                    archived_matchwiz = rows
                     compared = compare_keelstats(scored, rows)
                     reference_status['MatchWiz'] = f'Reference checked: {len(rows)} returned rows; {len(compared)} eligible matches; publication time unverified'
                     st.caption(reference_status['MatchWiz'])
@@ -1049,6 +1051,9 @@ def render_slate(history_slot):
     hashes = (sha256(contest_bytes).hexdigest(), sha256(daily_bytes).hexdigest())
     archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
     archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
+    if archived_matchwiz is not None:
+        from matchwiz_reference import freeze_matchwiz_reference
+        archive_pool = freeze_matchwiz_reference(archive_pool, archived_matchwiz, slate, datetime.now(ET))
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes), market_events=archived_market_events)
 
