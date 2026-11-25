@@ -484,6 +484,35 @@ def render_slate(history_slot):
                 except (OSError, ValueError, KeyError, TypeError, AttributeError):
                     reference_status['KeelStats'] = 'Reference unavailable for current slate'
                     st.info('KeelStats current minutes reference unavailable.')
+    if slate == now.date():
+        with st.expander('MatchWiz minutes and partial-stat reference'):
+            from matchwiz_reference import matchwiz_reference
+            from slate_research import compare_keelstats
+            st.caption('Exact slate and matchup required. Publication time unverified; retrieval time is not a publication timestamp. Projected roles and partial stats do not enter scoring.')
+            mw_key = (str(contest_id), str(slate), checked_at.isoformat(), tuple(sorted(set(pool.game))))
+            if st.button('Check MatchWiz minutes', key='slate_matchwiz'):
+                try:
+                    rows = matchwiz_reference(slate, datetime.now(ET))
+                    st.session_state['matchwiz_snapshot'] = (mw_key, rows)
+                except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                    st.session_state['matchwiz_snapshot'] = (mw_key, None)
+            saved_mw = st.session_state.get('matchwiz_snapshot')
+            if saved_mw and saved_mw[0] == mw_key:
+                if saved_mw[1] is None:
+                    reference_status['MatchWiz'] = 'Reference unavailable for current slate'
+                    st.info('MatchWiz current reference unavailable.')
+                else:
+                    rows = saved_mw[1]
+                    compared = compare_keelstats(scored, rows)
+                    reference_status['MatchWiz'] = f'Reference checked: {len(rows)} returned rows; {len(compared)} eligible matches; publication time unverified'
+                    st.caption(reference_status['MatchWiz'])
+                    if not compared.empty:
+                        st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
+                        st.download_button('Download MatchWiz comparison', compared.to_csv(index=False),
+                                           file_name=f'{slate}-{contest_id}-matchwiz.csv', mime='text/csv',
+                                           key='slate_matchwiz_download')
+                    else:
+                        st.info('No unambiguous eligible contest matches.')
     with st.expander('Complete saved NBA research checklist'):
         from research_source_registry import research_checklist
         checklist = research_checklist('NBA', [*source_status, *reference_status.items()])
