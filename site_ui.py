@@ -896,6 +896,21 @@ def render_slate(history_slot):
                                 raise ValueError('Combined replay files must be smaller than 8 MiB.')
                             training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
                                                   for file in files], ignore_index=True).drop_duplicates()
+                        from nba_source_accuracy import review_source_dates
+                        try:
+                            source_details, source_daily, source_summary = review_source_dates(training, slate)
+                        except ValueError as exc:
+                            st.warning(f'Source accuracy review unavailable: {exc}')
+                        else:
+                            if not source_summary.empty:
+                                st.caption('Historical provider accuracy: equal weight per earlier date, matched forecast comparisons only. Descriptive, not automatic scoring weights.')
+                                st.dataframe(source_summary.round(3), hide_index=True)
+                                st.dataframe(source_daily.round(3), hide_index=True)
+                                st.download_button('Download dated source accuracy', source_details.to_csv(index=False),
+                                                   file_name=f'{slate}-prior-source-accuracy.csv',
+                                                   mime='text/csv', key='slate_prior_source_accuracy')
+                            else:
+                                st.caption('No qualifying frozen independent provider forecasts in these earlier replays.')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
