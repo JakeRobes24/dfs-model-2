@@ -22,9 +22,9 @@ SOURCES = (
     ('RotoQL / stat-api','Manual research','Manual research','Projections, ownership; count shared provenance once'),
     ('Linemate','Manual research','Manual research','App-based player trends and matchup checks; no verified public projection feed'),
     ('WalterPicks','Manual research','Manual research','App-based player projections and matchup validation; no verified public dated feed'),
-    ('MatchWiz','Manual research','Not established','Recovered Nov 20 projected minutes and PTS/REB/AST; partial stat lines are not full FanDuel projections; current access and provenance unverified'),
-    ('TheCapper','Manual research','Not established','Recovered Nov 20 projected box-score preview; current coverage and independent provenance unverified'),
-    ('KeelStats','Manual research','Not established','Recovered Nov 20 Tonight minutes estimates and reported L10 minutes/starts/usage; distinguish projections from observed summaries; current access unverified'),
+    ('MatchWiz','Manual research','Not established','Public projected minutes and partial PTS/REB/AST; relative board can lag slate date; partial stat lines are not full FanDuel projections; provenance unverified'),
+    ('TheCapper','Manual research','Not established','Public dated projected box-score board; assumes player plays; relative board may lag slate date; independent provenance unverified'),
+    ('KeelStats','Reference','Not established','Public dated Tonight minutes and historical L10/starts/usage; returning players omitted from redistribution; reference only'),
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
@@ -40,6 +40,9 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'MatchWiz': 'https://matchwiz.ai/nba/lineups',
+    'TheCapper': 'https://thecapper.io/nba/projections/',
+    'KeelStats': 'https://keelstats.com/nba/usage',
     'LineupExperts': 'https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today',
     'Fantasy Team Advisors': 'https://fantasyteamadvisors.com/guides/nba-usage-bump/',
     'FantasySportsEdge': 'https://fantasysportsedge.com/nba/projections',
@@ -71,7 +74,7 @@ def research_checklist(sport, source_status=()):
         labels = AUTOMATIC_NBA.get(name,()) if sport == 'NBA' else ()
         if labels:
             current = ' | '.join(f'{label}: {status.get(label,"Not checked this refresh")}' for label in labels)
-        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors') and name in status:
+        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'KeelStats') and name in status:
             current = status[name]
         elif mode == 'Identity unresolved':
             current = 'Identity not verified'
