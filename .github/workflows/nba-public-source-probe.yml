@@ -99,6 +99,8 @@ jobs:
                           rotation_status=recent[1], reference_status=reference[1],
                           reference_rows={name:len(value[0]) for name,value in reference[0].items()})
 
+          public, recent, reference, timing = acquire_research(live,rotations,refs)
+          print('BENCHMARK concurrent',json.dumps(dict(timing=timing,coverage=summary(public,recent,reference))))
           tasks = {}
           start = monotonic()
           values = []
@@ -108,7 +110,18 @@ jobs:
               tasks[name] = round(monotonic()-tick,3)
           sequential = round(monotonic()-start,3)
           print('BENCHMARK sequential',json.dumps(dict(seconds=sequential,tasks=tasks,coverage=summary(*values))))
-          public, recent, reference, timing = acquire_research(live,rotations,refs)
-          print('BENCHMARK concurrent',json.dumps(dict(timing=timing,coverage=summary(public,recent,reference))))
           print('BENCHMARK equal coverage/status:', summary(*values) == summary(public,recent,reference))
+          print('BENCHMARK exact rotation rows equal:', values[1][0] == recent[0])
+
+          from nba_final_box_cache import FinalBoxCache
+          cache = FinalBoxCache()
+          start = monotonic()
+          cold, cold_status = recent_boxscores(slate, set(games), box_cache=cache)
+          cold_seconds = monotonic()-start
+          start = monotonic()
+          warm, warm_status = recent_boxscores(slate, set(games), box_cache=cache)
+          print('CACHE BENCHMARK', json.dumps(dict(cold_seconds=round(cold_seconds,3),
+                warm_seconds=round(monotonic()-start,3), cold_rows=len(cold), warm_rows=len(warm),
+                cold_status=cold_status, warm_status=warm_status, exact_rows_equal=cold==warm)))
+
           PY
