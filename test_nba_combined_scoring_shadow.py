@@ -89,3 +89,40 @@ def test_paired_rate_normalizes_minutes_once_and_rejects_old_team_evidence():
         dict(estimates[0],observed_at='2026-11-25T22:00:00Z'),estimates[1]])
     assert paired_rate_shadow(unrelated).iloc[0].shadow_rate_fd == pytest.approx(34.56)
     assert paired_rate_shadow(data.drop(columns='replay_evidence_json')).empty
+
+
+def test_paired_rate_diagnostics_partition_eligible_pool_without_changing_forecasts():
+    from nba_combined_scoring_shadow import paired_rate_shadow, compare_frozen_paired_rate
+    from slate_research import PROPSIMS, ROTOGRINDERS
+    estimates = [
+        dict(source=PROPSIMS,family='propsims',points=36.,paired_minutes=30.,weight=1.,observed_at='2026-11-25T22:30:00Z'),
+        dict(source=ROTOGRINDERS,family='rotogrinders',points=42.,paired_minutes=35.,weight=1.,observed_at='2026-11-25T22:40:00Z')]
+    base = dict(fanduel_id='1-1',team='DET',game='DET@ORL',eligible=True,injury_flag='',
+                prelock_status='',prelock_starter='starter',minutes_method='prelock_independent_consensus',
+                blend_status='Minutes/status adjustment takes priority',adjusted_minutes=32.,
+                adjusted_fd_points=32.,independent_fd_points=39.,projection_source_count=2,
+                projection_source_spread=6.,projection_sources_json=json.dumps(estimates),
+                replay_evidence_json='[]',replay_captured_at_utc='2026-11-25T23:00:00Z',
+                verified_outcome='played',nba_source='NBA box',actual_points=35.,daily_points=30.)
+    cases = [
+        {},
+        dict(injury_flag='Q'),
+        dict(minutes_method='baseline'),
+        dict(projection_sources_json=json.dumps([estimates[0]]),projection_source_count=1),
+        dict(projection_sources_json=json.dumps([estimates[0],dict(estimates[1],points=65.)])),
+        dict(projection_sources_json='invalid'),
+        dict(team='',game=''),
+        dict(eligible=False),
+    ]
+    data = pd.DataFrame([dict(base, **changes, fanduel_id=f'1-{i}') for i, changes in enumerate(cases)])
+    original = data.copy(deep=True)
+    results = paired_rate_shadow(data)
+    assert results.shadow_rate_fd.notna().sum() == 1
+    assert results.shadow_rate_fd.iloc[0] == pytest.approx(34.56)
+    report = compare_frozen_paired_rate(data).iloc[0]
+    keys = ['Eligible supported rate forecasts','Eligible rate uncertain availability',
+            'Eligible rate minutes policy not met','Eligible rate insufficient paired sources',
+            'Eligible rate disagreement','Eligible rate provenance rejected','Eligible rate invalid team evidence']
+    assert all(report[k] == 1 for k in keys)
+    assert sum(report[k] for k in keys) == report['Eligible players reviewed for rate blend'] == 7
+    pd.testing.assert_frame_equal(data,original)
