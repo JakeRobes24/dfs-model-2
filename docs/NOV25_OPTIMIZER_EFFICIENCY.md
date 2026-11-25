@@ -21,3 +21,24 @@ The explicit-ordering experiment had separately timed baseline runs of 4.1039, 2
 The two unlocked UTIL assignments are interchangeable. Combine them into one row with demand two and one binary assignment variable per eligible player. Every legal distinct-player assignment to the original two UTIL slots maps to one compact solution and vice versa. Salary, team limits, overlap, excluded roster, and objective constraints are unchanged. Fixed/closed slot workflows retain the explicit nine-slot formulation; no changes to late-swap slot placement. Added a mixed-position regression comparing the two formulations. No scoring or production change.
 
 The local harness reproduced the constraints, rather than importing the repository module. New implementation CI is required. Broader real-slate benchmarks and staging end-to-end timings remain outstanding; do not extrapolate the local speed result to every slate.
+
+
+## Additional benchmark: reconstructed November 24 After Hours
+
+Source: private archive packet contest 137139, commit f71815185cf4f404f80a765974769f79602ffa44. The 70-row reconstruction lacks a final eligibility column and verified pre-tip timestamp. For engineering benchmarking only, retained all 52 distinct players with positive archived adjusted points and no O/OUT contest injury or O/OUT/INACTIVE archived manual flag. These are not certified current eligibility or historical forecasts. Extracted team, salary, roster eligibility, and exact recorded adjusted points; transfer checksum FNV-1a a4cc7831 (1,655 characters), verified in both source extraction and local harness.
+
+Repeated the same five-solve original/compact comparison on three row orderings using SciPy 1.17.0, alternating formulation order in the second run. All solves optimal, with identical player sets, nine distinct players, exact slot counts, salary and team limits, and pairwise portfolio overlap enforced.
+
+| Ordering | Original nine slots, s | Compact UTIL capacity, s |
+|---|---:|---:|
+| Original | 3.5819 | 2.5465 |
+| Seed 1 | 3.2253 | 2.2741 |
+| Seed 2 | 3.7645 | 2.0906 |
+
+Median 3.5819 -> 2.2741 seconds (36.5% reduction). Identical unrounded objective totals in each formulation: 316.232529, 313.717843, 313.082908, 311.477760, distinct leading alternative 313.731714. This is a separate contest but overlaps the main slate's teams. The local harness replicates solver constraints rather than timing the deployed app.
+
+Nov 20 archive has 247 rows but no authoritative player team column; do not infer teams from the matchup or claim current team-rule certification. It is excluded from this benchmark.
+
+## Regression verification
+
+At commit 1cd71a6e1b68b4a8265dfb17dce6438605777f25 all four workflows passed, including the compact UTIL mixed-position comparison: 330 passed, one private history fixture deselected, 134 warnings. Full regression run 45580699787. No production merge, no scoring changes. More independently scoped slates and hosted end-to-end measurements are still needed.
