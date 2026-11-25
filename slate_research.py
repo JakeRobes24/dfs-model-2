@@ -638,6 +638,30 @@ def match_public(pool, records):
     return matched
 
 
+
+def public_coverage(pool, notes, projections):
+    """Measure actual contest matches, separately from accepted scoring evidence."""
+    eligible = set(pool.loc[pool.eligible.eq(True), 'fanduel_id'])
+    rows = []
+    for kind, records, providers in (
+        ('Points', projections, (DFF, PROPSIMS, ROTOGRINDERS)),
+        ('Minutes', [row for row in notes if row.get('minutes') is not None],
+         (RW_MINUTES, NBA_HOUSE, PROPSIMS, ROTOGRINDERS)),
+    ):
+        for source in providers:
+            raw = [row for row in records if row.get('source') == source]
+            matched = match_public(pool, raw)
+            ids = {row['fanduel_id'] for row in matched}
+            covered = ids & eligible
+            rows.append({
+                'Evidence': kind, 'Provider': source, 'Returned rows': len(raw),
+                'Matched rows': len(matched), 'Unmatched rows': len(raw) - len(matched),
+                'Eligible players matched': len(covered), 'Eligible players': len(eligible),
+                'Eligible players missing': len(eligible) - len(covered),
+            })
+    return pd.DataFrame(rows)
+
+
 def historical_context(pool, verified, rotations, slate):
     archive = verified.copy()
     if not archive.empty:
