@@ -125,3 +125,25 @@ jobs:
                 cold_status=cold_status, warm_status=warm_status, exact_rows_equal=cold==warm)))
 
           PY
+
+      - name: Inspect existing providers for explicitly paired minutes and FanDuel points
+        run: |
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from slate_research import fetch, DFF, ROTOGRINDERS, LINEUPEXPERTS_TODAY
+          for name,url in [('Daily Fantasy Fuel',DFF),('RotoGrinders',ROTOGRINDERS),
+                           ('LineupExperts',LINEUPEXPERTS_TODAY)]:
+              try:
+                  soup = BeautifulSoup(fetch(url),'html.parser')
+                  print('PAIR PROBE', name, 'title:', soup.title.get_text(strip=True) if soup.title else '')
+                  if name == 'Daily Fantasy Fuel':
+                      rows = soup.select('tr.projections-listing[data-start_date][data-ppg_proj]')
+                      print('PAIR PROBE DFF public rows:',len(rows))
+                      for row in rows[:2]:
+                          print('PAIR PROBE DFF row attributes:',dict(row.attrs))
+                          print('PAIR PROBE DFF cells:',[(c.get('class'),c.get('data-title'),c.get_text(' ',strip=True)) for c in row.find_all('td',recursive=False)])
+                  for table in soup.select('table')[:3]:
+                      print('PAIR PROBE headers:',[c.get_text(' ',strip=True) for c in table.select('thead th')])
+              except Exception as exc:
+                  print('PAIR PROBE unavailable',name,type(exc).__name__,str(exc)[:150])
+          PY
