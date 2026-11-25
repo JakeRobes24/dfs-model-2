@@ -53,7 +53,11 @@ def review_source_rates(replay, target_day, *, source_details=None):
                            observed_at=row.observed_at,actual_minutes=row.actual_minutes,
                            source_fppm=source,actual_fppm=actual,daily_fppm=daily,reviewed_fppm=reviewed,
                            source_error=source-actual,daily_error=None if daily is None else daily-actual,
-                           reviewed_error=None if reviewed is None else reviewed-actual))
+                           reviewed_error=None if reviewed is None else reviewed-actual,
+                           actual_fd_points=row.actual_points, reviewed_minutes=row.reviewed_minutes,
+                           source_rate_reviewed_minutes_fd=(source*row.reviewed_minutes if reviewed is not None else None),
+                           daily_rate_reviewed_minutes_fd=(daily*row.reviewed_minutes if daily is not None and reviewed is not None else None),
+                           reviewed_fd=row.reviewed_points if reviewed is not None else None))
     details = pd.DataFrame(result)
     if details.empty:
         return details, pd.DataFrame(), pd.DataFrame()
@@ -79,3 +83,41 @@ def review_source_rates(replay, target_day, *, source_details=None):
                             days_better_than_daily=int(edge.gt(0).sum()),
                             days_better_than_reviewed=int(reviewed_edge.gt(0).sum())))
     return details,daily,pd.DataFrame(summary)
+
+
+def fixed_minutes_rate_review(details):
+    """Hold reviewed minutes fixed to isolate the effect of rate substitution.
+
+    This is an offline counterfactual, not an eligible live scoring rule.
+    Restrict to identical complete paired samples and report dates separately.
+    """
+    if details.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    required = ['source_rate_reviewed_minutes_fd','daily_rate_reviewed_minutes_fd',
+                'reviewed_fd','actual_fd_points']
+    if not {'slate_date','provider','fanduel_id',*required} <= set(details):
+        raise ValueError('Complete same-provider rate diagnostics required.')
+    if details.duplicated(['slate_date','provider','fanduel_id']).any():
+        raise ValueError('Rate diagnostics require unique player/provider/date observations.')
+    paired = details.dropna(subset=required).copy()
+    if paired.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    for label, field in [('source','source_rate_reviewed_minutes_fd'),
+                         ('daily','daily_rate_reviewed_minutes_fd'),('reviewed','reviewed_fd')]:
+        paired[label+'_absolute_error'] = (paired[field]-paired.actual_fd_points).abs()
+    daily = paired.groupby(['slate_date','provider'],as_index=False).agg(
+        paired_players=('fanduel_id','size'),
+        source_rate_mae=('source_absolute_error','mean'),
+        daily_rate_mae=('daily_absolute_error','mean'),
+        reviewed_mae=('reviewed_absolute_error','mean'))
+    daily['source_edge_vs_daily'] = daily.daily_rate_mae - daily.source_rate_mae
+    daily['source_edge_vs_reviewed'] = daily.reviewed_mae - daily.source_rate_mae
+    summary = daily.groupby('provider',as_index=False).agg(
+        dates=('slate_date','nunique'),paired_players=('paired_players','sum'),
+        equal_day_source_mae=('source_rate_mae','mean'),
+        equal_day_daily_mae=('daily_rate_mae','mean'),
+        equal_day_reviewed_mae=('reviewed_mae','mean'),
+        equal_day_edge_vs_daily=('source_edge_vs_daily','mean'),
+        equal_day_edge_vs_reviewed=('source_edge_vs_reviewed','mean'),
+        days_better_than_reviewed=('source_edge_vs_reviewed',lambda s: int(s.gt(0).sum())))
+    return daily, summary
