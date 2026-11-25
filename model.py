@@ -127,16 +127,25 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
     salaries = a.salary.to_numpy(dtype=float)
     scores = a[objective_column].to_numpy(dtype=float)
     eligibility = [allowed_slots(e) for e in a.roster_eligibility]
-    pairs = [(i,j) for i,pid in enumerate(player_ids) for j,slot in enumerate(SLOTS)
+    # The two unpinned UTIL seats are interchangeable. Represent them by
+    # one capacity-two constraint, retaining one binary variable per player.
+    # Explicit late-swap slots retain the original nine-position formulation.
+    compact_util = not fixed_slots and not closed_players
+    solve_slots = SLOTS[:-1] if compact_util else SLOTS
+    slot_count = len(solve_slots)
+    demand = np.ones(slot_count)
+    if compact_util:
+        demand[-1] = 2
+    pairs = [(i,j) for i,pid in enumerate(player_ids) for j,slot in enumerate(solve_slots)
              if slot in eligibility[i]
              and (fixed_slots[j] == pid if j in fixed_slots else pid not in pinned_ids)]
     n=len(pairs)
     if not n:raise ValueError('No projected eligible players')
     player_index, slot_index = np.asarray(pairs, dtype=int).T
     columns = np.arange(n)
-    A=lil_matrix((9+len(a)+1,n))
+    A=lil_matrix((slot_count+len(a)+1,n))
     A[slot_index,columns]=1
-    A[9+player_index,columns]=1
+    A[slot_count+player_index,columns]=1
     A[-1,columns]=salaries[player_index]
     c=np.where(np.isin(slot_index,list(fixed_slots)),0.,-scores[player_index])
     normalized_names = [norm(name) for name in a.fanduel_name]
@@ -145,7 +154,7 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         names={norm(x),norm(y)}
         inds={i for i,name in enumerate(normalized_names) if name in names}
         if len(inds)==2:blocked_indices.append(inds)
-    low=np.r_[np.ones(9),np.zeros(len(a)),0];high=np.r_[np.ones(9),np.ones(len(a)),60000]
+    low=np.r_[demand,np.zeros(len(a)),0];high=np.r_[demand,np.ones(len(a)),60000]
     # Nine unique players with at most four per team necessarily span >=3 teams.
     if team_lookup is not None:
         codes = np.array([team_lookup[p] for p in player_ids])
@@ -177,9 +186,10 @@ def optimize(pool, number=4, max_overlap=7, exclude_uncertain=False, blocked_pai
         assignments = [(i, j) for k, (i, j) in enumerate(pairs) if sol.x[k] > .5]
         if fixed_slots or closed_players:
             assignments.sort(key=lambda pair: pair[1])
-        selected = [(SLOTS[j], a.iloc[i]) for i, j in assignments]
+        selected = [(solve_slots[j], a.iloc[i]) for i, j in assignments]
         ids={i for k,(i,j) in enumerate(pairs) if sol.x[k]>.5};sets.append(ids)
         assert len(selected)==9 and len({r.fanduel_id for _,r in selected})==9
+        assert Counter(slot for slot, _ in selected) == Counter(SLOTS)
         assert sum(int(r.salary) for _,r in selected)<=60000
         if team_lookup is not None and not legal_team_counts(team_lookup[r.fanduel_id] for _,r in selected):
             raise ValueError('Solver returned invalid team composition')
