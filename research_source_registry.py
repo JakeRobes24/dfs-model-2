@@ -62,6 +62,8 @@ def research_checklist(sport, source_status=()):
         labels = AUTOMATIC_NBA.get(name,()) if sport == 'NBA' else ()
         if labels:
             current = ' | '.join(f'{label}: {status.get(label,"Not checked this refresh")}' for label in labels)
+        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors') and name in status:
+            current = status[name]
         elif mode == 'Identity unresolved':
             current = 'Identity not verified'
         else:
