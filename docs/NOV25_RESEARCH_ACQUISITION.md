@@ -16,3 +16,12 @@ At benchmark commit all four workflows passed; 333 tests, one private historical
 ## Next implementation
 
 Recent final box retrieval is the longest measured batch. Added opt-in bounded 512-entry 30-minute public final-box cache keyed by exact day/game/away/home, with copy isolation, expiry and no caching empty or one-sided results. Dated official schedule checks remain in place, and cache only accepts the expected teams and date. Normal and extended UI rotation windows share the cache. The cache does not certify complete official statistics or avoid corrections beyond its TTL; existing outer Streamlit rotation TTL remains 30 minutes. New tests and live cache timing verification still required. No scoring or production change.
+
+
+## Reverse-order and final-box reuse check
+
+Run 45583600402, cutoff November 25 04:15:26 ET. Concurrent first: 4.609s; sequential second: 3.857s. Both retrieved 476 notes, 91 point projections, 830 historical rows and 202 MatchWiz records. Exact rotation rows equal. Provider status strings differed because DFF reported a newer update during the sequential pass; aggregate row counts are equal, not evidence of identical live numerical forecasts. The two runs do not establish a guaranteed concurrency speed gain.
+
+In the same workflow, uncached final-box load took 2.087s and the immediate warm-cache load 0.470s (77.5% lower elapsed time). Both returned 830 identical rows and all 38 final boxes across seven dated schedule pages; warm pass reused 38 boxes. This is a runner-local immediate-repeat test, not a hosted UI timing or evidence of unchanged boxes throughout the TTL.
+
+At commit 050e031e8a99e1f14ad23bc06f0fe641124f61a0 all four workflows succeeded, with 337 passed, one deselected, 134 warnings. New production-rate diagnostics are separately pending verification.
