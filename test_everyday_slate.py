@@ -508,14 +508,17 @@ def test_nov25_verified_short_names_keep_contest_identity_and_team_guards():
         ('188444','GG Jackson','Gregory Jackson'),
     ]
     for suffix, short, full in cases:
-        contest, daily = uploads()
-        contest.loc[0, ['Id','Nickname']] = ['136961-'+suffix,short]
+        from test_nba_csv_pipeline_integration import synthetic_exports
+        from io import BytesIO
+        c, d = synthetic_exports()
+        contest, daily = pd.read_csv(BytesIO(c)), pd.read_csv(BytesIO(d))
+        contest.loc[0, ['Id','Nickname']] = ['99999-'+suffix,short]
         daily.loc[0,'player'] = full
         def imported(c,d):
             return reconcile_exports(c.to_csv(index=False).encode(),d.to_csv(index=False).encode())[0].iloc[0]
         assert imported(contest,daily).identity_match == 'known_alias'
         wrong_id = contest.copy()
-        wrong_id.loc[0,'Id'] = '136961-998877'
+        wrong_id.loc[0,'Id'] = '99999-998877'
         assert imported(wrong_id,daily).identity_match == 'unmatched'
         wrong_team = daily.copy()
         wrong_team.loc[0,'team'] = 'Washington Wizards'
