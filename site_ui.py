@@ -423,10 +423,10 @@ def render_slate(history_slot):
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
             from slate_research import get_reference_research
-            st.caption('One refresh checks LineupExperts, FantasySportsEdge and Fantasy Team Advisors together. Reference estimates are not extra independent scoring votes.')
+            st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
             reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat(),
                              tuple(sorted(set(pool.game))))
-            if st.button('Check all three reference boards', key='slate_all_references'):
+            if st.button('Check all five reference boards', key='slate_all_references'):
                 with st.spinner('Checking public reference boards…'):
                     st.session_state['slate_reference_snapshot'] = (
                         reference_key, get_reference_research(slate, now, tuple(sorted(set(pool.game)))))
@@ -448,6 +448,23 @@ def render_slate(history_slot):
                         else:
                             matched_count = 0
                         reference_status[name] += f'; {matched_count} eligible matches; publication time unverified'
+                    elif name in ('MatchWiz', 'KeelStats'):
+                        from slate_research import compare_keelstats
+                        compared = compare_keelstats(scored, rows)
+                        if name == 'MatchWiz':
+                            archived_matchwiz = rows
+                            caveat = 'Publication time unverified; partial stats and projected roles only.'
+                        else:
+                            caveat = 'Returning-player impact omitted from redistribution; historical L10 and starts are not projections.'
+                        st.caption(f'{name}: {caveat}')
+                        reference_status[name] += f'; {len(compared)} eligible matches'
+                        if name == 'MatchWiz':
+                            reference_status[name] += '; publication time unverified'
+                        if not compared.empty:
+                            st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
+                            st.download_button(f'Download {name} comparison', compared.to_csv(index=False),
+                                               file_name=f'{slate}-{contest_id}-{name.lower()}.csv', mime='text/csv',
+                                               key=f'all_refs_{name}_download')
                     else:
                         matched = render_reference_board(scored, rows, stamp, name,
                                                          'Reference only; independent provenance not verified.', key_prefix='all_refs_')
@@ -465,56 +482,6 @@ def render_slate(history_slot):
                     st.download_button('Download reference research priorities', reference_queue.to_csv(index=False),
                                        file_name=f'{slate}-{contest_id}-reference-review.csv', mime='text/csv',
                                        key='slate_reference_review_download')
-    if slate == now.date():
-        with st.expander('KeelStats minutes and rotation reference'):
-            from slate_research import keelstats_reference, compare_keelstats
-            st.caption('Reference only: the provider does not account for returning players in tonight’s minutes redistribution. L10 minutes and starts are historical summaries, not projections.')
-            if st.button('Check KeelStats minutes', key='slate_keelstats'):
-                try:
-                    rows, stamp = keelstats_reference(slate, now)
-                    compared = compare_keelstats(scored, rows)
-                    reference_status['KeelStats'] = f'Reference checked: {len(rows)} returned rows; {len(compared)} eligible matches; not scoring evidence'
-                    st.caption(f'Updated {stamp:%b %d, %I:%M %p ET} · {len(compared)} eligible contest matches')
-                    if not compared.empty:
-                        st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
-                        st.download_button('Download KeelStats comparison', compared.to_csv(index=False),
-                                           file_name=f'{slate}-{contest_id}-keelstats.csv', mime='text/csv',
-                                           key='slate_keelstats_download')
-                    else:
-                        st.info('No unambiguous eligible contest matches.')
-                except (OSError, ValueError, KeyError, TypeError, AttributeError):
-                    reference_status['KeelStats'] = 'Reference unavailable for current slate'
-                    st.info('KeelStats current minutes reference unavailable.')
-    if slate == now.date():
-        with st.expander('MatchWiz minutes and partial-stat reference'):
-            from matchwiz_reference import matchwiz_reference
-            from slate_research import compare_keelstats
-            st.caption('Exact slate and matchup required. Publication time unverified; retrieval time is not a publication timestamp. Projected roles and partial stats do not enter scoring.')
-            mw_key = (str(contest_id), str(slate), checked_at.isoformat(), tuple(sorted(set(pool.game))))
-            if st.button('Check MatchWiz minutes', key='slate_matchwiz'):
-                try:
-                    rows = matchwiz_reference(slate, datetime.now(ET))
-                    st.session_state['matchwiz_snapshot'] = (mw_key, rows)
-                except (OSError, ValueError, KeyError, TypeError, AttributeError):
-                    st.session_state['matchwiz_snapshot'] = (mw_key, None)
-            saved_mw = st.session_state.get('matchwiz_snapshot')
-            if saved_mw and saved_mw[0] == mw_key:
-                if saved_mw[1] is None:
-                    reference_status['MatchWiz'] = 'Reference unavailable for current slate'
-                    st.info('MatchWiz current reference unavailable.')
-                else:
-                    rows = saved_mw[1]
-                    archived_matchwiz = rows
-                    compared = compare_keelstats(scored, rows)
-                    reference_status['MatchWiz'] = f'Reference checked: {len(rows)} returned rows; {len(compared)} eligible matches; publication time unverified'
-                    st.caption(reference_status['MatchWiz'])
-                    if not compared.empty:
-                        st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
-                        st.download_button('Download MatchWiz comparison', compared.to_csv(index=False),
-                                           file_name=f'{slate}-{contest_id}-matchwiz.csv', mime='text/csv',
-                                           key='slate_matchwiz_download')
-                    else:
-                        st.info('No unambiguous eligible contest matches.')
     with st.expander('Complete saved NBA research checklist'):
         from research_source_registry import research_checklist
         checklist = research_checklist('NBA', [*source_status, *reference_status.items()])
