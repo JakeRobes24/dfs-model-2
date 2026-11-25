@@ -101,7 +101,7 @@ def render_post_slate():
         return
 
     with st.expander('Multi-slate experimental projection evaluation'):
-        st.caption('Compare fixed shadow policies over up to five earlier saved dates. Dates through each policy's declaration date are exploratory (November 24 for earlier policies, November 25 for paired independent production rates). No scoring changes are made.')
+        st.caption('Compare fixed shadow policies over up to five earlier saved dates. Dates through the declaration date of each policy are exploratory (November 24 for earlier policies, November 25 for paired independent production rates). No scoring changes are made.')
         if st.button('Evaluate earlier verified slates', key='shadow_multislate_review'):
             from nba_archive_training import load_prior_replays
             from nba_shadow_multislate import compare_across_slates
