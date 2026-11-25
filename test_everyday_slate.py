@@ -491,3 +491,34 @@ def test_naive_point_timestamp_cannot_supply_independent_projection():
                       points=player.projected_fd_points+3)
     scored, _ = score_slate(pool, history, [], [projection], AS_OF)
     assert scored.iloc[0].projection_source_count == 0
+
+
+def test_nov25_verified_short_names_keep_contest_identity_and_team_guards():
+    # Real identity mappings, synthetic projection values; no private CSV included.
+    cases = [
+        ('84682','Michael Porter','Michael Porter Jr.'),
+        ('188422','Jaime Jaquez','Jaime Jaquez Jr.'),
+        ('203719','Terrence Shannon','Terrence Shannon Jr.'),
+        ('66968','Derrick Jones','Derrick Jones Jr.'),
+        ('248950','Christian Anderson','Christian Anderson Jr.'),
+        ('157834','Bones Hyland',"Nah'Shon Hyland"),
+        ('189467','Craig Porter','Craig Porter Jr.'),
+        ('84695','Gary Trent','Gary Trent Jr.'),
+        ('171661','Scotty Pippen','Scotty Pippen Jr.'),
+        ('188444','GG Jackson','Gregory Jackson'),
+    ]
+    for suffix, short, full in cases:
+        contest, daily = uploads()
+        contest.loc[0, ['Id','Nickname']] = ['136961-'+suffix,short]
+        daily.loc[0,'player'] = full
+        def imported(c,d):
+            return reconcile_exports(c.to_csv(index=False).encode(),d.to_csv(index=False).encode())[0].iloc[0]
+        assert imported(contest,daily).identity_match == 'known_alias'
+        wrong_id = contest.copy()
+        wrong_id.loc[0,'Id'] = '136961-998877'
+        assert imported(wrong_id,daily).identity_match == 'unmatched'
+        wrong_team = daily.copy()
+        wrong_team.loc[0,'team'] = 'Washington Wizards'
+        assert imported(contest,wrong_team).identity_match == 'unmatched'
+        duplicate = pd.concat([daily,daily.iloc[[0]].assign(player=short)])
+        assert imported(contest,duplicate).identity_match == 'ambiguous'

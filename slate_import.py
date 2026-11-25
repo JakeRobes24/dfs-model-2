@@ -84,6 +84,17 @@ VERIFIED_SUFFIX_ALIASES = {
     '84683': ('jarenjackson', 'jarenjacksonjr'),
     '203732': ('daronholmes', 'daronholmesii'),
     '15846': ('timhardaway', 'timhardawayjr'),
+    # Verified November 25 exact contest ID/name/team/matchup pairs.
+    '66968': ('derrickjones', 'derrickjonesjr'),
+    '84682': ('michaelporter', 'michaelporterjr'),
+    '84695': ('garytrent', 'garytrentjr'),
+    '157834': ('boneshyland', 'nahshonhyland'),
+    '171661': ('scottypippen', 'scottypippenjr'),
+    '188422': ('jaimejaquez', 'jaimejaquezjr'),
+    '188444': ('ggjackson', 'gregoryjackson'),
+    '189467': ('craigporter', 'craigporterjr'),
+    '203719': ('terrenceshannon', 'terrenceshannonjr'),
+    '248950': ('christiananderson', 'christianandersonjr'),
 }
 
 
