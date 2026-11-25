@@ -655,6 +655,12 @@ def render_slate(history_slot):
         render_challenger(scored, exclude_uncertain=exclude)
     signature = sha256(f'{slate}:{overlap}:{exclude}:{objective}:'.encode() + scored.to_csv(index=False).encode()).hexdigest()
     prepared_key = (str(contest_id), str(slate), sha256(contest_bytes).hexdigest())
+    from nba_checkpoint_changes import candidate_fingerprint, can_reuse_candidates
+    try:
+        candidate_key = candidate_fingerprint(scored, (*prepared_key, sha256(daily_bytes).hexdigest()),
+                                              overlap, exclude, objective)
+    except ValueError:
+        candidate_key = signature
     if started and complete and len(started) < pool.game.map(matchup_key).nunique():
         with st.expander('Find a late swap'):
             locked_ids = set(scored.loc[scored.game.map(matchup_key).isin(started), 'fanduel_id'])
@@ -759,7 +765,22 @@ def render_slate(history_slot):
                             st.download_button('Download late-swap candidate', final.to_csv(index=False),
                                                'late_swap_candidate.csv', key='slate_late_swap_download')
     key = 'slate_results'
-    if st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started)):
+    active_before = st.session_state.get(key)
+    if active_before is not None:
+        same_inputs = active_before[0] == candidate_key
+        same_evidence = len(active_before) == 3 and active_before[2] == signature
+        if not same_inputs or (not same_evidence and not can_reuse_candidates(active_before[1])):
+            st.session_state.pop(key, None)
+            st.info('Candidate inputs changed or the earlier solve was incomplete. Fresh optimization is required.')
+        elif not same_evidence:
+            st.session_state[key] = (candidate_key, active_before[1], signature)
+            st.caption('Exact candidate inputs unchanged; retained the previously proven-optimal portfolio and alternative. Review current research and locks before entry.')
+    previous_portfolio = st.session_state.get('last_complete_portfolio')
+    auto_reopt = (refresh and slate == datetime.now(ET).date() and complete and not started
+                  and previous_portfolio is not None and previous_portfolio[0] == prepared_key
+                  and key not in st.session_state)
+    requested = st.button('Generate four lineups', type='primary', key='slate_optimize', disabled=bool(started))
+    if requested or auto_reopt:
         try:
             with st.spinner('Optimizing and checking legal alternatives…'):
                 budget = 180.0
@@ -785,24 +806,21 @@ def render_slate(history_slot):
                     if fresh_started or not fresh_complete:
                         raise ValueError('Lock changed during optimization. Do not enter these pre-tip candidates.')
                 if not result[0].empty:
-                    st.session_state[key] = (signature, result)
+                    st.session_state[key] = (candidate_key, result, signature)
                     if result[0].lineup.nunique() == 4:
                         # Preserve a complete portfolio independently of changing
                         # research inputs. Never relabel its old projections as current.
                         st.session_state['last_complete_portfolio'] = (
-                            prepared_key, signature, result[0].copy(deep=True))
+                            prepared_key, candidate_key, result[0].copy(deep=True))
                 else:
                     st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
             st.error(str(exc))
-    if key in st.session_state and st.session_state[key][0] != signature:
-        del st.session_state[key]
-        st.info('Research or slate inputs changed. Generate fresh candidates; the last complete portfolio is retained for reference when available.')
     st.header('4. Review results')
     prior = st.session_state.get('last_complete_portfolio')
     if prior is not None and prior[0] == prepared_key:
         active = st.session_state.get(key)
-        if (prior[1] != signature or active is None
+        if (prior[1] != candidate_key or active is None
                 or active[1][0].lineup.nunique() < 4):
             with st.expander('Last complete portfolio — reference only', expanded=True):
                 st.warning('Earlier candidate snapshot, not a verified current entry or fresh recommendation. Do not submit these unchanged without checking current statuses, projections and locks.')
