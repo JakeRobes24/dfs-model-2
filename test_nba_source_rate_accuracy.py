@@ -49,3 +49,22 @@ def test_minutes_from_newer_separate_record_not_borrowed():
     row = dict(base,replay_evidence_json=json.dumps([note]))
     details, _, _ = review_source_rates(pd.DataFrame([row]),date(2026,11,25))
     assert details.empty
+
+
+def test_fixed_minutes_counterfactual_holds_playing_time_constant():
+    from nba_source_rate_accuracy import fixed_minutes_rate_review
+    base, record = sample()
+    base.update(adjusted_fd_points=25, adjusted_minutes=25)
+    details, _, _ = review_source_rates(pd.DataFrame([base]), date(2026,11,25))
+    assert details.iloc[0].source_rate_reviewed_minutes_fd == pytest.approx(30)
+    assert details.iloc[0].daily_rate_reviewed_minutes_fd == pytest.approx(25)
+    daily, summary = fixed_minutes_rate_review(details)
+    assert daily.iloc[0].paired_players == 1
+    assert daily.iloc[0].source_rate_mae == pytest.approx(0)
+    assert daily.iloc[0].daily_rate_mae == pytest.approx(5)
+    assert summary.iloc[0].equal_day_edge_vs_reviewed == pytest.approx(5)
+    assert summary.iloc[0].days_better_than_reviewed == 1
+    _, empty = fixed_minutes_rate_review(details.assign(reviewed_fd=None))
+    assert empty.empty
+    with pytest.raises(ValueError, match='unique'):
+        fixed_minutes_rate_review(pd.concat([details,details]))
