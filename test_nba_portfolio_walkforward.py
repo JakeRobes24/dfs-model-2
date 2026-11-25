@@ -48,3 +48,16 @@ def test_stress_comparison_separate_from_original_and_uses_same_date_budget():
     assert result.loc['Simulated P90 ranked','Mean best FD difference']==10
     assert result.loc[STRESS_POLICY,'Mean best FD difference']==5
     assert result.loc[STRESS_POLICY,'Period']=='Exploratory'
+
+
+def test_core_expansion_summary_uses_own_control_and_preserves_other_pairs():
+    from nba_core_expansion import CORE_CONTROL,CORE_EXPANDED
+    frame = pd.DataFrame({'Date':['2026-11-26']*4,'Period':'Prospective',
+        'Policy':['Projection ranked','Simulated P90 ranked',CORE_CONTROL,CORE_EXPANDED],
+        'Entries':4,'Best actual FD':[300,310,315,320],
+        'Average actual FD':[280,285,283,282],'Worst actual FD':[260,250,255,253]})
+    report = summarize_portfolio_experiments(frame).set_index('Comparison')
+    assert report.loc[CORE_EXPANDED,'Mean best FD difference']==5
+    assert report.loc['Simulated P90 ranked','Mean best FD difference']==10
+    with pytest.raises(ValueError):
+        summarize_portfolio_experiments(frame.loc[frame.Policy.ne(CORE_CONTROL)])

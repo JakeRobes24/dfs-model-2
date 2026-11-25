@@ -122,7 +122,7 @@ def render_post_slate():
                 st.warning('Multi-slate evidence could not be verified. No policy was changed.')
 
     with st.expander('Multi-slate candidate selection evaluation'):
-        st.caption('Compare fixed four-entry selection policies from the same eight legal candidates on up to eight earlier dates. Training uses at most five strictly earlier available dates. Bounded solves may skip dates; every skip is shown.')
+        st.caption('Compare fixed four-entry selection policies from eight legal candidates, plus a separate expanded-core experiment on up to eight earlier dates. Training uses at most five strictly earlier available dates. Bounded solves may skip dates; every skip is shown.')
         if st.button('Evaluate tournament candidate policies', key='portfolio_walkforward'):
             from nba_archive_training import load_prior_replays
             from nba_portfolio_walkforward import walk_forward_portfolios
@@ -137,7 +137,7 @@ def render_post_slate():
                 if aggregate.empty:
                     st.info('No completed paired portfolio evaluations.')
                 else:
-                    st.caption('Differences are experimental selection minus projection in actual FanDuel points; dates receive equal weight. Dependence stress uses assumed, not calibrated, correlations and a fixed two-point mean projection guardrail. These are not contest ranks, profits or evidence of a validated edge.')
+                    st.caption('Differences are experimental selection minus projection in actual FanDuel points; dates receive equal weight. Dependence stress uses assumed, not calibrated, correlations and a fixed two-point mean projection guardrail. Expanded cores are compared with the original candidate set on identical union simulation draws; incomplete expansion does not invalidate the original comparison. These are not contest ranks, profits or evidence of a validated edge.')
                     st.dataframe(aggregate.round(2), hide_index=True)
                     st.dataframe(detail.round(2), hide_index=True)
                     st.download_button('Download tournament policy evaluation', detail.to_csv(index=False),

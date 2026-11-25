@@ -14,7 +14,7 @@ STRESS_DECLARED = date(2026,11,25)
 MAX_AVERAGE_PROJECTION_LOSS = 2.0
 
 
-def stress_portfolio(outcomes, pool, rosters, ranges, *, entries=4):
+def stress_portfolio(outcomes, pool, rosters, ranges, *, entries=4, reference_mean=None):
     """Enumerate four of eight candidates; optimize worst-scenario best-entry P90.
 
     A fixed, exploratory mean projection guardrail allows at most two FD
@@ -35,7 +35,10 @@ def stress_portfolio(outcomes, pool, rosters, ranges, *, entries=4):
     projected = pd.to_numeric(ranges.set_index('lineup').reviewed_fd.reindex(labels),errors='coerce').to_numpy()
     if not np.isfinite(projected).all():
         raise ValueError('Finite reviewed projections required.')
-    baseline = np.sort(projected)[-entries:].mean()
+    best_mean = np.sort(projected)[-entries:].mean()
+    baseline = best_mean if reference_mean is None else float(reference_mean)
+    if not np.isfinite(baseline) or baseline > best_mean + 1e-9:
+        raise ValueError('Invalid common projection reference.')
     matrices = {}
     for scenario in SCENARIOS:
         totals = correlated_draws(outcomes,pool,scenario)._lineup_totals(rosters)

@@ -6,6 +6,7 @@ import pandas as pd
 
 from nba_candidate_experiment import build_experiment, score_experiment, ENTRIES
 from nba_portfolio_stress import STRESS_POLICY, STRESS_DECLARED
+from nba_core_expansion import CORE_CONTROL, CORE_EXPANDED, build_core_expansion, score_core_expansion
 
 
 def summarize_portfolio_experiments(reports):
@@ -15,6 +16,15 @@ def summarize_portfolio_experiments(reports):
     required = {'Policy','Date','Period','Entries','Best actual FD','Average actual FD','Worst actual FD'}
     if not required <= set(reports) or reports.duplicated(['Date','Policy']).any():
         raise ValueError('Use one paired experiment per date.')
+    core = reports.loc[reports.Policy.isin([CORE_CONTROL,CORE_EXPANDED])].copy()
+    if not core.empty:
+        core['Policy'] = core.Policy.map({CORE_CONTROL:'Projection ranked',CORE_EXPANDED:'Simulated P90 ranked'})
+        paired = summarize_portfolio_experiments(core)
+        paired['Comparison'] = CORE_EXPANDED
+        original = summarize_portfolio_experiments(reports.loc[~reports.Policy.isin([CORE_CONTROL,CORE_EXPANDED])])
+        if not original.empty and 'Comparison' not in original:
+            original['Comparison'] = 'Simulated P90 ranked'
+        return pd.concat([original,paired],ignore_index=True)
     # Keep original two-policy statistics comparable, and separately test
     # the new fixed policy against the same projection portfolio.
     if STRESS_POLICY in set(reports.Policy):
@@ -62,10 +72,13 @@ def summarize_portfolio_experiments(reports):
 
 
 def walk_forward_portfolios(captures, replays, *, total_budget_seconds=45,
-                            builder=build_experiment, scorer=score_experiment):
+                            builder=build_experiment, scorer=score_experiment,
+                            core_builder=None):
     """Use earlier dates only, reporting every skipped date and a bounded solve budget."""
     if not 0 < total_budget_seconds <= 90:
         raise ValueError('Use a positive bounded evaluation budget.')
+    if core_builder is None and builder is build_experiment:
+        core_builder = build_core_expansion
     dates = [item[0] for item in captures]
     if len(dates) != len(set(dates)):
         raise ValueError('Select one verified capture per date.')
@@ -78,7 +91,8 @@ def walk_forward_portfolios(captures, replays, *, total_budget_seconds=45,
         earlier_dates = sorted(set(replay_days.dropna().loc[replay_days.lt(day)]), reverse=True)[:5]
         training = replays.loc[replay_days.isin(earlier_dates)].copy()
         row = {'Date':day.isoformat(),'Contest':contest,'Version':version[:12],
-               'Earlier training dates':len(earlier_dates),'Training played rows':0}
+               'Earlier training dates':len(earlier_dates),'Training played rows':0,
+               'Core expansion status':'Not evaluated'}
         if training.empty:
             row['Status'] = 'No earlier verified training'
         elif deadline-monotonic() <= 0:
@@ -90,6 +104,19 @@ def walk_forward_portfolios(captures, replays, *, total_budget_seconds=45,
                 report,_ = scorer(pool,rosters,selections,results,day)
                 reports.append(report.assign(Contest=contest,Version=version[:12]))
                 row.update({'Training played rows':count,'Status':'Paired evaluation complete'})
+                remaining = deadline-monotonic()
+                if core_builder is not None:
+                    if remaining <= 0:
+                        row['Core expansion status'] = 'Evaluation solve budget exhausted'
+                    else:
+                        try:
+                            union,chosen,metrics = core_builder(pool,training,day,rosters,
+                                time_budget_seconds=min(10,remaining))
+                            core_report = score_core_expansion(pool,union,chosen,results,day)
+                            reports.append(core_report.assign(Contest=contest,Version=version[:12],**metrics))
+                            row['Core expansion status'] = 'Paired evaluation complete'
+                        except (ValueError,TypeError,KeyError,OSError) as exc:
+                            row['Core expansion status'] = str(exc)
             except (ValueError,TypeError,KeyError,OSError) as exc:
                 row['Status'] = str(exc)
         coverage.append(row)
