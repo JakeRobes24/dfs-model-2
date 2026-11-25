@@ -121,8 +121,8 @@ def manual_inputs(as_of):
         minutes = st.file_uploader('Independent minutes CSV', type='csv', key='slate_manual_minutes')
         history = st.file_uploader('Historical minutes CSV', type='csv', key='slate_manual_history')
         prelock = st.file_uploader('Reviewed pre-lock CSV', type='csv', key='slate_manual_prelock')
-        reviewed_points = st.file_uploader('Verified LineupExperts points CSV', type='csv', key='slate_reviewed_points')
-        st.caption('Optional LineupExperts data requires fanduel_id, points, and observed_at with a timezone. Use a verified source update time.')
+        reviewed_points = st.file_uploader('Verified LineupExperts points and optional paired minutes CSV', type='csv', key='slate_reviewed_points')
+        st.caption('Optional LineupExperts data requires fanduel_id, points, and observed_at with a timezone. Use a verified source update time. Optional paired_minutes must be from the same published projection, not another minutes site.')
         ceiling = st.file_uploader('Researched GPP ceilings CSV', type='csv', key='slate_manual_ceiling')
         st.caption('For GPP upside, supply fanduel_id and ceiling_fd_points for each optimizable player.')
         st.caption('Minutes: player, source, minutes, observed_at, independent_group (optional). History: player, season_mpg, last5_mpg, last10_mpg.')
@@ -346,8 +346,15 @@ def render_slate(history_slot):
         st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
         st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
 
-    from nba_research_triage import attach_rate_context, disagreement_queue, team_opportunity_review
+    from nba_research_triage import attach_rate_context, disagreement_queue, team_opportunity_review, paired_source_coverage
     queue = disagreement_queue(scored)
+    paired_players, paired_providers = paired_source_coverage(scored, now)
+    with st.expander('Independent production-rate source coverage'):
+        two_pairs = int(paired_players['Paired providers'].ge(2).sum())
+        st.caption(f'{two_pairs}/{len(paired_players)} eligible players have two or more fresh same-provider points/minutes pairs. This is an upper bound; injury timing and rate agreement still require review.')
+        st.dataframe(paired_providers, hide_index=True)
+        if two_pairs < len(paired_players):
+            st.dataframe(paired_players.loc[paired_players['Paired providers'].lt(2)].merge(scored[['fanduel_id','fanduel_name','team']], on='fanduel_id', validate='one_to_one').drop(columns='fanduel_id'), hide_index=True)
     from nba_matchup_context import matchup_context
     from nba_shadow_research import freeze_research_features
     with st.expander('Historical research window'):
