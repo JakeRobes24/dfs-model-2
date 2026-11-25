@@ -253,6 +253,7 @@ def paired_source_coverage(scored, as_of):
     cutoff = pd.Timestamp(as_of)
     if pd.isna(cutoff) or cutoff.tzinfo is None:
         raise ValueError('Coverage requires a timezone-aware as-of timestamp.')
+    from slate_research import POINT_SOURCE_GROUPS
     providers = {}
     players = []
     for row in scored.loc[scored.eligible.astype(str).str.lower().eq('true')].itertuples():
@@ -266,7 +267,8 @@ def paired_source_coverage(scored, as_of):
                     family = note['family']
                     stamp = pd.Timestamp(note['observed_at'])
                     points = float(note['points'])
-                    if (not isinstance(family,str) or not family.strip() or pd.isna(stamp)
+                    if (not isinstance(family,str) or not family.strip()
+                            or POINT_SOURCE_GROUPS.get(note.get('source')) != family or pd.isna(stamp)
                             or stamp.tzinfo is None or not cutoff-pd.Timedelta(hours=6) <= stamp <= cutoff
                             or not math.isfinite(points) or not 0 < points <= 150):
                         continue
