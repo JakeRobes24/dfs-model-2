@@ -183,12 +183,21 @@ def paired_rate_shadow(frame):
     for row in frame.itertuples():
         result = [row.fanduel_id, None, 0, 'Unsupported or excluded']
         key = (row.team,row.game)
-        if (key in invalid_teams or not all(isinstance(x,str) and x.strip() for x in key)
-                or str(row.eligible).lower() != 'true'
-                or str(row.injury_flag).upper() in {'O','OUT','Q','D','GTD'}
-                or str(row.prelock_status).lower() in {'out','inactive','suspended','questionable','doubtful'}
-                or row.minutes_method != 'prelock_independent_consensus'
-                or row.blend_status != 'Minutes/status adjustment takes priority'):
+        # Separate policy exclusions from a shortage of paired data. These
+        # labels are diagnostic only; the acceptance rules are unchanged.
+        if str(row.eligible).lower() != 'true':
+            result[3] = 'Contest ineligible'
+        elif key in invalid_teams or not all(isinstance(x,str) and x.strip() for x in key):
+            result[3] = 'Invalid team evidence'
+        elif (str(row.injury_flag).upper() in {'O','OUT','Q','D','GTD'}
+              or str(row.prelock_status).lower() in {'out','inactive','suspended','questionable','doubtful'}):
+            result[3] = 'Uncertain availability'
+        elif (row.minutes_method != 'prelock_independent_consensus'
+              or row.blend_status != 'Minutes/status adjustment takes priority'):
+            result[3] = 'Reviewed minutes policy not met'
+        else:
+            result[3] = None
+        if result[3] is not None:
             output.append(result)
             continue
         try:
@@ -251,6 +260,17 @@ def compare_frozen_paired_rate(frame):
     summary['Eligible with two fresh paired sources'] = int(reviewed.rate_source_count.ge(2).sum())
     summary['Eligible supported rate forecasts'] = int(reviewed.shadow_rate_fd.notna().sum())
     summary['Eligible rate provenance rejected'] = int(reviewed.rate_review_status.eq('Invalid or conflicting provider provenance').sum())
+    # Counts partition the eligible pool; only policy-qualified rows reach
+    # provider validation. Zero paired sources is not proof of missing data
+    # when the player was excluded by an earlier policy gate.
+    for label, reason in [
+        ('Eligible rate invalid team evidence', 'Invalid team evidence'),
+        ('Eligible rate uncertain availability', 'Uncertain availability'),
+        ('Eligible rate minutes policy not met', 'Reviewed minutes policy not met'),
+        ('Eligible rate insufficient paired sources', 'Fewer than two fresh post-confirmation paired sources'),
+        ('Eligible rate disagreement', 'Independent production rates disagree'),
+    ]:
+        summary[label] = int(reviewed.rate_review_status.eq(reason).sum())
     cols = ['daily_points','adjusted_fd_points','shadow_rate_fd','actual_points']
     paired[cols] = paired[cols].apply(pd.to_numeric,errors='coerce')
     paired = paired.loc[paired[cols].apply(lambda c:c.map(math.isfinite)).all(axis=1)
