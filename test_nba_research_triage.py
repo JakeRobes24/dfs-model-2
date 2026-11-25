@@ -121,3 +121,29 @@ def test_team_news_review_is_contest_scoped_and_nonmutating():
     out=team_opportunity_review(pool,pd.concat([notes,pd.DataFrame([conflict])]),'2026-11-24T23:10:00Z')
     assert not out['Confirmed events'].str.contains('Absent').any()
     assert team_opportunity_review(pool,notes.iloc[0:0],'2026-11-24T23:10:00Z').empty
+
+
+def test_paired_source_coverage_keeps_points_only_and_stale_evidence_separate():
+    import json
+    import pytest
+    from nba_research_triage import paired_source_coverage
+    now='2026-11-25T23:00:00Z'
+    def note(family,minutes,stamp='2026-11-25T22:00:00Z',points=30):
+        return dict(family=family,points=points,paired_minutes=minutes,observed_at=stamp)
+    pool=pd.DataFrame([
+        dict(fanduel_id='1-1',eligible=True,projection_sources_json=json.dumps([
+            note('a',30),note('b',None),note('c',25,'2026-11-25T15:00:00Z')])),
+        dict(fanduel_id='1-2',eligible=True,projection_sources_json=json.dumps([
+            note('a',30),note('b',25),note('c',20,'2026-11-25T23:01:00Z')])),
+        dict(fanduel_id='1-3',eligible=True,projection_sources_json=json.dumps([
+            note('a',30),note('a',35),note('b',0)])),
+        dict(fanduel_id='1-4',eligible=False,projection_sources_json=json.dumps([note('c',30)]))])
+    original=pool.copy(deep=True)
+    players,providers=paired_source_coverage(pool,now)
+    assert players['Paired providers'].tolist()==[1,2,0]
+    summary=providers.set_index('Provider')
+    assert summary['Fresh point players'].to_dict()=={'a':2,'b':3}
+    assert summary['Fresh paired players'].to_dict()=={'a':2,'b':1}
+    pd.testing.assert_frame_equal(pool,original)
+    with pytest.raises(ValueError):
+        paired_source_coverage(pool,'2026-11-25 23:00')
