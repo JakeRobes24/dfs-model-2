@@ -321,6 +321,46 @@ def dff_projections(slate, as_of):
 PROPSIMS = 'https://propsims.com/nba/dfs/'
 
 
+
+def propsims_distribution(row, median):
+    """Read labeled FanDuel quantiles, not DraftKings or conditional medians."""
+    table = row.find_parent('table')
+    if table is None:
+        return {}
+    headers = [item.get_text(' ', strip=True).casefold() for item in table.select('thead th')]
+    cells = row.find_all('td', recursive=False)
+    if ('fd median' not in headers or len(headers) != len(cells)
+            or len(set(headers)) != len(headers)):
+        return {}
+    fields = dict(zip(headers, cells))
+    def number(label, percent=False):
+        item = fields.get(label)
+        if item is None:
+            return None
+        text = item.get_text(strip=True)
+        if percent:
+            if not text.endswith('%'):
+                return None
+            text = text[:-1]
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+        limit = 100 if percent else 150
+        return value if 0 <= value <= limit else None
+
+    floor, ceiling = number('floor'), number('ceiling')
+    probability, conditional = number('p(play)', True), number('if plays')
+    result = {}
+    if floor is not None and ceiling is not None and floor <= median <= ceiling:
+        result.update(fd_p10=floor, fd_p85=ceiling)
+    if probability is not None:
+        result['play_probability'] = probability / 100
+    if conditional is not None:
+        result['conditional_fd_median'] = conditional
+    return result
+
+
 def propsims_research(slate, as_of):
     soup = BeautifulSoup(fetch(PROPSIMS), 'html.parser')
     heading = soup.select_one('h1')
@@ -356,7 +396,8 @@ def propsims_research(slate, as_of):
             continue
         common = dict(player=name.get_text(strip=True), team=team, game=f'{team}@{opponent}',
                       source=PROPSIMS, observed_at=stamp.isoformat())
-        projections.append(dict(common, points=points, paired_minutes=minutes))
+        projections.append(dict(common, points=points, paired_minutes=minutes,
+                                **propsims_distribution(row, points)))
         notes.append(dict(common, independent_group='propsims', official=False, status='',
                           starter='', role='', minutes=minutes))
     if not projections:
@@ -860,7 +901,7 @@ def points_consensus(projections, evidence, as_of):
     """Weight verified point estimates by recency and count each source family once."""
     frame = pd.DataFrame(projections)
     if frame.empty:
-        return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json'])
+        return pd.DataFrame(columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json', 'propsims_distribution_json'])
     frame['family'] = frame.source.map(POINT_SOURCE_GROUPS)
     dated = frame.observed_at.astype('string').fillna('').str.strip()
     has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
@@ -891,14 +932,29 @@ def points_consensus(projections, evidence, as_of):
     frame['weight'] = 2 ** (-relative_age / 3)
     rows = {}
     for player, group in frame.groupby('fanduel_id'):
-        rows[player] = dict(points=(group.points * group.weight).sum() / group.weight.sum(),
+        distribution = []
+        for item in group.loc[group.source.eq(PROPSIMS)].to_dict('records'):
+            optional = {}
+            for field, upper in (('fd_p10', 150), ('fd_p85', 150), ('play_probability', 1),
+                                 ('conditional_fd_median', 150)):
+                value = pd.to_numeric(item.get(field), errors='coerce')
+                if pd.notna(value) and 0 <= value <= upper:
+                    optional[field] = float(value)
+            if not (optional.get('fd_p10', float('inf')) <= item['points']
+                    <= optional.get('fd_p85', -1)):
+                optional.pop('fd_p10', None)
+                optional.pop('fd_p85', None)
+            if optional:
+                distribution.append(dict(source=PROPSIMS, observed_at=item['time'].isoformat(),
+                                         fd_median=float(item['points']), **optional))
+        rows[player] = dict(propsims_distribution_json=json.dumps(distribution), points=(group.points * group.weight).sum() / group.weight.sum(),
                             observed_at=group.time.max().isoformat(), source=', '.join(group.source),
                             source_count=len(group), spread=group.points.max() - group.points.min(),
                             detail=' · '.join(f'{row.family} {row.points:.2f}' for row in group.itertuples()),
                             inputs_json=group[['source', 'family', 'points', 'time', 'weight', 'paired_minutes']]
                                 .rename(columns={'time': 'observed_at'})
                                 .to_json(orient='records', date_format='iso', double_precision=15))
-    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json'])
+    return pd.DataFrame.from_dict(rows, orient='index', columns=['points', 'observed_at', 'source', 'source_count', 'spread', 'detail', 'inputs_json', 'propsims_distribution_json'])
 
 
 def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=None, manual_history=None):
@@ -921,10 +977,12 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
         'independent_projection_source': 'source', 'projection_source_spread': 'spread',
         'projection_source_count': 'source_count', 'projection_source_estimates': 'detail',
         'projection_sources_json': 'inputs_json',
+        'propsims_distribution_json': 'propsims_distribution_json',
     }.items():
         result[target] = result.fanduel_id.map(independent[field])
     result['projection_source_count'] = result.projection_source_count.fillna(0).astype(int)
     result['projection_sources_json'] = result.projection_sources_json.fillna('[]')
+    result['propsims_distribution_json'] = result.propsims_distribution_json.fillna('[]')
     result['fd_disagreement'] = result.independent_fd_points - result.projected_fd_points
     baseline, historical = result.projected_minutes, pd.to_numeric(result.recent_mpg, errors='coerce')
     minute_gap = historical - baseline
