@@ -63,12 +63,14 @@ def public_research(slate, checked_at):
 
 @st.cache_data(ttl=1800, max_entries=16, show_spinner=False)
 def public_rotations(slate, games):
-    return recent_boxscores(slate, set(games))
+    from nba_final_box_cache import FINAL_BOX_CACHE
+    return recent_boxscores(slate, set(games), box_cache=FINAL_BOX_CACHE)
 
 
 @st.cache_data(ttl=1800, max_entries=8, show_spinner=False)
 def extended_rotations(slate, games):
-    return recent_boxscores(slate, set(games), game_limit=10, days_back=24)
+    from nba_final_box_cache import FINAL_BOX_CACHE
+    return recent_boxscores(slate, set(games), game_limit=10, days_back=24, box_cache=FINAL_BOX_CACHE)
 
 
 @st.cache_data(ttl=300, max_entries=4, show_spinner=False)
