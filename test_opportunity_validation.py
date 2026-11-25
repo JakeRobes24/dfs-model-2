@@ -50,3 +50,20 @@ def test_minutes_bands_use_the_frozen_forecast_and_keep_identical_pairs():
     assert paired.n_fd_points.tolist() == [1, 1, 1]
     assert paired.daily_fd_mae.tolist() == [13, 8, 4]
     assert paired.scenario_fd_mae.tolist() == [11, 9, 2]
+
+
+def test_isolated_role_matched_replay_does_not_sum_multiple_absence_signals():
+    outcomes = pd.DataFrame(dict(fanduel_id=['a','b','c'], daily_minutes=[20]*3,
+        daily_points=[20]*3, actual_minutes=[25]*3, actual_points=[25]*3))
+    rotations = pd.DataFrame(dict(fanduel_id=['a','b','c'], **{
+        'Last 5 minutes':[20]*3, 'Last 10 minutes':[20]*3}))
+    splits = pd.DataFrame({'fanduel_id':['a','b','b','c'],
+        'Games with teammate':[3]*4,'Games without teammate':[3]*4,
+        'Minutes gap (shrunk)':[5]*4,
+        'Isolated role-matched games per side':[3,3,3,2],
+        'Isolated role-matched minutes gap (shrunk)':[4,4,4,4]})
+    row = compare_opportunity(outcomes, rotations, splits).set_index('scenario').loc[
+        'DAILY plus one isolated role-matched absence gap']
+    assert row.n == 1 and row.n_fd_points == 1
+    assert row.daily_minutes_mae == 5 and row.scenario_minutes_mae == 1
+    assert row.daily_fd_mae == 5 and row.scenario_fd_mae == 1

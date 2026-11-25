@@ -1,6 +1,7 @@
 """Describe observed rotations and teammate absence splits without changing projections."""
 from collections import Counter, defaultdict
 from statistics import mean
+from math import isfinite
 
 import pandas as pd
 
@@ -15,8 +16,10 @@ OPPORTUNITY_WEIGHTS = {'fieldGoalsAttempted': 1, 'freeThrowsAttempted': .44, 'tu
 
 
 def complete_stat_rows(rows, weights):
-    return [row for row in rows if all(type(row.get(stat)) in (int, float)
-                                       and 0 <= row[stat] <= 150 for stat in weights)]
+    return [row for row in rows if type(row.get('minutes')) in (int, float)
+            and isfinite(row['minutes']) and 0 < row['minutes'] <= 60
+            and all(type(row.get(stat)) in (int, float)
+                    and 0 <= row[stat] <= 150 for stat in weights)]
 
 
 def rate_comparison(present, absent, weights):
@@ -41,6 +44,55 @@ def stat_rate(rows, weights):
         row['minutes'] for row in available)
 
 
+def role_matched_absence(present, absent):
+    """Descriptive within-role comparisons, never an additive teammate boost.
+
+    Unknown roles cannot establish a same-role comparison. Use overlap
+    weights (smaller sample in each stratum) rather than comparing unlike
+    role mixtures. Report sample sufficiency separately for minutes and rate.
+    """
+    groups = []
+    for role in (True, False):
+        left = [row for row in present if row.get('started') is role]
+        right = [row for row in absent if row.get('started') is role]
+        if not left or not right:
+            continue
+        n = min(len(left), len(right))
+        minute_gap = mean(r['minutes'] for r in right) - mean(r['minutes'] for r in left)
+        fd = rate_comparison(left, right, FD_WEIGHTS)
+        opp = rate_comparison(left, right, OPPORTUNITY_WEIGHTS)
+        groups.append((n, minute_gap, fd, opp))
+    n = sum(g[0] for g in groups)
+    def weighted_rate(index):
+        usable = [(min(g[index]['with_games'], g[index]['without_games']), g[index]['gap'])
+                  for g in groups if g[index]['gap'] is not None]
+        count = sum(k for k, _ in usable)
+        gap = sum(k * v for k, v in usable) / count if count else None
+        return count, gap
+    fd_n, fd_gap = weighted_rate(2)
+    opp_n, opp_gap = weighted_rate(3)
+    gap = sum(g[0] * g[1] for g in groups) / n if n else None
+    return {
+        'Role-matched strata': len(groups),
+        'Role-matched games per side': n,
+        'Role-matched minutes gap': gap,
+        'Role-matched minutes gap (shrunk)': gap * n / (n + 5) if n else None,
+        'Role-matched FD games per side': fd_n,
+        'Role-matched FD/min gap': fd_gap,
+        'Role-matched opportunity games per side': opp_n,
+        'Role-matched opportunities/min gap': opp_gap,
+        'Role-matched evidence': ('Observed comparison' if n >= 3 else
+                                  'Small sample' if n else 'No overlapping known roles'),
+    }
+
+
+def teammate_participation(row, teammate):
+    """Require explicit and mutually exclusive historical participation."""
+    played = teammate in row.get('teammates_played', ())
+    absent = teammate in row.get('teammates_absent', ())
+    return 'played' if played and not absent else 'absent' if absent and not played else 'unknown'
+
+
 def opportunity_evidence(pool, rotations, slate):
     logs_by_player = defaultdict(list)
     for row in rotations:
@@ -51,7 +103,7 @@ def opportunity_evidence(pool, rotations, slate):
     pool_counts = Counter(pool_keys)
     unavailable = defaultdict(list)
     for player, key in zip(pool.itertuples(), pool_keys):
-        if player.prelock_status == 'out' and pool_counts[key] == 1:
+        if player.prelock_status in ('out', 'inactive', 'suspended') and pool_counts[key] == 1:
             unavailable[player.team].append((key[1], player.fanduel_name))
 
     summaries, splits = [], []
@@ -102,10 +154,17 @@ def opportunity_evidence(pool, rotations, slate):
             'Box-score sources': ' · '.join(sorted({row['source'] for row in logs})),
         })
         for teammate, display in unavailable[player.team]:
-            with_player = [row for row in logs if teammate in row.get('teammates_played', ())
-                           and teammate not in row.get('teammates_absent', ())]
-            without_player = [row for row in logs if teammate in row.get('teammates_absent', ())
-                              and teammate not in row.get('teammates_played', ())]
+            with_player = [row for row in logs if teammate_participation(row, teammate) == 'played']
+            without_player = [row for row in logs if teammate_participation(row, teammate) == 'absent']
+            # Multiple simultaneously absent teammates can confound a single
+            # absence split. Isolate games where every other current scratch
+            # was explicitly observed playing, and report separately.
+            other = [key for key, _ in unavailable[player.team] if key != teammate]
+            clean_with = [row for row in with_player
+                          if all(teammate_participation(row, key) == 'played' for key in other)]
+            clean_without = [row for row in without_player
+                             if all(teammate_participation(row, key) == 'played' for key in other)]
+            isolated = role_matched_absence(clean_with, clean_without)
             if not without_player:
                 continue
             absent_mean = mean(row['minutes'] for row in without_player)
@@ -138,6 +197,13 @@ def opportunity_evidence(pool, rotations, slate):
                 'Complete opportunity minutes without': opportunity['without_minutes'],
                 'Opportunity rate evidence': 'Observed comparison' if opportunity['sufficient'] else 'Small or incomplete sample',
                 'Evidence': 'Small sample' if smaller < 3 else 'Observed comparison',
+                **role_matched_absence(with_player, without_player),
+                'Other currently out teammates': len(other),
+                'Isolated games with teammate': len(clean_with),
+                'Isolated games without teammate': len(clean_without),
+                'Isolated role-matched games per side': isolated['Role-matched games per side'],
+                'Isolated role-matched minutes gap (shrunk)': isolated['Role-matched minutes gap (shrunk)'],
+                'Isolated role-matched FD/min gap': isolated['Role-matched FD/min gap'],
                 'Box-score sources': ' · '.join(sorted({row['source'] for row in with_player + without_player})),
             })
     return pd.DataFrame(summaries), pd.DataFrame(splits)

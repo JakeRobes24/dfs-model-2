@@ -30,6 +30,15 @@ def compare_opportunity(outcomes, rotations, absence_splits):
         unambiguous = filtered.loc[~filtered.fanduel_id.duplicated(keep=False)]
         split = played.merge(unambiguous, on='fanduel_id', validate='one_to_one')
         candidates['DAILY plus one shrunk absence gap'] = (split, split.daily_minutes + split['Minutes gap (shrunk)'])
+        # Separate role-matched, isolated absence hypothesis. Never sum
+        # marginal teammate effects or select a scenario from actual outcomes.
+        fields = {'Isolated role-matched games per side', 'Isolated role-matched minutes gap (shrunk)'}
+        if fields <= set(absence_splits):
+            isolated = absence_splits.loc[absence_splits['Isolated role-matched games per side'].ge(3)]
+            isolated = isolated.loc[~isolated.fanduel_id.duplicated(keep=False)]
+            matched = played.merge(isolated, on='fanduel_id', validate='one_to_one')
+            candidates['DAILY plus one isolated role-matched absence gap'] = (
+                matched, matched.daily_minutes + matched['Isolated role-matched minutes gap (shrunk)'])
 
     results = []
     for label, (frame, candidate) in candidates.items():

@@ -111,3 +111,10 @@ Reorder the existing rolling work queue (retain all approved requirements; no re
 6. Continue the approved NFL integration, shared architecture, MLB preseason milestones, year-round calibration, performance/risk monitoring and eventual automation. Protect active-sport deadlines and MLB readiness; do not require perfect NBA modeling first.
 
 The above is an execution priority order, not a claim that components have been implemented or a new scoring policy. Reassess after each slate. Do not promote any experiment until matched chronological validation and regression tests support it; production deployment remains approval-gated.
+
+
+## November 25: paired acquisition and role-aware opportunity evidence
+
+Verified checkpoint d5ed22e2: full regression run 45593998329, 348 passed, one deselected, 134 warnings; all four workflows succeeded. RotoGrinders six-row public limitation measured, with four exact paired overlaps with PropSims. No need to repeatedly probe the same restricted board. Three7 DFS's indexed NBA page retrieved in this pass was still dated Nov 21 with post-lock update; retain candidate status, no fresh integration (https://three7dfs.com/nba/).
+
+This batch extends the existing historical opportunity review instead of introducing an automatic injury boost: separate within-starter/bench absence comparisons from raw role-mixed splits; isolate historical games where other currently unavailable teammates were explicitly playing; count inactive/suspended alongside out; reject invalid minutes in rate denominators. Add an offline replay hypothesis for a single isolated role-matched absence with at least three overlapping games per side, rejecting multiple candidate effects rather than summing them. Role strata are descriptive, not causal; the isolation controls only the listed current scratches and cannot remove all historical confounding. No live projection or optimizer weight changes. Tests committed with implementation; verification pending.
