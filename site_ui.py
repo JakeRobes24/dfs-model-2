@@ -918,6 +918,14 @@ def render_slate(history_slot):
                             if not rate_summary.empty:
                                 st.caption('Same-provider FD points per minute accuracy; minimum ten projected and actual minutes. Matched samples, equal weight per date, descriptive only.')
                                 st.dataframe(rate_summary.round(3), hide_index=True)
+                                from nba_source_rate_accuracy import fixed_minutes_rate_review
+                                fixed_days, fixed_summary = fixed_minutes_rate_review(rate_details)
+                                if not fixed_summary.empty:
+                                    st.caption('Offline sensitivity: substitute provider or DAILY rates while holding reviewed minutes constant. Matched players only; not a live scoring rule.')
+                                    st.dataframe(fixed_summary.round(3), hide_index=True)
+                                    st.download_button('Download fixed-minutes rate comparison', fixed_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-fixed-minutes-rate.csv', mime='text/csv',
+                                                       key='slate_prior_fixed_rate_accuracy')
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')
