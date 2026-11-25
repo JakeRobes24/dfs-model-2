@@ -145,3 +145,42 @@ def test_reference_review_prioritizes_missing_and_preserves_provenance():
     assert 'Minutes discrepancy' in queue.iloc[1].Review
     pd.testing.assert_frame_equal(pool, before)
     assert reference_review_queue(pool, {}, now).empty
+
+
+def test_nba_house_uses_explicit_slate_date_and_rejects_historical_as_fresh():
+    from datetime import date, datetime, timedelta
+    from unittest.mock import patch
+    import pytest
+    from slate_research import ET, NBA_HOUSE, nba_house_minutes
+    slate = date(2026, 11, 25)
+    now = datetime(2026, 11, 25, 2, tzinfo=ET)
+    html = b"""<main class="minutes-page"><h1>Wednesday 25 November 2026</h1>
+    <article class="mins-card" id="bos-at-nyk"><header>
+    <time datetime="2026-11-25T19:00:00-05:00"></time></header>
+    <div class="mins-team" data-mins-side="away"><table class="mins-table"><tbody>
+    <tr><td class="nm-t">Alpha Player</td><td class="mproj"><b>31</b></td></tr>
+    </tbody></table></div></article></main>"""
+    with patch('slate_research.fetch', return_value=html) as fetch:
+        (notes, projections), status = nba_house_minutes(slate, now)
+        fetch.assert_called_once_with(f'{NBA_HOUSE}/2026-11-25')
+        assert notes[0]['minutes'] == 31 and notes[0]['source'] == NBA_HOUSE
+        assert not projections and '1 pre-tip' in status
+        with pytest.raises(ValueError, match='Historical'):
+            nba_house_minutes(slate - timedelta(days=1), now)
+        assert fetch.call_count == 1
+
+
+def test_lineupexperts_relative_day_must_match_explicit_date():
+    from datetime import date
+    from unittest.mock import patch
+    import pytest
+    from slate_research import lineupexperts_reference
+    slate = date(2026, 11, 25)
+    html = b"""<html><head><title>Utility Players for today</title></head><body>
+    <a>Today (11/24)</a></body></html>"""
+    with patch('slate_research.fetch', return_value=html):
+        with pytest.raises(ValueError, match='filter date'):
+            lineupexperts_reference(slate, slate)
+    with patch('slate_research.fetch', return_value=html.replace(b'11/24', b'11/25')):
+        with pytest.raises(ValueError, match='reference table unavailable'):
+            lineupexperts_reference(slate, slate)
