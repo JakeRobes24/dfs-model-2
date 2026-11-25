@@ -707,13 +707,13 @@ def reference_review_queue(scored, boards, as_of):
     if not scored.fanduel_id.is_unique:
         raise ValueError('Reference review requires unique contest IDs')
     rows = []
-    for name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors'):
+    for name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats'):
         if name not in boards:
             continue
         records, stamp = boards[name][:2]
         published = None if stamp is None else pd.Timestamp(stamp)
         if published is None:
-            if name != 'LineupExperts':
+            if name not in ('LineupExperts', 'MatchWiz'):
                 continue
         elif (pd.isna(published) or published.tzinfo is None
               or not cutoff - pd.Timedelta(hours=6) <= published <= cutoff):
@@ -725,13 +725,30 @@ def reference_review_queue(scored, boards, as_of):
             compared = scored.loc[scored.eligible].merge(
                 matched.drop_duplicates('fanduel_id', keep=False)[['fanduel_id', 'reference_fd']],
                 on='fanduel_id', validate='one_to_one').rename(columns={'reference_fd':'reference_points'})
+        elif name in ('MatchWiz', 'KeelStats'):
+            if name == 'MatchWiz':
+                # Retrieval timestamps are not publication timestamps.
+                def recent(record):
+                    try:
+                        stamp = pd.Timestamp(record.get('retrieved_at'))
+                        return (pd.notna(stamp) and stamp.tzinfo is not None
+                                and cutoff - pd.Timedelta(hours=6) <= stamp <= cutoff
+                                and record.get('slate_date') == cutoff.tz_convert(ET).date().isoformat())
+                    except (ValueError, TypeError):
+                        return False
+                records = [record for record in records if recent(record)]
+            compared = compare_keelstats(scored, records)
+            if compared.empty:
+                continue
+            compared = compared.merge(scored[['fanduel_id','salary','projected_fd_points','adjusted_fd_points']],
+                                      on='fanduel_id', validate='one_to_one')
         else:
             compared = compare_reference(scored, records)
         for row in compared.itertuples():
             def numeric(value, upper):
                 value = pd.to_numeric(value, errors='coerce')
                 return float(value) if pd.notna(value) and 0 <= value <= upper else None
-            points = numeric(row.reference_points, 150)
+            points = numeric(getattr(row, 'reference_points', None), 150)
             minutes = numeric(getattr(row, 'reference_minutes', None), 48)
             daily = numeric(row.projected_fd_points, 150)
             model = numeric(row.adjusted_fd_points, 150)
@@ -745,6 +762,8 @@ def reference_review_queue(scored, boards, as_of):
                 reasons.append('Missing usable model points')
             if gap is not None and abs(gap) >= 5:
                 reasons.append('Points discrepancy')
+            if minutes is not None and minutes > 0 and model_minutes is None:
+                reasons.append('Missing model minutes')
             if minute_gap is not None and abs(minute_gap) >= 4:
                 reasons.append('Minutes discrepancy')
             if not reasons:
@@ -828,13 +847,16 @@ def compare_keelstats(scored, records):
 
 def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
+    from matchwiz_reference import matchwiz_reference
     if slate != as_of.astimezone(ET).date():
         return {}, {name: 'Historical slate: current reference not checked' for name in
-                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors')}
+                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats')}
     jobs = (
         ('LineupExperts', lambda: (lineupexperts_reference(slate, slate), None)),
         ('FantasySportsEdge', lambda: fantasysportsedge_reference(slate, as_of)),
         ('Fantasy Team Advisors', lambda: fta_nba_reference(slate, as_of, contest_games)),
+        ('MatchWiz', lambda: (matchwiz_reference(slate, as_of), None)),
+        ('KeelStats', lambda: keelstats_reference(slate, as_of)),
     )
     boards, status = {}, {}
     with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
