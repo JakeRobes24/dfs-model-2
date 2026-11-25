@@ -61,3 +61,54 @@ jobs:
               except Exception as exc:
                   print('Source not verified by live probe:', type(exc).__name__, str(exc)[:200])
           PY
+
+      - name: Measure sequential versus concurrent public research
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from time import monotonic
+          from nba_research_acquisition import acquire_research
+          from slate_research import ET, games_for_date, get_public_research, recent_boxscores, get_reference_research
+          from slate_import import team_code
+
+          now = datetime.now(ET)
+          slate = now.date()
+          try:
+              games = tuple(sorted({
+                  f"{team_code(entry['awayTeam']['teamTricode'])}@{team_code(entry['homeTeam']['teamTricode'])}"
+                  for entry in games_for_date(slate)
+              }))
+          except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+              print('BENCHMARK UNAVAILABLE: current official schedule:', type(exc).__name__, str(exc)[:200])
+              raise SystemExit(0)
+          if not games:
+              print('BENCHMARK UNAVAILABLE: no official games today')
+              raise SystemExit(0)
+          print('BENCHMARK scope', slate.isoformat(), len(games), 'official games; common cutoff', now.isoformat())
+
+          def live():
+              return get_public_research(slate, now)
+          def rotations():
+              return recent_boxscores(slate, set(games))
+          def refs():
+              return get_reference_research(slate, now, games)
+          def summary(public, recent, reference):
+              return dict(notes=len(public[0]), projections=len(public[1]),
+                          source_status=public[2], rotation_rows=len(recent[0]),
+                          rotation_status=recent[1], reference_status=reference[1],
+                          reference_rows={name:len(value[0]) for name,value in reference[0].items()})
+
+          tasks = {}
+          start = monotonic()
+          values = []
+          for name, loader in [('live',live),('rotations',rotations),('references',refs)]:
+              tick = monotonic()
+              values.append(loader())
+              tasks[name] = round(monotonic()-tick,3)
+          sequential = round(monotonic()-start,3)
+          print('BENCHMARK sequential',json.dumps(dict(seconds=sequential,tasks=tasks,coverage=summary(*values))))
+          public, recent, reference, timing = acquire_research(live,rotations,refs)
+          print('BENCHMARK concurrent',json.dumps(dict(timing=timing,coverage=summary(public,recent,reference))))
+          print('BENCHMARK equal coverage/status:', summary(*values) == summary(public,recent,reference))
+          PY
