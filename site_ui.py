@@ -342,6 +342,13 @@ def render_slate(history_slot):
         st.warning('No verified 60/40 blends applied. Scores use DAILY and applicable reviewed minutes/status adjustments; independent scoring coverage is incomplete.')
     if slate < now.date():
         st.info('Historical slate: this session does not reconstruct the original pre-lock research. Use frozen archived projections for a true historical replay.')
+    with st.expander('Exact contest coverage by research provider'):
+        from slate_research import public_coverage
+        coverage_table = public_coverage(pool, notes, projections)
+        st.caption('Returned rows can include other contests or unmatched names. Matched eligible players are unique contest IDs, before freshness, disagreement and scoring checks. Zero coverage is not evidence that a player is unavailable.')
+        st.dataframe(coverage_table, hide_index=True)
+        st.download_button('Download source coverage', coverage_table.to_csv(index=False),
+                           file_name=f'{slate}-{contest_id}-source-coverage.csv', mime='text/csv')
     with st.expander('Scoring coverage and blend exclusions'):
         st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
         st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
