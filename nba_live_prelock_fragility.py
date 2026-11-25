@@ -1,0 +1,111 @@
+"""Pre-lock scenario-only ranking fragility for live Streamlit lineup candidates.
+
+Uses the existing adjusted fantasy-point and minute columns. Does not replace the optimizer.
+"""
+import math
+
+
+def rank_fragility(scored, lineups, *, minute_spread=2.0, max_players=None):
+    if max_players is not None and (not isinstance(max_players, int) or max_players < 1):
+        raise ValueError("max_players must be a positive integer or None")
+    if not isinstance(minute_spread, (int, float)) or not math.isfinite(minute_spread) or minute_spread <= 0:
+        raise ValueError("Minute spread must be positive and finite")
+    required_pool={"fanduel_id","adjusted_fd_points","adjusted_minutes"}
+    required_lineups={"lineup","fanduel_id","adjusted_fd_points"}
+    if not required_pool.issubset(scored.columns) or not required_lineups.issubset(lineups.columns):
+        raise ValueError("Missing columns for prelock fragility audit")
+    if scored.fanduel_id.isna().any() or lineups.fanduel_id.isna().any():
+        raise ValueError("Missing contest player IDs")
+    if scored.fanduel_id.duplicated().any():
+        raise ValueError("Duplicate contest player IDs")
+    if lineups.lineup.isna().any() or lineups.lineup.astype(str).str.strip().eq("").any():
+        raise ValueError("Missing lineup labels")
+    if lineups.lineup.astype(str).nunique() != lineups.lineup.nunique():
+        raise ValueError("Ambiguous lineup labels after string conversion")
+    candidates={}
+    for name, group in lineups.groupby("lineup"):
+        ids=list(group.fanduel_id)
+        if len(ids)!=9 or len(set(ids))!=9:
+            raise ValueError("Lineups require nine unique IDs")
+        candidates[str(name)]=set(ids)
+    pool=scored.set_index("fanduel_id")
+    if any(pid not in pool.index for ids in candidates.values() for pid in ids):
+        raise ValueError("Candidate player absent from scored pool")
+    base={}
+    for name, group in lineups.groupby("lineup"):
+        name=str(name)
+        total=0.0
+        for r in group.itertuples():
+            try:
+                points=float(r.adjusted_fd_points)
+                source=float(pool.loc[r.fanduel_id,"adjusted_fd_points"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Non-numeric candidate or pool projection") from exc
+            # The optimizer exports two-decimal player scores. Accept either
+            # the full-precision source value or its exact exported rounding,
+            # but calculate every baseline and scenario from the scored pool.
+            if (not math.isfinite(points) or not math.isfinite(source)
+                    or not (math.isclose(points, source, rel_tol=0, abs_tol=1e-9)
+                            or math.isclose(points, round(source, 2), rel_tol=0, abs_tol=1e-9))):
+                raise ValueError("Candidate and scored pool projection mismatch")
+            total += source
+        base[name]=total
+    # Shared players cannot flip a ranking, but malformed shared inputs still
+    # invalidate the advertised full-candidate sensitivity audit.
+    for pid in set().union(*candidates.values()):
+        try:
+            minutes=float(pool.loc[pid,"adjusted_minutes"])
+            points=float(pool.loc[pid,"adjusted_fd_points"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid minutes/projections for candidate player {pid}") from exc
+        if not math.isfinite(minutes) or not math.isfinite(points) or minutes <= 0 or points < 0:
+            raise ValueError(f"Invalid minutes/projections for candidate player {pid}")
+    if len(candidates)<2:
+        return {"fragile":False,"rows":[],"reason":"At least two candidates required"}
+    ordered=sorted(base,key=lambda name:(-base[name],name))
+    leader=ordered[0]
+    exposure=set().union(*candidates.values())
+    # Only player-specific differences can change relative rankings.
+    exposed=[pid for pid in exposure if len({pid in ids for ids in candidates.values()})>1]
+    def impact(pid):
+        try:
+            m=float(pool.loc[pid,"adjusted_minutes"])
+            p=float(pool.loc[pid,"adjusted_fd_points"])
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid minutes/projections for differential player {pid}") from exc
+        if not math.isfinite(m) or not math.isfinite(p) or m <= 0 or p < 0:
+            raise ValueError(f"Invalid minutes/projections for differential player {pid}")
+        return abs(p/m)*minute_spread
+    # Deterministic priority when a caller explicitly limits the number examined.
+    exposed.sort(key=lambda pid: (-impact(pid), str(pid)))
+    results=[]
+    checked = exposed if max_players is None else exposed[:max_players]
+    invalid=[]
+    for pid in checked:
+        minutes=float(pool.loc[pid,"adjusted_minutes"])
+        points=float(pool.loc[pid,"adjusted_fd_points"])
+        if not all(math.isfinite(x) for x in (minutes,points)) or minutes<=0 or points<0:
+            invalid.append(str(pid))
+            continue
+        low=max(0.1,minutes-minute_spread)
+        high=minutes+minute_spread
+        endpoint_winners=[]
+        for m in (low,high):
+            delta=points*(m/minutes-1)
+            totals={name:base[name]+(delta if pid in ids else 0)
+                    for name,ids in candidates.items()}
+            endpoint_winners.append(sorted(totals,key=lambda n:(-totals[n],n))[0])
+        if leader not in endpoint_winners or endpoint_winners[0]!=endpoint_winners[1]:
+            results.append({"fanduel_id":pid,
+                            "player":str(pool.loc[pid,"fanduel_name"]) if "fanduel_name" in pool else str(pid),
+                            "baseline_minutes":round(minutes,2),
+                            "low_minutes":round(low,2),"high_minutes":round(high,2),
+                            "low_winner":endpoint_winners[0],"high_winner":endpoint_winners[1],
+                            "baseline_leader":leader})
+    if invalid:
+        raise ValueError(f"Invalid minutes/projections for {len(invalid)} differential players; sensitivity is not complete")
+    return {"fragile":bool(results),"rows":results,
+            "baseline_leader":leader,"tested_differential_players":len(checked),
+            "differential_players_total":len(exposed),
+            "coverage_complete":len(checked)==len(exposed),
+            "reason":"Linear one-player ±minutes sensitivity, not a new optimization or certified ceiling"}

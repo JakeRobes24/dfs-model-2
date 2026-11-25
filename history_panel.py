@@ -65,6 +65,24 @@ def render_history_panel():
                     st.logout()
             elif st.button('Sign in', key='dfs_history_login'):
                 st.login()
+        owner = os.environ.get('DFS_HISTORY_OWNER_EMAIL', '').strip()
+        url = os.environ.get('DFS_HISTORY_SNAPSHOT_URL', '')
+        if owner and url and owner_can_view_history(owner, st.user):
+            if st.button('Verify live archive connection (read-only)', key='history_release_verify'):
+                from history_intake_ui import _intake_token
+                from release_archive_diagnostics import verify_archive_read
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                digest = os.environ.get('DFS_HISTORY_SNAPSHOT_SHA256', '')
+                token = os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN', '')
+                use_latest = (url, digest) in (NOV20_ORIGINAL, NOV20_BACKFILL)
+                if use_latest:
+                    url, digest = NOV20_BACKFILL
+                with st.spinner('Verifying fresh backup and existing archive packet…'):
+                    report = verify_archive_read(url, digest, token, latest=use_latest,
+                        intake_token=_intake_token(), today=datetime.now(ZoneInfo('America/New_York')).date())
+                st.dataframe(report, hide_index=True)
+                st.caption('Read-only checks do not certify write permissions or backup publication. No archive records were changed.')
         if frame is None:
             st.info(status)
             return None

@@ -1,0 +1,208 @@
+name: NBA public source access probe
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nba-public-source-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-source-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - name: Inspect current public source formats without credentials
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from bs4 import BeautifulSoup
+          from slate_research import ET, fetch, keelstats_reference
+          now = datetime.now(ET)
+          for name, url in (
+              ('MatchWiz', 'https://matchwiz.ai/nba/lineups'),
+              ('KeelStats', 'https://keelstats.com/nba/usage'),
+          ):
+              print(f'\n{name} — {now.isoformat()}')
+              try:
+                  raw = fetch(url)
+                  soup = BeautifulSoup(raw, 'html.parser')
+                  print('HTML bytes:', len(raw))
+                  print('Title:', soup.title.get_text(' ', strip=True)[:150] if soup.title else '')
+                  for tag in soup.find_all(['h1', 'h2', 'h3'], limit=8):
+                      print('Heading:', tag.name, tag.get('class', []), tag.get_text(' ', strip=True)[:120])
+                  for table in soup.find_all('table', limit=2):
+                      print('Table:', table.get('class', []), 'headers:',
+                            [t.get_text(' ', strip=True) for t in table.find_all('th', limit=12)])
+                      row = table.select_one('tbody tr')
+                      if row:
+                          print('First row structure:', str(row)[:1500])
+                  for text in soup.find_all(string=lambda x: x and ('Projected starters' in x or 'Bench Min' in x), limit=2):
+                      node = text.parent
+                      print('Role section:', str(node.parent)[:1800])
+                  if name == 'MatchWiz':
+                      from matchwiz_reference import parse_matchwiz
+                      rows = parse_matchwiz(raw, now.date(), now)
+                      print('MatchWiz parser returned:', len(rows), 'rows;',
+                            len(set(r['game'] for r in rows)), 'games;',
+                            len(set(r['provider_player_id'] for r in rows)), 'unique provider IDs')
+                      print('Roles:', sorted(set(r['reference_role'] for r in rows)))
+                      print('Partial-stat coverage:', sum(all(k in r for k in ('reference_pts','reference_reb','reference_ast')) for r in rows))
+                  for node in soup.find_all(string=lambda x: x and x.strip().startswith('Updated '), limit=2):
+                      print('Update label:', node.strip()[:160])
+                  if name == 'KeelStats':
+                      rows, stamp = keelstats_reference(now.date(), now)
+                      print('Parser returned:', len(rows), 'player records; published', stamp.isoformat())
+              except Exception as exc:
+                  print('Source not verified by live probe:', type(exc).__name__, str(exc)[:200])
+          PY
+
+      - name: Measure sequential versus concurrent public research
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from time import monotonic
+          from nba_research_acquisition import acquire_research
+          from slate_research import ET, games_for_date, get_public_research, recent_boxscores, get_reference_research
+          from slate_import import team_code
+
+          now = datetime.now(ET)
+          slate = now.date()
+          try:
+              games = tuple(sorted({
+                  f"{team_code(entry['awayTeam']['teamTricode'])}@{team_code(entry['homeTeam']['teamTricode'])}"
+                  for entry in games_for_date(slate)
+              }))
+          except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+              print('BENCHMARK UNAVAILABLE: current official schedule:', type(exc).__name__, str(exc)[:200])
+              raise SystemExit(0)
+          if not games:
+              print('BENCHMARK UNAVAILABLE: no official games today')
+              raise SystemExit(0)
+          print('BENCHMARK scope', slate.isoformat(), len(games), 'official games; common cutoff', now.isoformat())
+
+          def live():
+              return get_public_research(slate, now)
+          def rotations():
+              return recent_boxscores(slate, set(games))
+          def refs():
+              return get_reference_research(slate, now, games)
+          def summary(public, recent, reference):
+              return dict(notes=len(public[0]), projections=len(public[1]),
+                          source_status=public[2], rotation_rows=len(recent[0]),
+                          rotation_status=recent[1], reference_status=reference[1],
+                          reference_rows={name:len(value[0]) for name,value in reference[0].items()})
+
+          public, recent, reference, timing = acquire_research(live,rotations,refs)
+          print('BENCHMARK concurrent',json.dumps(dict(timing=timing,coverage=summary(public,recent,reference))))
+          tasks = {}
+          start = monotonic()
+          values = []
+          for name, loader in [('live',live),('rotations',rotations),('references',refs)]:
+              tick = monotonic()
+              values.append(loader())
+              tasks[name] = round(monotonic()-tick,3)
+          sequential = round(monotonic()-start,3)
+          print('BENCHMARK sequential',json.dumps(dict(seconds=sequential,tasks=tasks,coverage=summary(*values))))
+          print('BENCHMARK equal coverage/status:', summary(*values) == summary(public,recent,reference))
+          print('BENCHMARK exact rotation rows equal:', values[1][0] == recent[0])
+
+          from nba_final_box_cache import FinalBoxCache
+          cache = FinalBoxCache()
+          start = monotonic()
+          cold, cold_status = recent_boxscores(slate, set(games), box_cache=cache)
+          cold_seconds = monotonic()-start
+          start = monotonic()
+          warm, warm_status = recent_boxscores(slate, set(games), box_cache=cache)
+          print('CACHE BENCHMARK', json.dumps(dict(cold_seconds=round(cold_seconds,3),
+                warm_seconds=round(monotonic()-start,3), cold_rows=len(cold), warm_rows=len(warm),
+                cold_status=cold_status, warm_status=warm_status, exact_rows_equal=cold==warm)))
+
+          PY
+
+      - name: Inspect existing providers for explicitly paired minutes and FanDuel points
+        run: |
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from slate_research import fetch, DFF, ROTOGRINDERS, LINEUPEXPERTS_TODAY
+          for name,url in [('Daily Fantasy Fuel',DFF),('RotoGrinders',ROTOGRINDERS),
+                           ('LineupExperts',LINEUPEXPERTS_TODAY)]:
+              try:
+                  soup = BeautifulSoup(fetch(url),'html.parser')
+                  print('PAIR PROBE', name, 'title:', soup.title.get_text(strip=True) if soup.title else '')
+                  if name == 'Daily Fantasy Fuel':
+                      rows = soup.select('tr.projections-listing[data-start_date][data-ppg_proj]')
+                      print('PAIR PROBE DFF public rows:',len(rows))
+                      for row in rows[:2]:
+                          print('PAIR PROBE DFF row attributes:',dict(row.attrs))
+                          print('PAIR PROBE DFF cells:',[(c.get('class'),c.get('data-title'),c.get_text(' ',strip=True)) for c in row.find_all('td',recursive=False)])
+                  for table in soup.select('table')[:3]:
+                      print('PAIR PROBE headers:',[c.get_text(' ',strip=True) for c in table.select('thead th')])
+              except Exception as exc:
+                  print('PAIR PROBE unavailable',name,type(exc).__name__,str(exc)[:150])
+          PY
+
+
+      - name: Diagnose RotoGrinders paired projection coverage
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from datetime import datetime
+          from bs4 import BeautifulSoup
+          from slate_research import ET, fetch, ROTOGRINDERS, rotogrinders_research, propsims_research
+          from slate_import import team_code, matchup_key
+
+          now = datetime.now(ET)
+          try:
+              raw = fetch(ROTOGRINDERS)
+              soup = BeautifulSoup(raw, 'html.parser')
+              label = soup.find(string=lambda v: v and v.strip() == 'FPTS Updated')
+              clock = label.parent.parent.select_one('[data-role="localtime"][data-value]') if label else None
+              print('RG publication', clock.get('data-value') if clock else None)
+              print('RG schedule entries', json.dumps([
+                  [x.get('data-value'), x.get_text(' ', strip=True)]
+                  for x in soup.select('[data-field="schedule"][data-value]')]))
+              fields = {'TEAM','OPP','MINUTES','PTS','REB','AST','STL','BLK','TO'}
+              for table in soup.select('table'):
+                  headings = [h.get_text(strip=True) for h in table.select('thead th')]
+                  if not fields.issubset(headings):
+                      continue
+                  rows = table.select('tbody tr')
+                  print('RG raw stat table', len(rows), 'rows; schedule IDs',
+                        dict(Counter(r.get('data-schedule','MISSING') for r in rows)))
+                  counts = Counter()
+                  for r in rows:
+                      cells = [c.get_text(strip=True) for c in r.find_all('td', recursive=False)]
+                      if len(cells) != len(headings):
+                          counts['cell_count_mismatch'] += 1
+                          continue
+                      if not r.select_one('a[data-role="modal"]'):
+                          counts['missing_player_link'] += 1
+                      vals = dict(zip(headings,cells))
+                      try:
+                          nums = {k:float(vals[k]) for k in fields-{'TEAM','OPP'}}
+                          counts['numeric_stat_rows'] += 1
+                      except (ValueError,KeyError):
+                          counts['non_numeric_or_masked_stat_rows'] += 1
+                  print('RG raw row checks', dict(counts))
+              (_, rg), status = rotogrinders_research(now.date(), datetime.now(ET))
+              print('RG accepted', status, 'by matchup', dict(Counter(x['game'] for x in rg)))
+              (_, ps), status = propsims_research(now.date(), datetime.now(ET))
+              print('PropSims accepted', status)
+              def keys(rows):
+                  return {(str(x['player']).strip().casefold(),team_code(x['team']),matchup_key(x['game']))
+                          for x in rows if x.get('paired_minutes',0)>0 and x.get('points',0)>0}
+              left, right = keys(rg), keys(ps)
+              print('Public exact name/team/matchup overlap', len(left & right),
+                    'RG paired', len(left), 'PropSims paired', len(right),
+                    '(not contest eligibility or post-confirmation coverage)')
+          except Exception as exc:
+              print('RG coverage probe unavailable:', type(exc).__name__, str(exc)[:200])
+          PY

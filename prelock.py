@@ -9,7 +9,8 @@ OFFICIAL_STATUS = OFFICIAL_OUT | {'available', 'probable', 'questionable', 'doub
 STARTING_STATUS = {'starter', 'bench'}
 
 
-def apply_prelock(pool, evidence, as_of, max_age_hours=6):
+def review_prelock_evidence(pool, evidence, as_of, max_age_hours=6):
+    """Normalize and audit evidence once, before any projection adjustment."""
     missing = REQUIRED - set(evidence.columns)
     if missing:
         raise ValueError(f'Pre-lock evidence missing columns: {sorted(missing)}')
@@ -22,14 +23,14 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
         raise ValueError('Evidence age must be positive')
 
     notes = evidence.copy()
-    dated = notes.observed_at.fillna('').astype(str).str.strip()
+    dated = notes.observed_at.astype('string').fillna('').astype(str).str.strip()
     has_offset = dated.str.contains(r'(?:Z|[+-]\d{2}:?\d{2})$', regex=True)
     notes['observed_at'] = pd.to_datetime(dated.where(has_offset), utc=True, errors='coerce', format='mixed')
-    notes['source'] = notes.source.fillna('').astype(str).str.strip()
-    notes['independent_group'] = notes.independent_group.fillna('').astype(str).str.strip().str.casefold()
-    notes['official'] = notes.official.fillna('').astype(str).str.casefold().isin({'true', '1'})
+    notes['source'] = notes.source.astype('string').fillna('').astype(str).str.strip()
+    notes['independent_group'] = notes.independent_group.astype('string').fillna('').astype(str).str.strip().str.casefold()
+    notes['official'] = notes.official.astype('string').fillna('').astype(str).str.casefold().isin({'true', '1'})
     for col in ('status', 'starter', 'role'):
-        notes[col] = notes[col].fillna('').astype(str).str.strip()
+        notes[col] = notes[col].astype('string').fillna('').astype(str).str.strip()
     notes['minutes'] = pd.to_numeric(notes.minutes, errors='coerce').where(lambda x: x.between(0, 48))
     notes['review'] = np.select(
         [~notes.fanduel_id.isin(pool.fanduel_id), notes.source.eq(''), notes.observed_at.isna(),
@@ -37,6 +38,11 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
         ['Unknown contest ID', 'Missing source', 'Missing/invalid timestamp', 'After as-of time', 'Stale'],
         default='Reviewed',
     )
+    return notes
+
+
+def apply_prelock(pool, evidence, as_of, max_age_hours=6):
+    notes = review_prelock_evidence(pool, evidence, as_of, max_age_hours)
     result = pool.copy()
     result['prelock_prior_fd_points'] = result.adjusted_fd_points
     result['prelock_change'] = ''
@@ -80,10 +86,34 @@ def apply_prelock(pool, evidence, as_of, max_age_hours=6):
                 result.at[idx, 'adjusted_fd_points'] = 0.0
             result.at[idx, 'minutes_method'] = 'official_out'
             result.at[idx, 'confidence'] = 'excluded'
+        # A fresh official available decision may correct a stale contest OUT.
+        # Restore the original forecast, never the zeroed OUT projection.
+        if (result.at[idx, 'prelock_status'] == 'available'
+                and str(player.get('injury_flag', '')).upper() in {'O', 'OUT'}
+                and player.get('minutes_method') == 'contest_out'):
+            result.at[idx, 'eligible'] = True
+            baseline = pd.to_numeric(player.get('projected_minutes'), errors='coerce')
+            rate = pd.to_numeric(player.get('fppm'), errors='coerce')
+            usable = pd.notna(baseline) and np.isfinite(baseline) and 0 < baseline <= 48
+            result.at[idx, 'adjusted_minutes'] = float(baseline) if usable else np.nan
+            result.at[idx, 'adjusted_fd_points'] = (float(rate) * baseline
+                if usable and pd.notna(rate) and np.isfinite(rate) and rate >= 0 else np.nan)
+            result.at[idx, 'minutes_method'] = 'official_available_baseline'
+            result.at[idx, 'confidence'] = 'low' if usable else 'missing'
+            labels.append('Official available supersedes contest OUT; reassess role/minutes')
         if result.at[idx, 'eligible']:
             estimates = entries[entries.minutes.notna() & entries.independent_group.ne('')]
-            latest = estimates.drop_duplicates('independent_group', keep='last')
-            if len(latest) >= 2 and latest.minutes.max() - latest.minutes.min() <= 4:
+            # Estimates predating a reviewed official role/status change
+            # cannot confirm the player's current minutes.
+            changes = official.loc[official.status.str.casefold().isin(OFFICIAL_STATUS)
+                                   | official.starter.str.casefold().isin(STARTING_STATUS)]
+            if not changes.empty:
+                estimates = estimates.loc[estimates.observed_at.ge(changes.observed_at.max())]
+            latest = estimates.loc[estimates.observed_at.eq(
+                estimates.groupby('independent_group').observed_at.transform('max'))]
+            conflict = latest.groupby('independent_group').minutes.nunique().gt(1).any()
+            latest = latest.drop_duplicates('independent_group', keep='last')
+            if not conflict and len(latest) >= 2 and latest.minutes.max() - latest.minutes.min() <= 4:
                 minutes = float(latest.minutes.median())
                 result.at[idx, 'adjusted_minutes'] = minutes
                 if pd.notna(player.fppm):

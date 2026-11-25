@@ -1,0 +1,37 @@
+name: NBA frozen replay projection diagnostics
+on:
+  push:
+    branches: [dev/streamlit-runtime-validation]
+    paths:
+      - 'nba_projection_diagnostics.py'
+      - 'nba_multislate_validation.py'
+      - 'test_nba_multislate_validation.py'
+      - 'test_nba_projection_diagnostics.py'
+      - 'run_frozen_replay.py'
+      - 'test_run_frozen_replay.py'
+      - '.github/workflows/nba-projection-diagnostics.yml'
+  pull_request:
+    paths:
+      - 'nba_projection_diagnostics.py'
+      - 'nba_multislate_validation.py'
+      - 'test_nba_multislate_validation.py'
+      - 'test_nba_projection_diagnostics.py'
+      - 'run_frozen_replay.py'
+      - 'test_run_frozen_replay.py'
+      - '.github/workflows/nba-projection-diagnostics.yml'
+  workflow_dispatch:
+jobs:
+  replay-diagnostics:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Verify projection diagnostics and end-to-end frozen replay
+        run: python -m pytest -q test_nba_projection_diagnostics.py test_run_frozen_replay.py test_nba_projection_review.py test_nba_multislate_validation.py
+      - name: Compile replay modules
+        run: python -m py_compile nba_projection_diagnostics.py run_frozen_replay.py nba_multislate_validation.py

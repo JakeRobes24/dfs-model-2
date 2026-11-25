@@ -1,0 +1,124 @@
+"""Score a saved pre-tip NBA contest pool after all its official games are final."""
+import argparse
+from datetime import date
+from hashlib import sha256
+from io import BytesIO
+import json
+from pathlib import Path
+import re
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pandas as pd
+
+from market_evidence import review_player_props, summarize_player_props
+from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
+from nba_distribution_review import review_distribution, summarize_distribution
+from nba_source_accuracy import review_sources, summarize_sources, head_to_head
+from nba_matchwiz_review import review_matchwiz, summarize_matchwiz
+from nba_shadow_research import compare_shadow_forecasts
+from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
+from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
+from slate_import import game_code, matchup_key
+from slate_replay_capture import build_replay_rows
+from slate_results import SOURCE_ERRORS, collect_final_boxes, compare_results
+
+
+def run(pool_path, day, output_path):
+    raw = pool_path.read_bytes()
+    pool = pd.read_csv(BytesIO(raw), dtype={'fanduel_id': str})
+    if pool.empty or not {'fanduel_id', 'game', 'team', 'fanduel_name'} <= set(pool):
+        raise ValueError('Use the complete saved FanDuel player pool CSV.')
+    ids = pool.fanduel_id
+    if not ids.is_unique or not ids.str.fullmatch(r'[0-9]{1,12}-[0-9]+', na=False).all():
+        raise ValueError('The saved player pool must use distinct FanDuel player IDs.')
+    contest = ids.iloc[0].split('-', 1)[0]
+    if not ids.str.fullmatch(re.escape(contest) + r'-[0-9]+').all():
+        raise ValueError('The saved player pool must cover exactly one contest.')
+    games = set(pool.game.map(game_code).map(matchup_key))
+    if '' in games:
+        raise ValueError('The saved player pool has an invalid matchup.')
+    if output_path.exists():
+        raise FileExistsError('Choose a new output path for the replay archive.')
+
+    empty_results, _ = compare_results(pool, day, [], {})
+    build_replay_rows(pool, empty_results, day)
+    boxes = collect_final_boxes(day, games)
+    results, finals = compare_results(pool, day, boxes, {})
+    summary = {'slate_date': day.isoformat(), 'contest_id': contest, 'contest_games': len(games),
+               'verified_final_games': len(finals), 'frozen_pool_sha256': sha256(raw).hexdigest()}
+    if finals != games:
+        return dict(summary, status='waiting_for_verified_final_box_scores')
+
+    replay = build_replay_rows(pool, results, day)
+    accuracy = compare_frozen_projections(replay)
+    shadow = compare_shadow_forecasts(replay)
+    methods = compare_adjustment_methods(replay)
+    decomposition = decompose_played_errors(replay)
+    decomposition_summary = summarize_decomposition(decomposition)
+    decomposition_coverage = diagnostic_coverage(replay, decomposition)
+    decisions = audit_player_decisions(replay)
+    decision_summary = summarize_player_decisions(decisions)
+    props = review_player_props(replay, results)
+    prop_summary = summarize_player_props(props)
+    distribution = review_distribution(replay)
+    distribution_summary = summarize_distribution(distribution)
+    source_details = review_sources(replay)
+    source_summary = summarize_sources(source_details)
+    source_pairs = head_to_head(source_details)
+    matchwiz = review_matchwiz(replay)
+    matchwiz_summary = summarize_matchwiz(matchwiz)
+    counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
+    summary = dict(summary, status='reviewed', player_outcomes=counts,
+                   diagnostic_coverage={key: (int(value) if key != 'paired_played_coverage_pct'
+                                              else (float(value) if pd.notna(value) else None))
+                                        for key, value in decomposition_coverage.iloc[0].items()})
+    with TemporaryDirectory(dir=output_path.parent) as staging:
+        archive = Path(staging) / 'replay.zip'
+        with ZipFile(archive, 'w', ZIP_DEFLATED) as zipped:
+            zipped.writestr('manifest.json', json.dumps(summary, indent=2) + '\n')
+            zipped.writestr('player_replay.csv', replay.to_csv(index=False))
+            zipped.writestr('projection_comparison.csv', accuracy.to_csv(index=False))
+            zipped.writestr('projection_error_decomposition.csv', decomposition.to_csv(index=False))
+            zipped.writestr('projection_error_decomposition_summary.csv', decomposition_summary.to_csv(index=False))
+            zipped.writestr('projection_error_decomposition_coverage.csv', decomposition_coverage.to_csv(index=False))
+            zipped.writestr('player_decision_audit.csv', decisions.to_csv(index=False))
+            zipped.writestr('player_decision_summary.csv', decision_summary.to_csv(index=False))
+            if not shadow.empty:
+                zipped.writestr('shadow_research_comparison.csv', shadow.to_csv(index=False))
+            if not methods.empty:
+                zipped.writestr('adjustment_comparison.csv', methods.to_csv(index=False))
+            if not props.empty:
+                zipped.writestr('player_prop_review.csv', props.to_csv(index=False))
+            if not prop_summary.empty:
+                zipped.writestr('player_prop_summary.csv', prop_summary.to_csv(index=False))
+            if not distribution.empty:
+                zipped.writestr('propsims_distribution_review.csv', distribution.to_csv(index=False))
+                zipped.writestr('propsims_distribution_summary.csv', distribution_summary.to_csv(index=False))
+            if not source_details.empty:
+                zipped.writestr('source_accuracy_review.csv', source_details.to_csv(index=False))
+                zipped.writestr('source_accuracy_summary.csv', source_summary.to_csv(index=False))
+            if not source_pairs.empty:
+                zipped.writestr('source_accuracy_head_to_head.csv', source_pairs.to_csv(index=False))
+            if not matchwiz.empty:
+                zipped.writestr('matchwiz_reference_review.csv', matchwiz.to_csv(index=False))
+                zipped.writestr('matchwiz_reference_summary.csv', matchwiz_summary.to_csv(index=False))
+        output_path.hardlink_to(archive)
+    return summary
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('pool', type=Path, help='Archived pre-tip full player pool CSV')
+    parser.add_argument('slate_date', type=date.fromisoformat)
+    parser.add_argument('output', type=Path, help='Path for a new replay ZIP when all games are final')
+    args = parser.parse_args()
+    try:
+        summary = run(args.pool, args.slate_date, args.output)
+    except SOURCE_ERRORS as exc:
+        parser.exit(1, f'{exc}\n')
+    print(json.dumps(summary, indent=2))
+
+
+if __name__ == '__main__':
+    main()
