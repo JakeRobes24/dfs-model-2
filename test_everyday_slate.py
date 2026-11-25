@@ -96,6 +96,7 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
     contest, daily = uploads()
     with (patch('site_ui.public_research', return_value=([], [], [('NBA injury report', 'Unavailable')])),
           patch('site_ui.public_rotations', return_value=([], 'Unavailable')),
+          patch('slate_research.get_reference_research', return_value=({}, {})),
           patch('site_ui.public_slate_schedule', return_value=[]) as schedule):
         app = AppTest.from_file(str(ROOT / 'app_staging.py'), default_timeout=45).run()
         assert app.radio(key='site_view').value == 'Build a slate'
@@ -107,7 +108,7 @@ def test_default_streamlit_workflow_generates_four_legal_candidates():
         assert not app.exception and not app.error
         app.button(key='slate_optimize').click().run()
         assert not app.exception and not app.error
-        _, (lineups, comparison, alternative) = app.session_state['slate_results']
+        _, (lineups, comparison, alternative), _ = app.session_state['slate_results']
         assert len(comparison) == 4 and len(alternative) == 9
         for _, lineup in lineups.groupby('lineup'):
             assert Counter(lineup.slot) == Counter(SLOTS)
