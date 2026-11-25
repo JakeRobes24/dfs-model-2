@@ -15,6 +15,7 @@ from market_evidence import review_player_props, summarize_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from nba_distribution_review import review_distribution, summarize_distribution
 from nba_source_accuracy import review_sources, summarize_sources, head_to_head
+from nba_matchwiz_review import review_matchwiz, summarize_matchwiz
 from nba_shadow_research import compare_shadow_forecasts
 from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
 from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
@@ -65,6 +66,8 @@ def run(pool_path, day, output_path):
     source_details = review_sources(replay)
     source_summary = summarize_sources(source_details)
     source_pairs = head_to_head(source_details)
+    matchwiz = review_matchwiz(replay)
+    matchwiz_summary = summarize_matchwiz(matchwiz)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
     summary = dict(summary, status='reviewed', player_outcomes=counts,
                    diagnostic_coverage={key: (int(value) if key != 'paired_played_coverage_pct'
@@ -97,6 +100,9 @@ def run(pool_path, day, output_path):
                 zipped.writestr('source_accuracy_summary.csv', source_summary.to_csv(index=False))
             if not source_pairs.empty:
                 zipped.writestr('source_accuracy_head_to_head.csv', source_pairs.to_csv(index=False))
+            if not matchwiz.empty:
+                zipped.writestr('matchwiz_reference_review.csv', matchwiz.to_csv(index=False))
+                zipped.writestr('matchwiz_reference_summary.csv', matchwiz_summary.to_csv(index=False))
         output_path.hardlink_to(archive)
     return summary
 
