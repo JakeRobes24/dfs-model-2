@@ -184,7 +184,7 @@ def read_box(game, url):
     return rows
 
 
-def recent_boxscores(slate, games, *, game_limit=3, days_back=7):
+def recent_boxscores(slate, games, *, game_limit=3, days_back=7, box_cache=None):
     teams = {team for game in games for team in game.split('@')}
     previous = {team: [] for team in teams}
     schedule_loaded = 0
@@ -197,14 +197,21 @@ def recent_boxscores(slate, games, *, game_limit=3, days_back=7):
 
     def load(item):
         day, game_id, away, home = item
+        if box_cache is not None:
+            cached = box_cache.get(item)
+            if cached is not None:
+                return cached, True
         url = f'{NBA_WEB}/game/{away.lower()}-vs-{home.lower()}-{game_id}/box-score'
         try:
             game = nba_page(url)['game']
             if game.get('gameId') != game_id:
-                return []
-            return [row for row in read_box(game, url) if row['game_date'] == day]
+                return [], False
+            rows = [row for row in read_box(game, url) if row['game_date'] == day]
+            if box_cache is not None:
+                box_cache.put(item, rows)
+            return rows, False
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            return []
+            return [], False
 
     with ThreadPoolExecutor(max_workers=12) as workers:
         days = [slate - timedelta(days=index) for index in range(1, days_back + 1)]
@@ -220,10 +227,12 @@ def recent_boxscores(slate, games, *, game_limit=3, days_back=7):
                         previous[team].append((day, game_id, away, home))
         scheduled = sorted({game for rows in previous.values() for game in rows})
         responses = list(workers.map(load, scheduled))
-    return [row for rows in responses for row in rows], (
-        f'{sum(bool(rows) for rows in responses)}/{len(scheduled)} final box scores · '
-        f'{schedule_loaded}/{len(days)} dated schedule pages reached'
-    )
+    cached_count = sum(hit for _, hit in responses)
+    status = (f'{sum(bool(rows) for rows, _ in responses)}/{len(scheduled)} final box scores · '
+              f'{schedule_loaded}/{len(days)} dated schedule pages reached')
+    if box_cache is not None:
+        status += f' · {cached_count} recently verified final boxes reused'
+    return [row for rows, _ in responses for row in rows], status
 
 
 def rotowire_research(slate, as_of):
