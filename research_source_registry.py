@@ -15,13 +15,13 @@ SOURCES = (
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
     ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections'),
-    ('LineupExperts','Reference + verified upload','Manual required','Projections, comparisons and matchup research'),
-    ('Fantasy Team Advisors','Reference + optional archive','Manual research','Points, minutes, ownership and ceiling; partial preview'),
-    ('FantasySportsEdge','Reference','Manual research','Projection comparison; upstream overlap unverified'),
+    ('LineupExperts','Reference + verified upload','Manual required','Public projected stat lines; verified timestamp required for numerical use; licensed API documented'),
+    ('Fantasy Team Advisors','Reference + optional archive','Manual research','Points, minutes, ownership, ceiling and teammate-absence splits; limited public preview'),
+    ('FantasySportsEdge','Reference','Manual research','Dated FanDuel points including lower salaries; aggregates multiple undisclosed sources; reference only'),
     ('DraftEdge','Manual research','Manual research','Projection and lineup comparison; feed unverified'),
     ('RotoQL / stat-api','Manual research','Manual research','Projections, ownership; count shared provenance once'),
-    ('Linemate','Manual research','Manual research','Player and matchup validation'),
-    ('WalterPicks','Manual research','Manual research','Player and matchup validation'),
+    ('Linemate','Manual research','Manual research','App-based player trends and matchup checks; no verified public projection feed'),
+    ('WalterPicks','Manual research','Manual research','App-based player projections and matchup validation; no verified public dated feed'),
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
@@ -31,6 +31,11 @@ SOURCES = (
 )
 # Verified public access paths; links are not evidence of current coverage.
 RESEARCH_LINKS = {
+    'LineupExperts': 'https://www.lineupexperts.com/basketball/projections?flt_pos=Utility&flt_proj_time_period=Today',
+    'Fantasy Team Advisors': 'https://fantasyteamadvisors.com/guides/nba-usage-bump/',
+    'FantasySportsEdge': 'https://fantasysportsedge.com/nba/projections',
+    'Linemate': 'https://linemate.io/',
+    'WalterPicks': 'https://www.walterpicks.com/',
     'Courtside': 'https://courtside.higgsfield.app/projections',
     '4for4': 'https://www.4for4.com/dfs-legacy-generators',
 }
