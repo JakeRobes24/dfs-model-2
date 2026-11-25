@@ -44,10 +44,11 @@ def test_combined_evaluation_scores_identical_verified_played_rows():
 def test_paired_rate_normalizes_minutes_once_and_rejects_old_team_evidence():
     import json
     from nba_combined_scoring_shadow import paired_rate_shadow, compare_frozen_paired_rate
+    from slate_research import PROPSIMS, ROTOGRINDERS
     capture = '2026-11-25T23:00:00Z'
     estimates = [
-        dict(family='a',points=36.,paired_minutes=30.,weight=1.,observed_at='2026-11-25T22:30:00Z'),
-        dict(family='b',points=42.,paired_minutes=35.,weight=1.,observed_at='2026-11-25T22:40:00Z')]
+        dict(source=PROPSIMS,family='propsims',points=36.,paired_minutes=30.,weight=1.,observed_at='2026-11-25T22:30:00Z'),
+        dict(source=ROTOGRINDERS,family='rotogrinders',points=42.,paired_minutes=35.,weight=1.,observed_at='2026-11-25T22:40:00Z')]
     base = dict(fanduel_id='1-1',team='DET',game='DET@ORL',eligible=True,injury_flag='',
                 prelock_status='',prelock_starter='starter',minutes_method='prelock_independent_consensus',
                 blend_status='Minutes/status adjustment takes priority',adjusted_minutes=32.,
@@ -64,12 +65,18 @@ def test_paired_rate_normalizes_minutes_once_and_rejects_old_team_evidence():
     assert result.loc['1-1','shadow_rate_fd'] == pytest.approx(34.56)
     assert result.loc['1-1','rate_source_count'] == 2
     assert pd.isna(result.loc['1-2','shadow_rate_fd'])
-    assert compare_frozen_paired_rate(data).iloc[0]['Paired players'] == 1
+    review = compare_frozen_paired_rate(data).iloc[0]
+    assert review['Paired players'] == 1
+    assert review['Eligible players reviewed for rate blend'] == 1
+    assert review['Eligible with two fresh paired sources'] == 1
+    assert review['Eligible supported rate forecasts'] == 1
     pd.testing.assert_frame_equal(data,original)
     for notes in [
         [dict(estimates[0], observed_at='2026-11-25T22:00:00Z'),estimates[1]],
         [dict(estimates[0], paired_minutes=None),estimates[1]],
-        [estimates[0],dict(estimates[1],family='a')],
+        [estimates[0],dict(estimates[1],family='propsims')],
+        [estimates[0],dict(estimates[1],source=PROPSIMS)],
+        [estimates[0],dict(estimates[1],source='https://unknown.example/')],
         [estimates[0],dict(estimates[1],points=60.)],
         [estimates[0],dict(estimates[1],observed_at='2026-11-25T23:01:00Z')],
     ]:
