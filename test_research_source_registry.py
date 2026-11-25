@@ -212,3 +212,33 @@ def test_propsims_fresh_previous_evening_run_is_valid_for_exact_current_slate():
     with patch('slate_research.fetch', return_value=html.replace('21:41:00-06:00', '23:41:00-09:00').encode()):
         with pytest.raises(ValueError, match='stale'):
             propsims_research(slate, now)
+
+
+def test_propsims_distribution_is_separate_from_weighted_points():
+    import json
+    from datetime import datetime
+    from bs4 import BeautifulSoup
+    import pytest
+    from slate_research import ET, PROPSIMS, DFF, propsims_distribution, points_consensus
+    table = """<table><thead><tr><th>FD median</th><th>Floor</th><th>Ceiling</th>
+    <th>If plays</th><th>p(play)</th></tr></thead><tbody>
+    <tr><td>30</td><td>12</td><td>44</td><td>33</td><td>90%</td></tr>
+    </tbody></table>"""
+    soup = BeautifulSoup(table, 'html.parser')
+    values = propsims_distribution(soup.select_one('tbody tr'), 30)
+    assert values == dict(fd_p10=12, fd_p85=44, conditional_fd_median=33, play_probability=.9)
+    wrong = BeautifulSoup(table.replace('FD median','DK median'), 'html.parser')
+    assert propsims_distribution(wrong.select_one('tbody tr'), 30) == {}
+    invalid = BeautifulSoup(table.replace('<td>12</td>','<td>40</td>'), 'html.parser')
+    assert 'fd_p10' not in propsims_distribution(invalid.select_one('tbody tr'), 30)
+    now = datetime(2026, 11, 25, 12, tzinfo=ET)
+    baseline = dict(fanduel_id='100-1', source=PROPSIMS, points=30, observed_at=now.isoformat())
+    other = dict(baseline, source=DFF, points=34)
+    initial = points_consensus([baseline, other], [], now)
+    enriched = points_consensus([dict(baseline, **values), other], [], now)
+    assert enriched.loc['100-1','points'] == pytest.approx(initial.loc['100-1','points'])
+    assert enriched.loc['100-1','source_count'] == 2
+    data = json.loads(enriched.loc['100-1','propsims_distribution_json'])
+    assert len(data) == 1 and data[0]['fd_p85'] == 44
+    assert data[0]['fd_median'] == 30 and data[0]['source'] == PROPSIMS
+    assert json.loads(initial.loc['100-1','propsims_distribution_json']) == []
