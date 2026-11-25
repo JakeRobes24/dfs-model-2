@@ -12,7 +12,7 @@ SOURCES = (
     ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity'),
-    ('Courtside','Manual research','Not applicable','Prior minutes research; provider independence and fresh data require review'),
+    ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
     ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections'),
     ('LineupExperts','Reference + verified upload','Manual required','Projections, comparisons and matchup research'),
@@ -25,10 +25,15 @@ SOURCES = (
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
-    ('4for4','Not applicable','Manual research','NFL projections and matchup research; exact access and provenance require verification'),
+    ('4for4','Not applicable','Manual research','Accessible NFL matchup research; full DFS projections/ownership/ceilings require authorized subscription access; verify provenance'),
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
 )
+# Verified public access paths; links are not evidence of current coverage.
+RESEARCH_LINKS = {
+    'Courtside': 'https://courtside.higgsfield.app/projections',
+    '4for4': 'https://www.4for4.com/dfs-legacy-generators',
+}
 AUTOMATIC_NBA = {
     'Official NBA reports / NBA Stats': ('NBA injury report','NBA recent box scores'),
     'RotoWire': ('RotoWire starters and minutes',),
@@ -56,5 +61,5 @@ def research_checklist(sport, source_status=()):
             current = 'Identity not verified'
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
-        rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current})
-    return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence'])
+        rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,\n                     'Verified access link': RESEARCH_LINKS.get(name, '')})
+    return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link'])
