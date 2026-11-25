@@ -14,6 +14,7 @@ import pandas as pd
 from market_evidence import review_player_props, summarize_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
 from nba_distribution_review import review_distribution, summarize_distribution
+from nba_source_accuracy import review_sources, summarize_sources, head_to_head
 from nba_shadow_research import compare_shadow_forecasts
 from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
 from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
@@ -61,6 +62,9 @@ def run(pool_path, day, output_path):
     prop_summary = summarize_player_props(props)
     distribution = review_distribution(replay)
     distribution_summary = summarize_distribution(distribution)
+    source_details = review_sources(replay)
+    source_summary = summarize_sources(source_details)
+    source_pairs = head_to_head(source_details)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
     summary = dict(summary, status='reviewed', player_outcomes=counts,
                    diagnostic_coverage={key: (int(value) if key != 'paired_played_coverage_pct'
@@ -88,6 +92,11 @@ def run(pool_path, day, output_path):
             if not distribution.empty:
                 zipped.writestr('propsims_distribution_review.csv', distribution.to_csv(index=False))
                 zipped.writestr('propsims_distribution_summary.csv', distribution_summary.to_csv(index=False))
+            if not source_details.empty:
+                zipped.writestr('source_accuracy_review.csv', source_details.to_csv(index=False))
+                zipped.writestr('source_accuracy_summary.csv', source_summary.to_csv(index=False))
+            if not source_pairs.empty:
+                zipped.writestr('source_accuracy_head_to_head.csv', source_pairs.to_csv(index=False))
         output_path.hardlink_to(archive)
     return summary
 
