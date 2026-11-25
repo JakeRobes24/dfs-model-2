@@ -329,9 +329,16 @@ def propsims_research(slate, as_of):
         f'{slate:%A, %B} {slate.day}'
     ):
         raise ValueError('PropSims slate date unavailable')
-    stamp = datetime.fromisoformat(clock['datetime']).astimezone(ET)
-    if stamp.date() != slate or not as_of - timedelta(hours=6) <= stamp <= as_of:
-        raise ValueError('PropSims projections are stale')
+    # The slate heading identifies the target day; a fresh model run can
+    # legitimately have been published before midnight on the preceding day.
+    published = datetime.fromisoformat(clock['datetime'])
+    if published.tzinfo is None or as_of.tzinfo is None:
+        raise ValueError('PropSims requires timezone-aware publication and review times')
+    stamp = published.astimezone(ET)
+    if (slate != as_of.astimezone(ET).date()
+            or stamp.date() not in {slate, slate - timedelta(days=1)}
+            or not as_of - timedelta(hours=6) <= stamp <= as_of):
+        raise ValueError('PropSims projections are stale or not for the current slate')
     notes, projections = [], []
     for cell in soup.select('td[data-f="fd_p50"][data-v]'):
         row = cell.find_parent('tr')
