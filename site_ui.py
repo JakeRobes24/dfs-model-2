@@ -162,7 +162,11 @@ def generate_and_challenge(pool, overlap, exclude, objective='adjusted_fd_points
         lineups = solve(number=4, max_overlap=overlap)
     else:
         remaining = deadline - monotonic()
-        lineups = solve(number=4, max_overlap=overlap, time_budget_seconds=remaining) if remaining > 0 else pd.DataFrame()
+        # Reserve up to one solver interval for the leading roster's distinct
+        # alternative; unused portfolio time remains available to that solve.
+        reserve = min(35.0, max(0.0, remaining) * .20)
+        portfolio_budget = remaining - reserve
+        lineups = solve(number=4, max_overlap=overlap, time_budget_seconds=portfolio_budget) if portfolio_budget > 0 else pd.DataFrame()
     if lineups.empty:
         return lineups, pd.DataFrame(), pd.DataFrame()
     # Lineup 1 has the best unconstrained objective. A single extra solve finds
@@ -230,7 +234,13 @@ def show_results(pool, lineups, comparison, alternative):
             if not alternative.empty:
                 st.download_button('Download strongest alternative to lineup 1', alternative.to_csv(index=False),
                                    'strongest_alternative.csv')
-    st.download_button('Download lineups', lineups.to_csv(index=False), 'four_lineups.csv', mime='text/csv')
+    from nba_checkpoint_changes import can_reuse_candidates
+    verified = can_reuse_candidates((lineups, comparison, alternative))
+    if not verified:
+        st.warning('Provisional candidates: full portfolio or proven-optimal alternative comparison incomplete. Reassess before entry.')
+    st.download_button('Download lineups' if verified else 'Download provisional candidates',
+                       lineups.to_csv(index=False), 'four_lineups.csv' if verified else 'provisional_candidates.csv',
+                       mime='text/csv')
 
 
 def render_slate(history_slot):
@@ -807,8 +817,8 @@ def render_slate(history_slot):
                         raise ValueError('Lock changed during optimization. Do not enter these pre-tip candidates.')
                 if not result[0].empty:
                     st.session_state[key] = (candidate_key, result, signature)
-                    if result[0].lineup.nunique() == 4:
-                        # Preserve a complete portfolio independently of changing
+                    if can_reuse_candidates(result):
+                        # Preserve a complete proven-optimal portfolio independently of changing
                         # research inputs. Never relabel its old projections as current.
                         st.session_state['last_complete_portfolio'] = (
                             prepared_key, candidate_key, result[0].copy(deep=True))
