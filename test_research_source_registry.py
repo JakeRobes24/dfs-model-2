@@ -245,8 +245,7 @@ def test_propsims_distribution_is_separate_from_weighted_points():
 
 
 def test_recovered_legacy_sources_are_retained_but_not_verified():
-    nba = research_checklist('NBA', [('MatchWiz','claimed projections'),
-                                    ('TheCapper','claimed projections')]).set_index('Source')
+    nba = research_checklist('NBA', [('TheCapper','claimed projections')]).set_index('Source')
     nfl = research_checklist('NFL').set_index('Source')
     for name, link in {
         'MatchWiz': 'https://matchwiz.ai/nba/lineups',
@@ -254,7 +253,7 @@ def test_recovered_legacy_sources_are_retained_but_not_verified():
         'KeelStats': 'https://keelstats.com/nba/usage',
     }.items():
         assert name in nba.index and name not in nfl.index
-        assert nba.loc[name,'Integration'] == ('Reference' if name == 'KeelStats' else 'Manual research')
+        assert nba.loc[name,'Integration'] == ('Reference' if name in ('KeelStats', 'MatchWiz') else 'Manual research')
         assert nba.loc[name,'Historical reference link'] == link
         assert nba.loc[name,'Verified access link'] == link
         assert 'Not verified' in nba.loc[name,'Refresh evidence']
@@ -293,4 +292,42 @@ def test_keelstats_minutes_reference_matches_game_and_rejects_stale_dates():
              eligible=True, adjusted_minutes=25)])
     compared = compare_keelstats(pool, rows)
     assert list(compared.fanduel_id) == ['100-1'] and compared.iloc[0].minutes_gap == 6
+    assert compare_keelstats(pool, rows+rows).empty
+
+
+def test_matchwiz_reference_preserves_partial_stats_and_rejects_mismatched_clubs():
+    from datetime import date, datetime
+    import pandas as pd
+    import pytest
+    from matchwiz_reference import parse_matchwiz
+    from slate_research import ET, compare_keelstats
+    now = datetime(2026, 11, 25, 3, tzinfo=ET)
+    slate = now.date()
+    html = """<p class="subtitle">9 NBA games on Wednesday, November 25, 2026: 9 still projected.</p>
+    <article class="nbalu-game"><header><a class="nbalu-matchup">MIA @ PHI</a></header>
+    <div class="nbalu-sides"><section class="nbalu-side">
+    <h3 class="nbalu-club"><img alt="Miami Heat logo"/></h3>
+    <div class="nbalu-table"><div class="nbalu-head"><span>Projected starters</span>
+    <span>Min</span><span>Pts</span><span>Reb</span><span>Ast</span></div>
+    <ul class="nbalu-rows"><li class="nbalu-row nbalu-starter" data-name="Alpha Player" data-pid="123">
+    <span class="nbalu-name"><a>Alpha Player</a></span><span class="nbalu-min">31.2</span>
+    <span class="nbalu-stat"><span class="nbalu-statv">15</span><span class="nbalu-bookline">99</span></span>
+    <span class="nbalu-stat"><span class="nbalu-statv">6</span></span>
+    <span class="nbalu-stat"><span class="nbalu-statv">4</span></span></li></ul></div></section>
+    <section class="nbalu-side"><h3 class="nbalu-club"><img alt="Philadelphia 76ers logo"/></h3></section>
+    </div></article>"""
+    rows = parse_matchwiz(html, slate, now)
+    assert len(rows) == 1 and rows[0]['reference_minutes'] == 31.2
+    assert rows[0]['reference_pts'] == 15 and rows[0]['reference_ast'] == 4
+    assert rows[0]['reference_role'] == 'starter listing'
+    assert not {'points','observed_at','official','reference_fd'} & rows[0].keys()
+    for bad in (html.replace('November 25, 2026','November 24, 2026'),
+                html.replace('Philadelphia 76ers logo','Boston Celtics logo'),
+                html.replace('31.2','61.2')):
+        with pytest.raises(ValueError):
+            parse_matchwiz(bad, slate, now)
+    pool = pd.DataFrame([dict(fanduel_id='100-1',fanduel_name='Alpha Player',team='MIA',
+                              game='MIA@PHI',eligible=True,adjusted_minutes=25)])
+    compared = compare_keelstats(pool, rows)
+    assert compared.minutes_gap.iloc[0] == pytest.approx(6.2)
     assert compare_keelstats(pool, rows+rows).empty
