@@ -166,5 +166,30 @@ class OptimizerIntegrationTests(unittest.TestCase):
         self.assertNotIn("fixture-0", set(result.fanduel_id))
 
 
+    def test_compact_util_matches_explicit_slot_objectives(self):
+        pool = fixture_pool()
+        pool["roster_eligibility"] = [
+            ["PG/G/UTIL","SG/G/UTIL","SF/F/UTIL","PF/F/UTIL","C/F/UTIL",
+             "PG/SG/G/UTIL","SF/PF/F/UTIL"][i % 7] for i in range(len(pool))]
+        pool["salary"] = [4000 + 100*(i % 12) for i in range(len(pool))]
+        # Perturb scores to avoid ties while retaining a mixed-eligibility pool.
+        pool["adjusted_fd_points"] += [0.000001*(i*i+3*i) for i in range(len(pool))]
+        compact = optimize(pool, number=4, max_overlap=7)
+        explicit = optimize(pool, number=4, max_overlap=7,
+                            closed_players={"nonexistent-fixture-id"})
+        for result in (compact, explicit):
+            self.assertEqual(len(result),36)
+            self.assertTrue(result.solver_optimal.all())
+            for _, group in result.groupby("lineup"):
+                self.assertEqual(sorted(group.slot), sorted(SLOTS))
+                self.assertEqual(group.fanduel_id.nunique(),9)
+                self.assertLessEqual(group.salary.sum(),60000)
+        scores = pool.set_index("fanduel_id").adjusted_fd_points
+        for i in range(1,5):
+            a = scores.loc[compact.loc[compact.lineup.eq(i),"fanduel_id"]].sum()
+            b = scores.loc[explicit.loc[explicit.lineup.eq(i),"fanduel_id"]].sum()
+            self.assertAlmostEqual(a,b,places=6)
+
+
 if __name__ == "__main__":
     unittest.main()
