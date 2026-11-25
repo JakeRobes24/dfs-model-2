@@ -333,6 +333,8 @@ def render_post_slate():
                             raise ValueError('Use an ownership file smaller than 8 MiB.')
                         actual = pd.read_csv(StringIO(ownership.getvalue().decode('utf-8-sig')), dtype=str)
                         comparison = compare_ownership(replay, actual)
+                        from nba_ownership import review_ownership_ceiling
+                        calibrated, calibration = review_ownership_ceiling(replay, actual)
                     except (ValueError, pd.errors.ParserError) as exc:
                         st.warning(str(exc))
                     else:
@@ -344,3 +346,8 @@ def render_post_slate():
                             st.dataframe(comparison, hide_index=True)
                             st.download_button('Download ownership comparison', comparison.to_csv(index=False),
                                                f'{slate}_{contest}_{version[:12]}_ownership.csv', mime='text/csv')
+                            if not calibration.empty:
+                                st.caption('Fresh pre-tip ownership bands and matched provider P85 calibration. Descriptive only; missing ceilings excluded.')
+                                st.dataframe(calibration.round(3),hide_index=True)
+                                st.download_button('Download ownership and ceiling calibration',calibrated.to_csv(index=False),
+                                    f'{slate}_{contest}_{version[:12]}_ownership_ceiling.csv',mime='text/csv')

@@ -92,3 +92,59 @@ def candidate_ownership_review(pool, rosters, as_of, slate):
     players['candidate_exposure_pct'] = players.fanduel_id.map(exposure)
     players['exposure_minus_reference_pp'] = players.candidate_exposure_pct - players.reference_pct
     return pd.DataFrame(summary), players.sort_values(['candidate_exposure_pct','fanduel_id'], ascending=[False,True])
+
+
+
+def review_ownership_ceiling(replay, actual):
+    """Descriptive calibration on a supplied field; never a leverage score."""
+    import numpy as np
+    from nba_distribution_review import review_distribution, timestamp
+    required = {'fanduel_id','slate_date','eligible','replay_timing',
+        'replay_before_full_slate_tip','replay_captured_at_utc','replay_cutoff_utc'} | set(OWNERSHIP_FIELDS)
+    if replay.empty or not required <= set(replay) or not replay.fanduel_id.is_unique:
+        raise ValueError('Use a verified frozen contest replay for leverage research.')
+    ids = replay.fanduel_id.astype(str)
+    if not ids.str.fullmatch(r'[0-9]+-[0-9]+').all() or ids.str.split('-').str[0].nunique()!=1:
+        raise ValueError('Use one exact contest player pool.')
+    if replay.slate_date.nunique()!=1 or replay.slate_date.isna().any():
+        raise ValueError('Use one dated slate.')
+    day = pd.Timestamp(replay.slate_date.iloc[0]).date()
+    capture = pd.to_datetime(replay.replay_captured_at_utc.map(timestamp),utc=True)
+    cutoff = pd.to_datetime(replay.replay_cutoff_utc.map(timestamp),utc=True)
+    stamps = pd.to_datetime(replay.ownership_reference_at_utc.map(timestamp),utc=True)
+    good = (replay.eligible.astype(str).str.lower().eq('true')
+        & replay.replay_before_full_slate_tip.astype(str).str.lower().eq('true')
+        & replay.replay_timing.eq('before_scheduled_tip')
+        & capture.notna() & cutoff.notna() & stamps.notna()
+        & capture.lt(cutoff) & stamps.le(capture)
+        & stamps.ge(capture-pd.Timedelta(hours=6))
+        & stamps.dt.tz_convert('America/New_York').dt.date.eq(day)
+        & cutoff.dt.tz_convert('America/New_York').dt.date.eq(day)
+        & replay.ownership_reference_slate.fillna('').astype(str).str.strip().ne('')
+        & replay.ownership_reference_source.fillna('').astype(str).str.strip().ne('')
+        & pd.to_numeric(replay.ownership_reference_pct,errors='coerce').between(0,100))
+    valid = replay.loc[good].copy()
+    if len(valid.loc[:,list(OWNERSHIP_FIELDS[1:])].drop_duplicates())>1:
+        raise ValueError('Use one ownership provider snapshot.')
+    matched = compare_ownership(replay,actual)
+    matched = matched.loc[matched.fanduel_id.isin(valid.fanduel_id)].copy()
+    if matched.empty:
+        return matched,pd.DataFrame()
+    matched['ownership_reference_pct'] = pd.to_numeric(matched.ownership_reference_pct)
+    dist = review_distribution(valid)
+    metrics = ['fanduel_id','fd_p85','actual_points','above_p85','p85_pinball','played']
+    matched = matched.merge(dist[metrics],on='fanduel_id',how='left',validate='one_to_one')
+    matched['ownership_band'] = pd.cut(matched.ownership_reference_pct,
+        [-np.inf,10,25,np.inf],right=False,labels=['Under 10%','10–under 25%','25% or more'])
+    rows=[]
+    for label,group in [('All',matched),*list(matched.groupby('ownership_band',observed=True))]:
+        ceiling = group.loc[group.fd_p85.notna() & group.actual_points.notna()]
+        rows.append({'Ownership band':str(label),'Matched ownership players':len(group),
+            'Mean forecast ownership %':group.ownership_reference_pct.mean(),
+            'Mean actual ownership %':group.actual_ownership_pct.mean(),
+            'Ownership MAE (pp)':group.error_pp.abs().mean(),
+            'Ownership bias (pp)':group.error_pp.mean(),
+            'Verified ceiling pairs':len(ceiling),
+            'Above provider P85 share':ceiling.above_p85.mean() if len(ceiling) else np.nan,
+            'Provider P85 pinball loss':ceiling.p85_pinball.mean() if len(ceiling) else np.nan})
+    return matched,pd.DataFrame(rows)
