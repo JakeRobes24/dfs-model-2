@@ -61,5 +61,6 @@ def research_checklist(sport, source_status=()):
             current = 'Identity not verified'
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
-        rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,\n                     'Verified access link': RESEARCH_LINKS.get(name, '')})
+        rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,
+                     'Verified access link': RESEARCH_LINKS.get(name, '')})
     return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link'])
