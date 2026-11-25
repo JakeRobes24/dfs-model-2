@@ -13,6 +13,7 @@ import pandas as pd
 
 from market_evidence import review_player_props, summarize_player_props
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
+from nba_distribution_review import review_distribution, summarize_distribution
 from nba_shadow_research import compare_shadow_forecasts
 from nba_projection_diagnostics import decompose_played_errors, summarize_decomposition, diagnostic_coverage
 from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
@@ -58,6 +59,8 @@ def run(pool_path, day, output_path):
     decision_summary = summarize_player_decisions(decisions)
     props = review_player_props(replay, results)
     prop_summary = summarize_player_props(props)
+    distribution = review_distribution(replay)
+    distribution_summary = summarize_distribution(distribution)
     counts = {label: int(count) for label, count in replay.verified_outcome.value_counts().items()}
     summary = dict(summary, status='reviewed', player_outcomes=counts,
                    diagnostic_coverage={key: (int(value) if key != 'paired_played_coverage_pct'
@@ -82,6 +85,9 @@ def run(pool_path, day, output_path):
                 zipped.writestr('player_prop_review.csv', props.to_csv(index=False))
             if not prop_summary.empty:
                 zipped.writestr('player_prop_summary.csv', prop_summary.to_csv(index=False))
+            if not distribution.empty:
+                zipped.writestr('propsims_distribution_review.csv', distribution.to_csv(index=False))
+                zipped.writestr('propsims_distribution_summary.csv', distribution_summary.to_csv(index=False))
         output_path.hardlink_to(archive)
     return summary
 
