@@ -621,7 +621,7 @@ def render_slate(history_slot):
         else:
             st.dataframe(rotation_summary.drop(columns=['fanduel_id', 'Box-score sources']), hide_index=True)
         if not absence_splits.empty:
-            st.caption('These comparisons use explicit box-score absences for teammates currently ruled out. Small samples are shrunk toward zero. The estimates do not change projections.')
+            st.caption('These comparisons use explicit box-score absences for teammates currently unavailable. Role-matched columns compare only known starter/bench roles; isolated columns also require other currently unavailable teammates to have played. Small samples are shrunk toward zero; no overlap means unknown, not zero effect. These descriptive comparisons do not change projections.')
             st.dataframe(absence_splits.drop(columns=['fanduel_id', 'Box-score sources']), hide_index=True)
             st.download_button('Download rotation evidence', absence_splits.to_csv(index=False),
                                'rotation_absences.csv', mime='text/csv')
