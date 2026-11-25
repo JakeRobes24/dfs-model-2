@@ -464,6 +464,26 @@ def render_slate(history_slot):
                     st.download_button('Download reference research priorities', reference_queue.to_csv(index=False),
                                        file_name=f'{slate}-{contest_id}-reference-review.csv', mime='text/csv',
                                        key='slate_reference_review_download')
+    if slate == now.date():
+        with st.expander('KeelStats minutes and rotation reference'):
+            from slate_research import keelstats_reference, compare_keelstats
+            st.caption('Reference only: the provider does not account for returning players in tonight’s minutes redistribution. L10 minutes and starts are historical summaries, not projections.')
+            if st.button('Check KeelStats minutes', key='slate_keelstats'):
+                try:
+                    rows, stamp = keelstats_reference(slate, now)
+                    compared = compare_keelstats(scored, rows)
+                    reference_status['KeelStats'] = f'Reference checked: {len(rows)} returned rows; {len(compared)} eligible matches; not scoring evidence'
+                    st.caption(f'Updated {stamp:%b %d, %I:%M %p ET} · {len(compared)} eligible contest matches')
+                    if not compared.empty:
+                        st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
+                        st.download_button('Download KeelStats comparison', compared.to_csv(index=False),
+                                           file_name=f'{slate}-{contest_id}-keelstats.csv', mime='text/csv',
+                                           key='slate_keelstats_download')
+                    else:
+                        st.info('No unambiguous eligible contest matches.')
+                except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                    reference_status['KeelStats'] = 'Reference unavailable for current slate'
+                    st.info('KeelStats current minutes reference unavailable.')
     with st.expander('Complete saved NBA research checklist'):
         from research_source_registry import research_checklist
         checklist = research_checklist('NBA', [*source_status, *reference_status.items()])
