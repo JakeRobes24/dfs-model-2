@@ -346,7 +346,7 @@ def render_slate(history_slot):
         st.dataframe(scored.groupby('blend_status', dropna=False).size().rename('Players').reset_index(), hide_index=True)
         st.caption('Two fresh agreeing independent point sources are required for a blend. Reviewed minutes/status adjustments take priority; a missing blend is not automatically a reason to change weights.')
 
-    from nba_research_triage import attach_rate_context, disagreement_queue
+    from nba_research_triage import attach_rate_context, disagreement_queue, team_opportunity_review
     queue = disagreement_queue(scored)
     from nba_matchup_context import matchup_context
     from nba_shadow_research import freeze_research_features
@@ -358,6 +358,14 @@ def render_slate(history_slot):
         with st.spinner('Checking up to ten recent team games…'):
             rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
     recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
+    team_review = team_opportunity_review(scored, audit, now)
+    if not team_review.empty:
+        st.warning(f'{len(team_review)} eligible players on teams with reviewed OUT or role-change confirmations. Recheck teammate opportunities before lock.')
+        with st.expander('Team opportunity refresh review', expanded=True):
+            st.caption('Source timestamps after confirmation do not prove that the provider incorporated the news. These are research checks only; no automatic point or minutes changes.')
+            st.dataframe(team_review.drop(columns='fanduel_id'), hide_index=True)
+            st.download_button('Download team opportunity review', team_review.to_csv(index=False),
+                               file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
     matchup = matchup_context(scored, rotation_rows, slate)
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
