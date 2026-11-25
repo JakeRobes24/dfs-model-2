@@ -30,7 +30,7 @@ def test_date_weighting_prospective_separation_and_minimum_evidence():
     assert recent.loc['Prospective','Improvement (equal date weight)'] == 0
     assert recent.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     assert recent.loc['Prospective','Improved dates'] == 1
-    assert len(details) == 15
+    assert len(details) == 18
     more = pd.concat([replay(date(2026,11,25)+timedelta(days=i),i+10,20,36)
                       for i in range(5)], ignore_index=True)
     _, result = compare_across_slates(more)
@@ -49,3 +49,33 @@ def test_duplicate_contests_and_invalid_timing_fail_closed():
             compare_across_slates(bad)
     _, result = compare_across_slates(a.drop(columns=list(FEATURES)))
     assert result['Paired players'].eq(0).all()
+
+
+def test_combined_policy_frozen_sources_and_date_separation():
+    import json
+    from nba_combined_scoring_shadow import COMBINED_POLICY
+    a = replay(date(2026,11,24), 1, 2, 39)
+    b = replay(date(2026,11,25), 2, 2, 39)
+    def add_sources(frame):
+        stamp = frame.slate_date.iloc[0]
+        notes = [dict(family='a', points=36., weight=1., paired_minutes=30.,
+                      observed_at=stamp+'T19:00:00Z'),
+                 dict(family='b', points=40., weight=1., paired_minutes=None,
+                      observed_at=stamp+'T19:30:00Z')]
+        frame = frame.assign(injury_flag='', prelock_status='',
+            minutes_method='prelock_independent_consensus',
+            blend_status='Minutes/status adjustment takes priority',
+            adjusted_fd_points=42., independent_fd_points=38.,
+            projection_source_count=2, projection_source_spread=4.,
+            projection_sources_json=json.dumps(notes))
+        late = [dict(x, observed_at=stamp+'T20:01:00Z') for x in notes]
+        frame.loc[frame.index[1], 'projection_sources_json'] = json.dumps(late)
+        return frame
+    _, result = compare_across_slates(pd.concat([add_sources(a),add_sources(b)], ignore_index=True))
+    rows = result.loc[result.Policy.eq(COMBINED_POLICY)].set_index('Period')
+    assert rows['Paired players'].to_dict() == {'Exploratory': 1, 'Prospective': 1}
+    assert rows.loc['Prospective','Reviewed MAE (player weighted)'] == pytest.approx(3.)
+    assert rows.loc['Prospective','Shadow MAE (player weighted)'] == pytest.approx(1.4)
+    assert rows.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
+    _, unsupported = compare_across_slates(b)
+    assert unsupported.loc[unsupported.Policy.eq(COMBINED_POLICY),'Paired players'].iloc[0] == 0
