@@ -30,7 +30,7 @@ def test_date_weighting_prospective_separation_and_minimum_evidence():
     assert recent.loc['Prospective','Improvement (equal date weight)'] == 0
     assert recent.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     assert recent.loc['Prospective','Improved dates'] == 1
-    assert len(details) == 21
+    assert len(details) == 27
     more = pd.concat([replay(date(2026,11,25)+timedelta(days=i),i+10,20,36)
                       for i in range(5)], ignore_index=True)
     _, result = compare_across_slates(more)
@@ -121,3 +121,16 @@ def test_multislate_paired_coverage_preserves_unknown_dates(monkeypatch):
     assert row['Dates with known rate coverage'] == 0
     assert pd.isna(row['Eligible players reviewed for rate blend'])
     assert pd.isna(row['Supported rate coverage (%)'])
+
+
+
+def test_new_opportunity_policies_have_separate_declaration_and_preserve_older_policies():
+    from nba_shadow_research import OPPORTUNITY_POLICIES
+    frames = [replay(date(2026,11,25), 1, 2, 39), replay(date(2026,11,26), 2, 2, 39)]
+    _, result = compare_across_slates(pd.concat(frames,ignore_index=True))
+    rows = result.loc[result.Policy.isin(OPPORTUNITY_POLICIES)]
+    assert len(rows) == 4
+    assert set(rows.Period) == {'Exploratory','Prospective'}
+    assert rows['Paired players'].eq(0).all()
+    recent = result.loc[result.Policy.eq('Recent rate')]
+    assert recent['Paired players'].sum() == 4

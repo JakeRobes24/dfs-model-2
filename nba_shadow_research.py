@@ -15,6 +15,16 @@ FEATURES = (
     'shadow_rate_sources', 'shadow_team_sources', 'shadow_opponent_sources',
 )
 POLICIES = ('Recent rate', 'Confirmed role rate', 'Single OUT teammate rate', 'Pace', 'Recent rate + pace')
+# Optional for backwards compatibility: old captures must retain their
+# existing policy evaluations without inventing these newly frozen inputs.
+OPPORTUNITY_FEATURES = (
+    'shadow_single_absence_role', 'shadow_single_absence_teammate',
+    'shadow_single_absence_games', 'shadow_single_absence_minutes_gap',
+    'shadow_single_absence_fppm', 'shadow_single_absence_fd_games',
+    'shadow_single_absence_fd_minutes', 'shadow_single_absence_sources',
+)
+OPPORTUNITY_POLICIES = ('Single absence + confirmed role minutes',
+                        'Single absence + confirmed role rate')
 
 
 def freeze_research_features(pool, summaries, splits, matchup):
@@ -22,7 +32,7 @@ def freeze_research_features(pool, summaries, splits, matchup):
     out = pool.copy()
     if not out.fanduel_id.is_unique:
         raise ValueError('Research capture requires unique player IDs.')
-    for field in FEATURES:
+    for field in (*FEATURES, *OPPORTUNITY_FEATURES):
         out[field] = None
     if not summaries.empty:
         if not summaries.fanduel_id.is_unique:
@@ -54,6 +64,23 @@ def freeze_research_features(pool, summaries, splits, matchup):
             'shadow_absence_teammate': 'Out teammate',
         }.items():
             out[target] = out.fanduel_id.map(unique[source])
+    mapping = {
+        'shadow_single_absence_role': 'Current confirmed role',
+        'shadow_single_absence_teammate': 'Out teammate',
+        'shadow_single_absence_games': 'Current role games per side',
+        'shadow_single_absence_minutes_gap': 'Current role minutes gap (shrunk)',
+        'shadow_single_absence_fppm': 'Current role FD/min without',
+        'shadow_single_absence_fd_games': 'Current role complete FD games per side',
+        'shadow_single_absence_fd_minutes': 'Current role complete FD minutes per side',
+        'shadow_single_absence_sources': 'Box-score sources',
+    }
+    if not splits.empty and set(mapping.values()) | {'Other currently out teammates'} <= set(splits):
+        # Reject ambiguous multiple rows before filtering. No extrapolation
+        # from isolated historical effects to a current simultaneous absence.
+        one = splits.loc[~splits.fanduel_id.duplicated(keep=False)]
+        one = one.loc[one['Other currently out teammates'].eq(0)].set_index('fanduel_id')
+        for target, source in mapping.items():
+            out[target] = out.fanduel_id.map(one[source])
     if not matchup.empty:
         if not matchup.fanduel_id.is_unique:
             raise ValueError('Matchup context requires unique player IDs.')
@@ -110,4 +137,52 @@ def compare_shadow_forecasts(replay):
                      'Reviewed MAE': baseline_error.mean(), 'Shadow MAE': error.mean(),
                      'MAE improvement vs reviewed': (baseline_error-error).mean(),
                      'Shadow bias': (predicted[mask]-actual[mask]).mean()})
+    return pd.DataFrame(rows)
+
+
+
+def compare_frozen_opportunity(replay):
+    """Evaluate two predeclared alternatives on identical verified played rows.
+
+    The minutes scenario starts from DAILY minutes/rate, not already-adjusted
+    minutes. The rate scenario holds reviewed minutes fixed and shrinks 20%
+    toward the observed rate in the same confirmed role. Never combine them.
+    """
+    empty = pd.DataFrame({'Policy': OPPORTUNITY_POLICIES, 'Paired players': 0})
+    required = set(OPPORTUNITY_FEATURES) | {'fanduel_id','eligible','verified_outcome',
+        'nba_source','prelock_starter','daily_points','daily_minutes','adjusted_fd_points',
+        'adjusted_minutes','actual_points'}
+    if not required <= set(replay):
+        return empty
+    if replay.fanduel_id.isna().any() or not replay.fanduel_id.is_unique:
+        raise ValueError('Use a unique frozen opportunity replay.')
+    frame = replay.loc[replay.eligible.astype(str).str.lower().eq('true')
+        & replay.verified_outcome.eq('played') & replay.nba_source.fillna('').ne('')].copy()
+    num = lambda name: pd.to_numeric(frame[name], errors='coerce').replace([np.inf,-np.inf],np.nan)
+    daily, dm, base, m, actual = map(num, ['daily_points','daily_minutes','adjusted_fd_points',
+                                        'adjusted_minutes','actual_points'])
+    usable = daily.gt(0) & dm.gt(0) & dm.le(48) & base.gt(0) & m.gt(0) & m.le(48) & actual.notna()
+    role = frame.shadow_single_absence_role
+    support = (role.isin(['starter','bench']) & role.eq(frame.prelock_starter)
+        & frame.shadow_single_absence_teammate.fillna('').ne('')
+        & frame.shadow_single_absence_sources.fillna('').ne('')
+        & num('shadow_single_absence_games').ge(3))
+    gap = num('shadow_single_absence_minutes_gap')
+    rate = num('shadow_single_absence_fppm')
+    forecasts = [
+        ((dm + gap).clip(0,48) * daily / dm).where(support & gap.between(-48,48)),
+        (.8*base + .2*m*rate).where(support & rate.between(0,5)
+            & num('shadow_single_absence_fd_games').ge(3)
+            & num('shadow_single_absence_fd_minutes').ge(60)),
+    ]
+    rows = []
+    for policy, predicted in zip(OPPORTUNITY_POLICIES, forecasts):
+        mask = usable & predicted.notna()
+        error = (predicted[mask] - actual[mask]).abs()
+        baseline = (base[mask] - actual[mask]).abs()
+        rows.append({'Policy':policy, 'Eligible played with baseline':int(usable.sum()),
+            'Paired players':int(mask.sum()), 'DAILY MAE':(daily[mask]-actual[mask]).abs().mean(),
+            'Reviewed MAE':baseline.mean(), 'Shadow MAE':error.mean(),
+            'MAE improvement vs reviewed':(baseline-error).mean(),
+            'Shadow bias':(predicted[mask]-actual[mask]).mean()})
     return pd.DataFrame(rows)

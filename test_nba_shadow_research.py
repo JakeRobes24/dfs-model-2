@@ -49,3 +49,48 @@ def test_frozen_research_comparison_uses_same_rows_and_preserves_scores():
     assert report.loc['Pace', 'Shadow MAE'] == pytest.approx(4.5)
     assert report.loc['Recent rate + pace', 'Shadow MAE'] == pytest.approx(1.8)
     assert compare_shadow_forecasts(replay.drop(columns=list(FEATURES))).empty
+
+
+
+def test_frozen_single_absence_policies_require_exact_role_and_no_other_current_absence():
+    from nba_shadow_research import (OPPORTUNITY_FEATURES, OPPORTUNITY_POLICIES,
+                                     compare_frozen_opportunity)
+    from opportunity_evidence import opportunity_evidence
+    from datetime import timedelta
+    day = date(2026,11,25)
+    base = dict(team='BOS',game='BOS@NYK',eligible=True,prelock_status='',
+                prelock_starter='starter',projected_minutes=20,adjusted_minutes=25,
+                projected_fd_points=20,adjusted_fd_points=30)
+    pool = pd.DataFrame([dict(base,fanduel_id='123-1',fanduel_name='Player A'),
+        dict(base,fanduel_id='123-2',fanduel_name='Player B',eligible=False,prelock_status='out')])
+    logs = []
+    for i in range(1,7):
+        absent = i > 3
+        minutes = 28 if absent else 20
+        logs.append(dict(team='BOS',player='Player A',nba_id='1',game_date=day-timedelta(days=i),
+            started=True,source='NBA box',minutes=minutes,points=minutes*(2 if absent else 1),
+            reboundsTotal=0,assists=0,steals=0,blocks=0,turnovers=0,
+            fieldGoalsAttempted=10,freeThrowsAttempted=0,
+            teammates_played=() if absent else ('playerb',),
+            teammates_absent=('playerb',) if absent else ()))
+    summary,splits = opportunity_evidence(pool,logs,day)
+    frozen = freeze_research_features(pool,summary,splits,pd.DataFrame())
+    pd.testing.assert_frame_equal(frozen[pool.columns],pool)
+    assert frozen.loc[0,'shadow_single_absence_minutes_gap'] == 3
+    assert frozen.loc[0,'shadow_single_absence_fppm'] == 2
+    schedule = [dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},
+                     gameTimeUtc='2026-11-25T23:00:00Z')]
+    saved = capture_pool(frozen,pd.DataFrame(),schedule,day,'2026-11-25T22:00:00Z',('a'*64,'b'*64))
+    outcomes = pd.DataFrame(dict(fanduel_id=pool.fanduel_id,outcome=['Played','Did not play'],
+        nba_actual_minutes=[28,None],nba_fd_points=[35,None],nba_source='NBA box',recorded_fd_points=None))
+    replay = build_replay_rows(saved,outcomes,day)
+    assert set(OPPORTUNITY_FEATURES) <= set(replay)
+    report = compare_frozen_opportunity(replay).set_index('Policy')
+    assert report['Paired players'].tolist() == [1,1]
+    assert report.loc[OPPORTUNITY_POLICIES[0],'Shadow MAE'] == 12
+    assert report.loc[OPPORTUNITY_POLICIES[1],'Shadow MAE'] == 1
+    assert compare_frozen_opportunity(replay.assign(prelock_starter='bench'))['Paired players'].eq(0).all()
+    assert compare_frozen_opportunity(replay.drop(columns=list(OPPORTUNITY_FEATURES)))['Paired players'].eq(0).all()
+    assert not compare_shadow_forecasts(replay.drop(columns=list(OPPORTUNITY_FEATURES))).empty
+    multi = freeze_research_features(pool,summary,splits.assign(**{'Other currently out teammates':1}),pd.DataFrame())
+    assert multi.shadow_single_absence_fppm.isna().all()

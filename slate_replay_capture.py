@@ -8,7 +8,7 @@ from market_evidence import player_market_evidence
 from nba_ownership import OWNERSHIP_FIELDS
 from nba_combined_scoring_shadow import FIELDS as COMBINED_FIELDS
 from nba_projection_review import METHOD_COLUMNS
-from nba_shadow_research import FEATURES
+from nba_shadow_research import FEATURES, OPPORTUNITY_FEATURES
 from slate_import import matchup_key, team_code
 
 
@@ -120,7 +120,7 @@ def build_replay_rows(pool, results, slate):
                 for note in notes):
             raise ValueError('The saved replay evidence contains an invalid source timestamp.')
 
-    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(COMBINED_FIELDS) | {
+    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | {
         'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc',
         'propsims_distribution_json', 'matchwiz_reference_json',
     }

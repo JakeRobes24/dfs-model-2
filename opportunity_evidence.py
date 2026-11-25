@@ -165,6 +165,15 @@ def opportunity_evidence(pool, rotations, slate):
             clean_without = [row for row in without_player
                              if all(teammate_participation(row, key) == 'played' for key in other)]
             isolated = role_matched_absence(clean_with, clean_without)
+            # A prospective single-absence hypothesis needs the player's
+            # currently confirmed role and no other known current scratch.
+            role = getattr(player, 'prelock_starter', '')
+            left = [r for r in clean_with if role in ('starter','bench')
+                    and r.get('started') is (role == 'starter')]
+            right = [r for r in clean_without if role in ('starter','bench')
+                     and r.get('started') is (role == 'starter')]
+            current_role = role_matched_absence(left, right)
+            current_fd = rate_comparison(left, right, FD_WEIGHTS)
             if not without_player:
                 continue
             absent_mean = mean(row['minutes'] for row in without_player)
@@ -204,6 +213,12 @@ def opportunity_evidence(pool, rotations, slate):
                 'Isolated role-matched games per side': isolated['Role-matched games per side'],
                 'Isolated role-matched minutes gap (shrunk)': isolated['Role-matched minutes gap (shrunk)'],
                 'Isolated role-matched FD/min gap': isolated['Role-matched FD/min gap'],
+                'Current confirmed role': role if role in ('starter','bench') else '',
+                'Current role games per side': current_role['Role-matched games per side'],
+                'Current role minutes gap (shrunk)': current_role['Role-matched minutes gap (shrunk)'],
+                'Current role FD/min without': current_fd['without_rate'] if current_fd['sufficient'] else None,
+                'Current role complete FD games per side': min(current_fd['with_games'], current_fd['without_games']),
+                'Current role complete FD minutes per side': min(current_fd['with_minutes'], current_fd['without_minutes']),
                 'Box-score sources': ' · '.join(sorted({row['source'] for row in with_player + without_player})),
             })
     return pd.DataFrame(summaries), pd.DataFrame(splits)
