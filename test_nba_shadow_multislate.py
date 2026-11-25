@@ -88,3 +88,36 @@ def test_paired_rate_policy_has_own_prospective_start():
     rows = result.loc[result.Policy.eq(PAIRED_RATE_POLICY)].set_index('Period')
     assert set(rows.index) == {'Exploratory','Prospective'}
     assert rows['Paired players'].eq(0).all()
+
+
+def test_multislate_paired_coverage_preserves_unknown_dates(monkeypatch):
+    from nba_combined_scoring_shadow import PAIRED_RATE_POLICY
+    from nba_shadow_multislate import RATE_COVERAGE_FIELDS
+    import nba_shadow_multislate as mod
+    def coverage(frame):
+        row = {'Policy': PAIRED_RATE_POLICY, 'Paired players': 0}
+        day = frame.slate_date.iloc[0]
+        if day != '2026-11-28':
+            counts = [10, 3, 2, 1, 0, 1, 3, 2, 1]
+            if day == '2026-11-27':
+                counts = [2*n for n in counts]
+            row.update(dict(zip(RATE_COVERAGE_FIELDS, counts)))
+        return pd.DataFrame([row])
+    monkeypatch.setattr(mod, 'compare_frozen_paired_rate', coverage)
+    frames = [replay(date(2026,11,d), d, 2, 39) for d in (26,27,28)]
+    daily, result = compare_across_slates(pd.concat(frames,ignore_index=True))
+    row = result.loc[result.Policy.eq(PAIRED_RATE_POLICY)].iloc[0]
+    assert row['Dates reviewed'] == 3
+    assert row['Dates with known rate coverage'] == 2
+    assert row['Eligible players reviewed for rate blend'] == 30
+    assert row['Eligible supported rate forecasts'] == 6
+    assert row['Eligible rate insufficient paired sources'] == 6
+    assert row['Supported rate coverage (%)'] == pytest.approx(20)
+    assert row['Review status'] == 'Insufficient prospective evidence'
+    unknown = daily.loc[daily.Policy.eq(PAIRED_RATE_POLICY) & daily.Date.eq('2026-11-28')]
+    assert unknown['Eligible players reviewed for rate blend'].isna().all()
+    _, missing = compare_across_slates(frames[-1])
+    row = missing.loc[missing.Policy.eq(PAIRED_RATE_POLICY)].iloc[0]
+    assert row['Dates with known rate coverage'] == 0
+    assert pd.isna(row['Eligible players reviewed for rate blend'])
+    assert pd.isna(row['Supported rate coverage (%)'])
