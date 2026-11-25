@@ -12,7 +12,7 @@ from history_panel import owner_can_view_history, render_history_panel
 from market_evidence import review_player_props, summarize_player_props
 from nba_ownership import OWNERSHIP_FIELDS, compare_ownership
 from nba_projection_review import compare_adjustment_methods, compare_frozen_projections
-from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions
+from nba_player_decision_audit import audit_player_decisions, summarize_player_decisions, summarize_error_attribution
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
 from slate_research import ET
@@ -294,6 +294,10 @@ def render_post_slate():
             st.caption('Player-by-player projection changes, error improvements and regressions. '
                        'Unresolved outcomes are not scored; confirmed DNPs contribute zero points.')
             st.dataframe(decision_summary.round(2), hide_index=True)
+            attribution = summarize_error_attribution(decisions)
+            if attribution['Paired players'].gt(0).any():
+                st.caption('Minutes versus production-rate error on identical verified played rows. Signed components sum to actual minus forecast; absolute component means need not sum to MAE. Retrospective diagnostics only.')
+                st.dataframe(attribution.round(2), hide_index=True)
             with st.expander(f'Player decision audit · {len(decisions)} eligible players'):
                 st.dataframe(decisions.round(2), hide_index=True)
             st.download_button('Download player decision audit', decisions.to_csv(index=False),
