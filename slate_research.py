@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 import json
 import re
+from urllib.error import HTTPError, URLError
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -39,6 +40,25 @@ def fetch(url):
     if len(data) > 6 * 1024 * 1024:
         raise ValueError('Research response exceeds size limit')
     return data
+
+
+def fetch_paired_provider(url):
+    """One bounded retry for transient transport/server failures only.
+
+    Never retry access denial, rate limits, malformed data or stale forecasts.
+    The provider's original timestamp must still pass its normal validation.
+    """
+    try:
+        return fetch(url)
+    except HTTPError as exc:
+        if exc.code not in {500, 502, 503, 504}:
+            raise
+    except URLError as exc:
+        if not isinstance(exc.reason, (TimeoutError, ConnectionError)):
+            raise
+    except (TimeoutError, ConnectionError):
+        pass
+    return fetch(url)
 
 
 def report_links(html, slate, as_of):
@@ -371,7 +391,7 @@ def propsims_distribution(row, median):
 
 
 def propsims_research(slate, as_of):
-    soup = BeautifulSoup(fetch(PROPSIMS), 'html.parser')
+    soup = BeautifulSoup(fetch_paired_provider(PROPSIMS), 'html.parser')
     heading = soup.select_one('h1')
     clock = soup.select_one('.updstamp time[datetime]')
     if heading is None or clock is None or not heading.get_text(strip=True).endswith(
@@ -391,6 +411,8 @@ def propsims_research(slate, as_of):
     notes, projections = [], []
     for cell in soup.select('td[data-f="fd_p50"][data-v]'):
         row = cell.find_parent('tr')
+        if row is None:
+            continue
         name = row.select_one('.player a')
         matchup = row.select_one('.player .msub')
         minutes_cell = row.select_one('td[data-f="min_p50"][data-v]')
@@ -400,8 +422,11 @@ def propsims_research(slate, as_of):
         if not match:
             continue
         team, opponent = map(team_code, match.groups())
-        points, minutes = float(cell['data-v']), float(minutes_cell['data-v'])
-        if not team or not opponent or team == opponent or not (0 <= points <= 150 and 0 <= minutes <= 60):
+        try:
+            points, minutes = float(cell['data-v']), float(minutes_cell['data-v'])
+        except (ValueError, TypeError):
+            continue
+        if not name.get_text(strip=True) or not team or not opponent or team == opponent or not (0 <= points <= 150 and 0 <= minutes <= 60):
             continue
         common = dict(player=name.get_text(strip=True), team=team, game=f'{team}@{opponent}',
                       source=PROPSIMS, observed_at=stamp.isoformat())
@@ -418,14 +443,21 @@ ROTOGRINDERS = 'https://rotogrinders.com/projected-stats/nba'
 
 
 def rotogrinders_research(slate, as_of):
-    soup = BeautifulSoup(fetch(ROTOGRINDERS), 'html.parser')
+    soup = BeautifulSoup(fetch_paired_provider(ROTOGRINDERS), 'html.parser')
     label = soup.find(string=lambda value: value and value.strip() == 'FPTS Updated')
     clock = label.parent.parent.select_one('[data-role="localtime"][data-value]') if label else None
     if clock is None:
         raise ValueError('RotoGrinders update time unavailable')
-    stamp = datetime.fromisoformat(clock['data-value']).astimezone(ET)
-    if stamp.date() != slate or not as_of - timedelta(hours=6) <= stamp <= as_of:
-        raise ValueError('RotoGrinders estimates are stale')
+    published = datetime.fromisoformat(clock['data-value'])
+    if published.tzinfo is None or as_of.tzinfo is None:
+        raise ValueError('RotoGrinders requires timezone-aware publication and review times')
+    stamp = published.astimezone(ET)
+    # Exact dated pre-tip schedule rows below identify the target slate.
+    # A fresh previous-evening publication can cover that slate.
+    if (slate != as_of.astimezone(ET).date()
+            or stamp.date() not in {slate, slate - timedelta(days=1)}
+            or not as_of - timedelta(hours=6) <= stamp <= as_of):
+        raise ValueError('RotoGrinders estimates are stale or not for the current slate')
     games = {}
     for item in soup.select('[data-field="schedule"][data-value]'):
         match = re.fullmatch(r'(\d{4}-\d{2}-\d{2}) (\d{1,2}:\d{2}[ap]m) \(([A-Z]+) @ ([A-Z]+)\)',

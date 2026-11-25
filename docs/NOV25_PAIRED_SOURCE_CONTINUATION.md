@@ -40,3 +40,10 @@ Read-only JavaScript calculation on archived rows mirrors current paired coverag
 | Supported experimental rate forecasts | 0 |
 
 PropSims: 59 eligible fresh paired rows; Daily Fantasy Fuel: 24 eligible fresh points-only rows; RotoGrinders: no accepted fresh point rows in this archive. Coverage is limited to one assessable date; no cross-date accuracy claim. Acquiring genuinely overlapping independent paired estimates is the immediate bottleneck for the paired-rate experiment; do not relax the minutes policy or count points-only sources as paired. Continue regular capture and the existing prospective evidence gates (five dates / 100 matched observations) before independent validation. No live scoring changes.
+
+
+## RotoGrinders/PropSims paired-board diagnostic and resilience batch
+
+Run 45593456274 on commit 76bb29c42038de9de5746c4ae45ddb1fc6bd4f28: public RotoGrinders board contained only six actual stat rows, all numeric, all MIA@PHI, and all six were accepted by the adapter. The public schedule menu listed additional games but did not supply their stat rows. PropSims returned 60 records and the positive paired player/name/team/matchup intersection was four. These are public board counts, not contest-matched or post-news coverage. All four workflows passed; run 45593456343: 345 tests passed, one deselected.
+
+The previously unavailable PropSims board recovered in the later check. Added one bounded retry for temporary transport and selected 5xx failures, never for 403/429 or stale/invalid data; isolate malformed PropSims numerical rows instead of discarding valid pairs. RotoGrinders now requires an explicit offset and allows a fresh previous-evening forecast only with the exact current dated pre-tip schedule. No new provider family, no altered consensus weights, no bypass of public limits. Valid newly recovered records may affect the existing pipeline normally. Added synthetic regression cases for these changes. Full CI verification pending.
