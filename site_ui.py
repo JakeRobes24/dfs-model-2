@@ -423,7 +423,8 @@ def render_slate(history_slot):
         with st.expander('Check all public projection reference boards'):
             from slate_research import get_reference_research
             st.caption('One refresh checks LineupExperts, FantasySportsEdge and Fantasy Team Advisors together. Reference estimates are not extra independent scoring votes.')
-            reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat())
+            reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat(),
+                             tuple(sorted(set(pool.game))))
             if st.button('Check all three reference boards', key='slate_all_references'):
                 with st.spinner('Checking public reference boards…'):
                     st.session_state['slate_reference_snapshot'] = (
