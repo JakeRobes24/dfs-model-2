@@ -415,7 +415,11 @@ NBA_HOUSE = 'https://nbahouse.net/minutes'
 
 
 def nba_house_minutes(slate, as_of):
-    soup = BeautifulSoup(fetch(NBA_HOUSE), 'html.parser')
+    # Explicit date avoids the provider's default board lag around midnight.
+    # Do not retrieve historical pages as fresh pre-lock evidence.
+    if slate < as_of.astimezone(ET).date():
+        raise ValueError('Historical NBA House minutes are not fresh pre-tip evidence')
+    soup = BeautifulSoup(fetch(f'{NBA_HOUSE}/{slate.isoformat()}'), 'html.parser')
     heading = soup.select_one('.minutes-page h1')
     if heading is None or datetime.strptime(heading.get_text(strip=True), '%A %d %B %Y').date() != slate:
         raise ValueError('NBA House slate date unavailable')
@@ -457,6 +461,11 @@ def lineupexperts_reference(slate, today):
     soup = BeautifulSoup(fetch(LINEUPEXPERTS_TODAY), 'html.parser')
     if not soup.title or not soup.title.get_text(strip=True).lower().endswith('for today'):
         raise ValueError('LineupExperts Today view unavailable')
+    # The relative Today heading alone can describe yesterday near midnight.
+    # Require the provider's own dated filter to agree with the selected slate.
+    date_labels = set(re.findall(r'\bToday\s*\((\d{1,2})/(\d{1,2})\)', soup.get_text(' ', strip=True)))
+    if date_labels != {(str(slate.month), str(slate.day))}:
+        raise ValueError('LineupExperts Today filter date does not match the contest')
     weights = {'PTS': 1, 'RB': 1.2, 'AST': 1.5, 'STL': 3, 'BLK': 3, 'TO': -1}
     records = []
     for table in soup.select('table'):
