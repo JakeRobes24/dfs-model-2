@@ -147,3 +147,62 @@ jobs:
               except Exception as exc:
                   print('PAIR PROBE unavailable',name,type(exc).__name__,str(exc)[:150])
           PY
+
+
+      - name: Diagnose RotoGrinders paired projection coverage
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from datetime import datetime
+          from bs4 import BeautifulSoup
+          from slate_research import ET, fetch, ROTOGRINDERS, rotogrinders_research, propsims_research
+          from slate_import import team_code, matchup_key
+
+          now = datetime.now(ET)
+          try:
+              raw = fetch(ROTOGRINDERS)
+              soup = BeautifulSoup(raw, 'html.parser')
+              label = soup.find(string=lambda v: v and v.strip() == 'FPTS Updated')
+              clock = label.parent.parent.select_one('[data-role="localtime"][data-value]') if label else None
+              print('RG publication', clock.get('data-value') if clock else None)
+              print('RG schedule entries', json.dumps([
+                  [x.get('data-value'), x.get_text(' ', strip=True)]
+                  for x in soup.select('[data-field="schedule"][data-value]')]))
+              fields = {'TEAM','OPP','MINUTES','PTS','REB','AST','STL','BLK','TO'}
+              for table in soup.select('table'):
+                  headings = [h.get_text(strip=True) for h in table.select('thead th')]
+                  if not fields.issubset(headings):
+                      continue
+                  rows = table.select('tbody tr')
+                  print('RG raw stat table', len(rows), 'rows; schedule IDs',
+                        dict(Counter(r.get('data-schedule','MISSING') for r in rows)))
+                  counts = Counter()
+                  for r in rows:
+                      cells = [c.get_text(strip=True) for c in r.find_all('td', recursive=False)]
+                      if len(cells) != len(headings):
+                          counts['cell_count_mismatch'] += 1
+                          continue
+                      if not r.select_one('a[data-role="modal"]'):
+                          counts['missing_player_link'] += 1
+                      vals = dict(zip(headings,cells))
+                      try:
+                          nums = {k:float(vals[k]) for k in fields-{'TEAM','OPP'}}
+                          counts['numeric_stat_rows'] += 1
+                      except (ValueError,KeyError):
+                          counts['non_numeric_or_masked_stat_rows'] += 1
+                  print('RG raw row checks', dict(counts))
+              (_, rg), status = rotogrinders_research(now.date(), datetime.now(ET))
+              print('RG accepted', status, 'by matchup', dict(Counter(x['game'] for x in rg)))
+              (_, ps), status = propsims_research(now.date(), datetime.now(ET))
+              print('PropSims accepted', status)
+              def keys(rows):
+                  return {(str(x['player']).strip().casefold(),team_code(x['team']),matchup_key(x['game']))
+                          for x in rows if x.get('paired_minutes',0)>0 and x.get('points',0)>0}
+              left, right = keys(rg), keys(ps)
+              print('Public exact name/team/matchup overlap', len(left & right),
+                    'RG paired', len(left), 'PropSims paired', len(right),
+                    '(not contest eligibility or post-confirmation coverage)')
+          except Exception as exc:
+              print('RG coverage probe unavailable:', type(exc).__name__, str(exc)[:200])
+          PY
