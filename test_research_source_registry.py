@@ -81,3 +81,34 @@ def test_fantasysportsedge_opponent_only_preview_is_matched_as_reference():
     assert matched.iloc[0].reference_points == 24.5
     duplicate = pd.concat([pool, pool.iloc[[0]].assign(fanduel_id='100-99')], ignore_index=True)
     assert compare_reference(duplicate, rows).empty
+
+
+def test_reference_refresh_isolated_from_failures_and_scoring():
+    from datetime import date, datetime
+    from unittest.mock import patch
+    from slate_research import ET, get_reference_research
+
+    slate = date(2026, 11, 25)
+    now = datetime(2026, 11, 25, 11, tzinfo=ET)
+    line_rows = [{'player': 'Alpha Player', 'team': 'BOS', 'game': 'BOS@NYK', 'reference_fd': 24.5}]
+    fta_rows = [{'player': 'Beta Player', 'team': 'NYK', 'game': 'BOS@NYK',
+                 'reference_salary': 4000, 'reference_points': 20.0}]
+    with patch('slate_research.lineupexperts_reference', return_value=line_rows), \
+         patch('slate_research.fantasysportsedge_reference', side_effect=OSError('unavailable')), \
+         patch('slate_research.fta_nba_reference', return_value=(fta_rows, now, 'Main', 10)) as fta:
+        boards, status = get_reference_research(slate, now, ('BOS@NYK',))
+        assert set(boards) == {'LineupExperts', 'Fantasy Team Advisors'}
+        assert 'unavailable' in status['FantasySportsEdge'].lower()
+        assert 'not scoring evidence' in status['LineupExperts']
+        assert boards['LineupExperts'] == (line_rows, None)
+        fta.assert_called_once_with(slate, now, ('BOS@NYK',))
+    with patch('slate_research.lineupexperts_reference') as line:
+        boards, status = get_reference_research(date(2026, 11, 24), now, ('BOS@NYK',))
+        assert not boards and len(status) == 3
+        line.assert_not_called()
+    checklist = research_checklist('NBA', [('LineupExperts', 'Reference checked: 1 eligible match'),
+                                          ('FantasySportsEdge', 'Reference unavailable'),
+                                          ('WalterPicks', 'claimed evidence')]).set_index('Source')
+    assert '1 eligible match' in checklist.loc['LineupExperts', 'Refresh evidence']
+    assert 'unavailable' in checklist.loc['FantasySportsEdge', 'Refresh evidence']
+    assert 'Not verified' in checklist.loc['WalterPicks', 'Refresh evidence']
