@@ -22,7 +22,7 @@ SOURCES = (
     ('RotoQL / stat-api','Manual research','Manual research','Projections, ownership; count shared provenance once'),
     ('Linemate','Manual research','Manual research','App-based player trends and matchup checks; no verified public projection feed'),
     ('WalterPicks','Manual research','Manual research','App-based player projections and matchup validation; no verified public dated feed'),
-    ('MatchWiz','Manual research','Not established','Dated lineup minutes and partial PTS/REB/AST; FanDuel optimizer board separately available but exact current slate and timestamp unverified; provenance unverified'),
+    ('MatchWiz','Reference','Not established','Dated lineup minutes and partial PTS/REB/AST; FanDuel optimizer board separately available but exact current slate and timestamp unverified; provenance unverified'),
     ('TheCapper','Manual research','Not established','Dated conditional minutes and partial box-score projections; public table omits blocks; assumes player plays; exact slate date required; independent provenance unverified'),
     ('KeelStats','Reference','Not established','Public dated Tonight minutes and historical L10/starts/usage; returning players omitted from redistribution; reference only'),
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
@@ -74,7 +74,7 @@ def research_checklist(sport, source_status=()):
         labels = AUTOMATIC_NBA.get(name,()) if sport == 'NBA' else ()
         if labels:
             current = ' | '.join(f'{label}: {status.get(label,"Not checked this refresh")}' for label in labels)
-        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'KeelStats') and name in status:
+        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'KeelStats', 'MatchWiz') and name in status:
             current = status[name]
         elif mode == 'Identity unresolved':
             current = 'Identity not verified'
