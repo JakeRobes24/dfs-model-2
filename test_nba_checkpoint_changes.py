@@ -8,11 +8,11 @@ def test_checkpoint_detects_all_player_changes_and_ignores_metadata():
         dict(fanduel_id='100-1', fanduel_name='Alpha', team='BOS',game='BOS@NYK',
              salary=5000,roster_eligibility='PG',eligible=True,prelock_status='',
              prelock_starter='',prelock_role='Projected starter',confidence='medium',
-             adjusted_minutes=30,adjusted_fd_points=32,projection_scored_at_utc='old'),
+             adjusted_minutes=30,adjusted_fd_points=32.0,projection_scored_at_utc='old'),
         dict(fanduel_id='100-2', fanduel_name='Beta', team='NYK',game='BOS@NYK',
              salary=4000,roster_eligibility='C',eligible=True,prelock_status='',
              prelock_starter='',prelock_role='Projected bench',confidence='medium',
-             adjusted_minutes=20,adjusted_fd_points=22,projection_scored_at_utc='old')])
+             adjusted_minutes=20,adjusted_fd_points=22.0,projection_scored_at_utc='old')])
     updated = pool.assign(projection_scored_at_utc='new')
     assert compare_checkpoints(pool,updated).empty
     updated.loc[0,'prelock_status'] = 'out'
