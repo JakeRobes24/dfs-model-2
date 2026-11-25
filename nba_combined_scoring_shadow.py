@@ -129,3 +129,131 @@ def compare_frozen_combined(frame):
                     'MAE improvement vs reviewed': mae.adjusted_fd_points-mae.shadow_combined_fd,
                     'Shadow bias': errors.shadow_combined_fd.mean()})
     return pd.DataFrame([summary])
+
+
+PAIRED_RATE_POLICY = 'Reviewed minutes + paired independent production rate (60/40)'
+
+
+def paired_rate_shadow(frame):
+    """Research-only forecast: combine rates, then apply reviewed minutes once.
+
+    Require two distinct fresh providers with their own points AND minutes.
+    Reject pre-confirmation team evidence, conflicting rates and uncertain roles.
+    A later timestamp is not proof that a provider incorporated injury news.
+    """
+    required = set(FIELDS) | {'fanduel_id', 'team', 'game', 'replay_evidence_json',
+                              'replay_captured_at_utc', 'prelock_starter'}
+    columns = ['fanduel_id', 'shadow_rate_fd', 'rate_source_count', 'rate_review_status']
+    if not required <= set(frame):
+        return pd.DataFrame(columns=columns)
+    if frame.fanduel_id.isna().any() or not frame.fanduel_id.is_unique:
+        raise ValueError('Paired rate forecasts require unique contest IDs.')
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    captures = pd.to_datetime(frame.replay_captured_at_utc, utc=True, errors='coerce', format='mixed')
+    if captures.isna().any() or captures.nunique() != 1:
+        return pd.DataFrame(columns=columns)
+    capture = captures.iloc[0]
+    team_cutoffs = {}
+    invalid_teams = set()
+    for row in frame.itertuples():
+        key = (row.team, row.game)
+        try:
+            notes = json.loads(row.replay_evidence_json)
+            if not isinstance(notes, list):
+                raise ValueError
+            for note in notes:
+                if not isinstance(note, dict):
+                    raise ValueError
+                if note.get('official') is not True:
+                    continue
+                status = str(note.get('status','')).lower()
+                starter = str(note.get('starter','')).lower()
+                if status not in {'out','inactive','suspended','available','probable','questionable','doubtful'} and starter not in {'starter','bench'}:
+                    continue
+                stamp = pd.Timestamp(note['observed_at'])
+                if pd.isna(stamp) or stamp.tzinfo is None or stamp > capture:
+                    raise ValueError
+                if stamp >= capture - pd.Timedelta(hours=6):
+                    team_cutoffs[key] = max(team_cutoffs.get(key, stamp), stamp)
+        except (ValueError, TypeError, KeyError, OverflowError):
+            invalid_teams.add(key)
+    output = []
+    for row in frame.itertuples():
+        result = [row.fanduel_id, None, 0, 'Unsupported or excluded']
+        key = (row.team,row.game)
+        if (key in invalid_teams or not all(isinstance(x,str) and x.strip() for x in key)
+                or str(row.eligible).lower() != 'true'
+                or str(row.injury_flag).upper() in {'O','OUT','Q','D','GTD'}
+                or str(row.prelock_status).lower() in {'out','inactive','suspended','questionable','doubtful'}
+                or row.minutes_method != 'prelock_independent_consensus'
+                or row.blend_status != 'Minutes/status adjustment takes priority'):
+            output.append(result)
+            continue
+        try:
+            minutes, base = float(row.adjusted_minutes), float(row.adjusted_fd_points)
+            if not (math.isfinite(base) and base > 0 and 0 < minutes <= 48):
+                raise ValueError
+            notes = json.loads(row.projection_sources_json)
+            if not isinstance(notes,list) or len(notes) != float(row.projection_source_count):
+                raise ValueError
+            families, rates, weights = set(), [], []
+            earliest = max(capture-pd.Timedelta(hours=6), team_cutoffs.get(key,capture-pd.Timedelta(hours=6)))
+            for note in notes:
+                family = note['family']
+                if not isinstance(family,str) or not family.strip() or family in families:
+                    raise ValueError
+                families.add(family)
+                stamp = pd.Timestamp(note['observed_at'])
+                if pd.isna(stamp) or stamp.tzinfo is None or stamp > capture:
+                    raise ValueError
+                if note.get('paired_minutes') is None or stamp < earliest:
+                    continue
+                p,m,w = map(float,(note['points'],note['paired_minutes'],note['weight']))
+                if not (0 < p <= 150 and 0 < m <= 48 and 0 < w <= 1 and 0 < p/m <= 5):
+                    raise ValueError
+                rates.append(p/m)
+                weights.append(w)
+            result[2] = len(rates)
+            if len(rates) < 2:
+                result[3] = 'Fewer than two fresh post-confirmation paired sources'
+            elif (max(rates)-min(rates))*minutes >= 5:
+                result[3] = 'Independent production rates disagree'
+            else:
+                consensus = sum(r*w for r,w in zip(rates,weights))/sum(weights)
+                result[1] = .6*base + .4*consensus*minutes
+                result[3] = 'Experimental paired-rate forecast'
+        except (ValueError, TypeError, KeyError, OverflowError):
+            pass
+        output.append(result)
+    return pd.DataFrame(output,columns=columns)
+
+
+def compare_frozen_paired_rate(frame):
+    """Same-row retrospective error comparison; never updates live projections."""
+    summary = {'Policy': PAIRED_RATE_POLICY, 'Paired players': 0}
+    needed = {'fanduel_id','eligible','verified_outcome','nba_source','actual_points',
+              'daily_points','adjusted_fd_points'}
+    if not needed <= set(frame):
+        return pd.DataFrame([summary])
+    candidates = paired_rate_shadow(frame)
+    if candidates.empty:
+        return pd.DataFrame([summary])
+    eligible = frame.eligible.astype(str).str.lower().eq('true')
+    played = frame.verified_outcome.eq('played') & frame.nba_source.fillna('').ne('')
+    baseline = pd.to_numeric(frame.daily_points,errors='coerce').map(math.isfinite)
+    summary['Eligible played with baseline'] = int((eligible & played & baseline).sum())
+    paired = frame.merge(candidates,on='fanduel_id',validate='one_to_one')
+    cols = ['daily_points','adjusted_fd_points','shadow_rate_fd','actual_points']
+    paired[cols] = paired[cols].apply(pd.to_numeric,errors='coerce')
+    paired = paired.loc[paired[cols].apply(lambda c:c.map(math.isfinite)).all(axis=1)
+                        & paired.verified_outcome.eq('played') & paired.nba_source.fillna('').ne('')]
+    if paired.empty:
+        return pd.DataFrame([summary])
+    errors = paired[cols[:3]].sub(paired.actual_points,axis=0)
+    mae = errors.abs().mean()
+    summary.update({'Paired players':len(paired),'DAILY MAE':mae.daily_points,
+                    'Reviewed MAE':mae.adjusted_fd_points,'Shadow MAE':mae.shadow_rate_fd,
+                    'MAE improvement vs reviewed':mae.adjusted_fd_points-mae.shadow_rate_fd,
+                    'Shadow bias':errors.shadow_rate_fd.mean()})
+    return pd.DataFrame([summary])
