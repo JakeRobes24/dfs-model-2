@@ -59,3 +59,46 @@ def compare_checkpoints(previous, current):
                              ceiling_delta=deltas.get('ceiling_fd_points')))
     return pd.DataFrame(rows,columns=['fanduel_id','player','changes','previous_status','current_status',
                                       'previous_eligible','current_eligible','minutes_delta','fd_delta','ceiling_delta'])
+
+
+# These cover the optimizer constraints, objective, emitted player values and
+# current status/role warnings. Source metadata remains independently reviewed.
+CANDIDATE_FIELDS = ('fanduel_id', *IDENTITY, *DECISIONS, 'adjusted_minutes',
+                    'adjusted_fd_points', 'minutes_method', 'injury_flag',
+                    'research_attention', 'prelock_change')
+
+
+def candidate_fingerprint(pool, scope, overlap, exclude, objective):
+    """Exact solver-input identity; no rounding, player filtering or tolerance."""
+    import hashlib
+    import json
+    if objective not in ('adjusted_fd_points', 'gpp_objective'):
+        raise ValueError('Unknown candidate objective.')
+    fields = list(dict.fromkeys((*CANDIDATE_FIELDS, objective)))
+    if 'ceiling_fd_points' in pool:
+        fields.append('ceiling_fd_points')
+    if not set(fields) <= set(pool):
+        raise ValueError('Complete candidate inputs required.')
+    if pool.fanduel_id.isna().any() or not pool.fanduel_id.is_unique:
+        raise ValueError('Candidate identity requires distinct player IDs.')
+    values = pool[fields].sort_values('fanduel_id', kind='stable')
+    header = json.dumps([list(scope), overlap, bool(exclude), objective, fields],
+                        separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256((header + '\n' + values.to_csv(index=False)).encode()).hexdigest()
+
+
+def can_reuse_candidates(result):
+    """Only a complete, proven-optimal portfolio and distinct rival may be reused."""
+    lineups, comparison, alternative = result
+    if lineups.empty or comparison.empty or alternative.empty:
+        return False
+    if (set(lineups.lineup) != {1,2,3,4}
+            or len(lineups) != 36 or len(alternative) != 9
+            or not lineups.groupby('lineup').fanduel_id.nunique().eq(9).all()
+            or alternative.fanduel_id.nunique() != 9
+            or not lineups.solver_optimal.all() or not alternative.solver_optimal.all()
+            or not lineups.team_rules_verified.all() or not alternative.team_rules_verified.all()
+            or set(comparison['Lineup']) != {1,2,3,4}
+            or not comparison['Alternative proven optimal'].all()):
+        return False
+    return True
