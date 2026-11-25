@@ -359,3 +359,19 @@ def test_minutes_references_join_existing_review_queue_without_scoring_votes():
     stale = dict(a,retrieved_at=(now-timedelta(hours=7)).isoformat())
     assert reference_review_queue(pool,{'MatchWiz':([stale],None)},now).empty
     pd.testing.assert_frame_equal(pool,before)
+
+
+
+def test_paired_data_documentation_does_not_promote_manual_providers():
+    for sport in ('NBA', 'NFL'):
+        rows = research_checklist(sport, [('DraftEdge', 'claimed paired data'),
+                                          ('RotoQL / stat-api', 'claimed paired data')]).set_index('Source')
+        for name in ('DraftEdge', 'RotoQL / stat-api'):
+            row = rows.loc[name]
+            assert row['Integration'] == 'Manual research'
+            assert 'Not verified' in row['Refresh evidence']
+            assert 'claimed paired data' not in row['Refresh evidence']
+            assert row['Verified access link'].startswith('https://')
+        assert 'count shared provenance once' in rows.loc['RotoQL / stat-api', 'Research purpose']
+    nba = research_checklist('NBA').set_index('Source')
+    assert 'does not expose projected minutes' in nba.loc['Daily Fantasy Fuel', 'Research purpose']
