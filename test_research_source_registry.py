@@ -112,3 +112,36 @@ def test_reference_refresh_isolated_from_failures_and_scoring():
     assert '1 eligible match' in checklist.loc['LineupExperts', 'Refresh evidence']
     assert 'unavailable' in checklist.loc['FantasySportsEdge', 'Refresh evidence']
     assert 'Not verified' in checklist.loc['WalterPicks', 'Refresh evidence']
+
+
+def test_reference_review_prioritizes_missing_and_preserves_provenance():
+    from datetime import datetime, timedelta
+    import pandas as pd
+    from slate_research import ET, reference_review_queue
+    now = datetime(2026, 11, 25, 11, tzinfo=ET)
+    pool = pd.DataFrame([
+        dict(fanduel_id='100-1', fanduel_name='Alpha Player', team='BOS', game='BOS@NYK',
+             salary=4000, eligible=True, projected_fd_points=None, adjusted_fd_points=None, adjusted_minutes=None),
+        dict(fanduel_id='100-2', fanduel_name='Beta Player', team='NYK', game='BOS@NYK',
+             salary=5000, eligible=True, projected_fd_points=30, adjusted_fd_points=30, adjusted_minutes=30),
+        dict(fanduel_id='100-3', fanduel_name='Gamma Player', team='BOS', game='BOS@NYK',
+             salary=4000, eligible=False, projected_fd_points=20, adjusted_fd_points=0, adjusted_minutes=0),
+    ])
+    before = pool.copy(deep=True)
+    alpha = dict(player='Alpha Player', team='BOS', game='BOS@NYK', reference_fd=18)
+    beta = dict(player='Beta Player', team='NYK', game='BOS@NYK', reference_salary=5000,
+                reference_points=37, reference_minutes=24)
+    gamma = dict(player='Gamma Player', team='BOS', game='BOS@NYK', reference_fd=20)
+    boards = {'LineupExperts': ([alpha, gamma], None),
+              'FantasySportsEdge': ([beta], now - timedelta(hours=7)),
+              'Fantasy Team Advisors': ([beta], now, 'Main', 1)}
+    queue = reference_review_queue(pool, boards, now)
+    assert queue.fanduel_id.tolist() == ['100-1','100-2']
+    assert queue.Provider.tolist() == ['LineupExperts','Fantasy Team Advisors']
+    assert queue.iloc[0]['Published UTC'] == 'Unverified'
+    assert 'Missing DAILY points' in queue.iloc[0].Review
+    assert 'Missing usable model points' in queue.iloc[0].Review
+    assert queue.iloc[1]['FD gap'] == 7 and queue.iloc[1]['Minutes gap'] == -6
+    assert 'Minutes discrepancy' in queue.iloc[1].Review
+    pd.testing.assert_frame_equal(pool, before)
+    assert reference_review_queue(pool, {}, now).empty
