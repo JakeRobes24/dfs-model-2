@@ -150,6 +150,7 @@ def paired_rate_shadow(frame):
         raise ValueError('Paired rate forecasts require unique contest IDs.')
     if frame.empty:
         return pd.DataFrame(columns=columns)
+    from slate_research import POINT_SOURCE_GROUPS
     captures = pd.to_datetime(frame.replay_captured_at_utc, utc=True, errors='coerce', format='mixed')
     if captures.isna().any() or captures.nunique() != 1:
         return pd.DataFrame(columns=columns)
@@ -201,7 +202,8 @@ def paired_rate_shadow(frame):
             earliest = max(capture-pd.Timedelta(hours=6), team_cutoffs.get(key,capture-pd.Timedelta(hours=6)))
             for note in notes:
                 family = note['family']
-                if not isinstance(family,str) or not family.strip() or family in families:
+                if (not isinstance(family,str) or not family.strip() or family in families
+                        or POINT_SOURCE_GROUPS.get(note.get('source')) != family):
                     raise ValueError
                 families.add(family)
                 stamp = pd.Timestamp(note['observed_at'])
@@ -224,7 +226,7 @@ def paired_rate_shadow(frame):
                 result[1] = .6*base + .4*consensus*minutes
                 result[3] = 'Experimental paired-rate forecast'
         except (ValueError, TypeError, KeyError, OverflowError):
-            pass
+            result[3] = 'Invalid or conflicting provider provenance'
         output.append(result)
     return pd.DataFrame(output,columns=columns)
 
@@ -244,6 +246,11 @@ def compare_frozen_paired_rate(frame):
     baseline = pd.to_numeric(frame.daily_points,errors='coerce').map(math.isfinite)
     summary['Eligible played with baseline'] = int((eligible & played & baseline).sum())
     paired = frame.merge(candidates,on='fanduel_id',validate='one_to_one')
+    reviewed = paired.loc[paired.eligible.astype(str).str.lower().eq('true')]
+    summary['Eligible players reviewed for rate blend'] = len(reviewed)
+    summary['Eligible with two fresh paired sources'] = int(reviewed.rate_source_count.ge(2).sum())
+    summary['Eligible supported rate forecasts'] = int(reviewed.shadow_rate_fd.notna().sum())
+    summary['Eligible rate provenance rejected'] = int(reviewed.rate_review_status.eq('Invalid or conflicting provider provenance').sum())
     cols = ['daily_points','adjusted_fd_points','shadow_rate_fd','actual_points']
     paired[cols] = paired[cols].apply(pd.to_numeric,errors='coerce')
     paired = paired.loc[paired[cols].apply(lambda c:c.map(math.isfinite)).all(axis=1)
