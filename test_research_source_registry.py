@@ -255,8 +255,42 @@ def test_recovered_legacy_sources_are_retained_but_not_verified():
         'KeelStats': 'https://keelstats.com/nba/usage',
     }.items():
         assert name in nba.index and name not in nfl.index
-        assert nba.loc[name,'Integration'] == 'Manual research'
+        assert nba.loc[name,'Integration'] == ('Reference' if name == 'KeelStats' else 'Manual research')
         assert nba.loc[name,'Historical reference link'] == link
-        assert nba.loc[name,'Verified access link'] == ''
+        assert nba.loc[name,'Verified access link'] == link
         assert 'Not verified' in nba.loc[name,'Refresh evidence']
     assert 'partial stat lines' in nba.loc['MatchWiz','Research purpose']
+
+
+def test_keelstats_minutes_reference_matches_game_and_rejects_stale_dates():
+    from datetime import date, datetime, timedelta
+    from unittest.mock import patch
+    import pandas as pd
+    import pytest
+    from slate_research import ET, keelstats_reference, compare_keelstats
+    slate = date(2026, 11, 25)
+    now = datetime(2026, 11, 25, 3, tzinfo=ET)
+    html = """<h1>NBA minutes and usage tonight</h1><p>9 NBA games on Wednesday, November 25.</p>
+    <p>Updated Nov 25, 2026, 2:33 AM EST</p>
+    <h2>Boston Celtics at New York Knicks 7:00 PM</h2><h3>Boston Celtics</h3>
+    <table><caption>Boston Celtics: minutes and usage tonight</caption>
+    <thead><tr><th>Player</th><th>L10</th><th>Tonight</th><th>USG%</th><th>GS</th></tr></thead>
+    <tbody><tr><th>Alpha Player</th><td>25.0</td><td>31.0</td><td>23.5</td><td>8/10</td></tr>
+    <tr><td>Invalid Player</td><td>20</td><td>60</td><td>10</td><td>0/10</td></tr></tbody></table>"""
+    with patch('slate_research.fetch', return_value=html.encode()):
+        rows, stamp = keelstats_reference(slate, now)
+        assert len(rows) == 1 and stamp.hour == 2
+        assert rows[0]['reference_minutes'] == 31 and rows[0]['reference_l10'] == '25.0'
+        assert 'points' not in rows[0] and rows[0]['game'] == 'BOS@NYK'
+        with pytest.raises(ValueError, match='stale'):
+            keelstats_reference(slate, now + timedelta(hours=7))
+        with pytest.raises(ValueError, match='date'):
+            keelstats_reference(slate - timedelta(days=1), now)
+    pool = pd.DataFrame([
+        dict(fanduel_id='100-1', fanduel_name='Alpha Player', team='BOS', game='BOS@NYK',
+             eligible=True, adjusted_minutes=25),
+        dict(fanduel_id='100-2', fanduel_name='Alpha Player', team='BOS', game='BOS@MIA',
+             eligible=True, adjusted_minutes=25)])
+    compared = compare_keelstats(pool, rows)
+    assert list(compared.fanduel_id) == ['100-1'] and compared.iloc[0].minutes_gap == 6
+    assert compare_keelstats(pool, rows+rows).empty
