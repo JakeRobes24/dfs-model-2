@@ -344,7 +344,7 @@ def render_slate(history_slot):
         st.info('Historical slate: this session does not reconstruct the original pre-lock research. Use frozen archived projections for a true historical replay.')
     with st.expander('Exact contest coverage by research provider'):
         from slate_research import public_coverage
-        coverage_table = public_coverage(pool, notes, projections)
+        coverage_table = public_coverage(scored, notes, projections)
         st.caption('Returned rows can include other contests or unmatched names. Matched eligible players are unique contest IDs, before freshness, disagreement and scoring checks. Zero coverage is not evidence that a player is unavailable.')
         st.dataframe(coverage_table, hide_index=True)
         st.download_button('Download source coverage', coverage_table.to_csv(index=False),
