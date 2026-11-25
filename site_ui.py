@@ -297,13 +297,16 @@ def render_slate(history_slot):
     history = history if history is not None else pd.DataFrame()
 
     st.header('2. Review the player pool')
-    refresh = st.button('Refresh research', key='slate_refresh')
+    refresh = st.button('Refresh all research', key='slate_refresh')
     # Reuse the same freshness window on reruns. A manual refresh is scoped to this session.
     window = now.replace(second=0, microsecond=0, minute=(now.minute // 5) * 5)
+    research_scope = (str(contest_id), str(slate), sha256(contest_bytes).hexdigest())
     refresh_key = 'slate_refreshed_at'
+    saved_refresh = st.session_state.get(refresh_key)
     if refresh:
-        st.session_state[refresh_key] = now.replace(microsecond=0)
-    checked_at = max(window, st.session_state.get(refresh_key, window))
+        saved_refresh = (research_scope, datetime.now(ET))
+        st.session_state[refresh_key] = saved_refresh
+    checked_at = max(window, saved_refresh[1]) if isinstance(saved_refresh, tuple) and saved_refresh[0] == research_scope else window
     with st.spinner('Checking official reports, recent rotations and independent projections…'):
         notes, projections, source_status = public_research(slate, checked_at)
         rotations, rotation_status = public_rotations(slate, tuple(sorted(set(pool.game))))
@@ -322,6 +325,7 @@ def render_slate(history_slot):
             st.error('LineupExperts points must use player IDs from the loaded contest.')
             return
         matched_points += reviewed_points.assign(source=LINEUPEXPERTS_TODAY).to_dict('records')
+    now = datetime.now(ET)
     scored, audit = score_slate(pool, historical, matched_notes, matched_points, now,
                               manual_minutes=minutes, manual_history=minutes_history)
     missing = int((scored.eligible & ~scored.adjusted_fd_points.gt(0)).sum())
@@ -332,6 +336,22 @@ def render_slate(history_slot):
             st.error('Ceilings must contain unique player IDs from this FanDuel contest.')
         else:
             scored['ceiling_fd_points'] = scored.fanduel_id.map(dict(zip(ceiling.fanduel_id, numeric)))
+    from nba_checkpoint_changes import compare_checkpoints
+    checkpoint_key = (*research_scope, sha256(daily_bytes).hexdigest())
+    previous_checkpoint = st.session_state.get('slate_reviewed_checkpoint')
+    if previous_checkpoint is not None and previous_checkpoint[0] == checkpoint_key:
+        try:
+            changes = compare_checkpoints(previous_checkpoint[1], scored)
+        except ValueError as exc:
+            st.info(f'Checkpoint comparison unavailable: {exc}')
+        else:
+            if not changes.empty:
+                st.warning(f'{len(changes)} players have changed eligibility, roles, confidence or projected values. Reassess candidates before lock.')
+                with st.expander('Changes since previous reviewed pool', expanded=True):
+                    st.dataframe(changes.drop(columns='fanduel_id').round(3), hide_index=True)
+            elif refresh:
+                st.caption('No player-level decision changes detected in this refresh. Source freshness and coverage still require review.')
+    st.session_state['slate_reviewed_checkpoint'] = (checkpoint_key, scored.copy(deep=True))
     if missing:
         st.warning(f'{missing} eligible players lack usable projections. Results are provisional until those players are reviewed.')
     st.caption(f'{len(historical)} players with recent minutes evidence · {starters} official starters matched')
@@ -426,10 +446,13 @@ def render_slate(history_slot):
             st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
             reference_key = ('slate_reference_boards', str(contest_id), str(slate), checked_at.isoformat(),
                              tuple(sorted(set(pool.game))))
-            if st.button('Check all five reference boards', key='slate_all_references'):
+            reference_retry = st.button('Recheck reference boards only', key='slate_all_references')
+            saved_reference = st.session_state.get('slate_reference_snapshot')
+            if refresh or reference_retry or saved_reference is None or saved_reference[0] != reference_key:
                 with st.spinner('Checking public reference boards…'):
                     st.session_state['slate_reference_snapshot'] = (
-                        reference_key, get_reference_research(slate, now, tuple(sorted(set(pool.game)))))
+                        reference_key, get_reference_research(slate, datetime.now(ET), tuple(sorted(set(pool.game)))))
+            now = datetime.now(ET)
             saved_reference = st.session_state.get('slate_reference_snapshot')
             if saved_reference is not None and saved_reference[0] == reference_key:
                 reference_boards, reference_status = saved_reference[1]
