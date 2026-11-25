@@ -238,3 +238,68 @@ def team_opportunity_review(scored, audit, as_of):
     return pd.DataFrame(rows, columns=columns).sort_values(
         ['Minutes families since confirmation','Points families since confirmation','fanduel_id']
     ).reset_index(drop=True)
+
+
+def paired_source_coverage(scored, as_of):
+    """Report actual fresh same-provider points/minutes coverage, not a score.
+
+    Counts are an upper bound on shadow-policy support: injury, rate agreement
+    and team confirmation gates are evaluated separately by the shadow model.
+    """
+    if not {'fanduel_id','eligible','projection_sources_json'} <= set(scored):
+        raise ValueError('Paired source coverage requires reviewed projection evidence.')
+    if scored.fanduel_id.isna().any() or not scored.fanduel_id.is_unique:
+        raise ValueError('Coverage requires unique player IDs.')
+    cutoff = pd.Timestamp(as_of)
+    if pd.isna(cutoff) or cutoff.tzinfo is None:
+        raise ValueError('Coverage requires a timezone-aware as-of timestamp.')
+    providers = {}
+    players = []
+    for row in scored.loc[scored.eligible.astype(str).str.lower().eq('true')].itertuples():
+        accepted = {}
+        try:
+            notes = json.loads(row.projection_sources_json)
+            if not isinstance(notes,list):
+                raise ValueError
+            for note in notes:
+                try:
+                    family = note['family']
+                    stamp = pd.Timestamp(note['observed_at'])
+                    points = float(note['points'])
+                    if (not isinstance(family,str) or not family.strip() or pd.isna(stamp)
+                            or stamp.tzinfo is None or not cutoff-pd.Timedelta(hours=6) <= stamp <= cutoff
+                            or not math.isfinite(points) or not 0 < points <= 150):
+                        continue
+                    minutes = note.get('paired_minutes')
+                    paired = False
+                    if minutes is not None:
+                        try:
+                            m = float(minutes)
+                            paired = math.isfinite(m) and 0 < m <= 48 and 0 < points/m <= 5
+                        except (ValueError,TypeError,OverflowError):
+                            pass
+                    accepted.setdefault(family,[]).append((stamp,points,paired,minutes if paired else None))
+                except (ValueError,TypeError,KeyError,OverflowError):
+                    continue
+        except (ValueError,TypeError):
+            pass
+        families = []
+        for family, records in accepted.items():
+            latest = max(t[0] for t in records)
+            current = [t for t in records if t[0] == latest]
+            # Repeated or conflicting latest family records are not independent.
+            if len(current) != 1:
+                continue
+            paired = current[0][2]
+            counts = providers.setdefault(family,[0,0])
+            counts[0] += 1
+            counts[1] += int(paired)
+            if paired:
+                families.append(family)
+        players.append({'fanduel_id':row.fanduel_id,'Paired providers':len(families),
+                        'Paired source families':' · '.join(sorted(families))})
+    provider_rows = [{'Provider':family,'Fresh point players':counts[0],
+                      'Fresh paired players':counts[1]}
+                     for family,counts in sorted(providers.items())]
+    return (pd.DataFrame(players,columns=['fanduel_id','Paired providers','Paired source families']),
+            pd.DataFrame(provider_rows,columns=['Provider','Fresh point players','Fresh paired players']))
