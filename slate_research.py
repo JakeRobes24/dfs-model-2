@@ -634,6 +634,76 @@ def compare_reference(pool, records):
 
 
 
+
+def reference_review_queue(scored, boards, as_of):
+    """Rank research gaps, never treat overlapping reference boards as consensus.
+
+    Each row is one provider/player match. Unknown publication time is explicit.
+    Old dated boards are excluded from the actionable queue. Scores are untouched.
+    """
+    columns = ['fanduel_id', 'Player', 'Salary', 'Provider', 'Published UTC',
+               'DAILY FD', 'Model FD', 'Reference FD', 'FD gap',
+               'Model minutes', 'Reference minutes', 'Minutes gap', 'Review']
+    cutoff = pd.Timestamp(as_of)
+    if pd.isna(cutoff) or cutoff.tzinfo is None:
+        raise ValueError('Reference review requires a timezone-aware cutoff')
+    if not scored.fanduel_id.is_unique:
+        raise ValueError('Reference review requires unique contest IDs')
+    rows = []
+    for name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors'):
+        if name not in boards:
+            continue
+        records, stamp = boards[name][:2]
+        published = None if stamp is None else pd.Timestamp(stamp)
+        if published is None:
+            if name != 'LineupExperts':
+                continue
+        elif (pd.isna(published) or published.tzinfo is None
+              or not cutoff - pd.Timedelta(hours=6) <= published <= cutoff):
+            continue
+        if name == 'LineupExperts':
+            matched = pd.DataFrame(match_public(scored, records))
+            if matched.empty:
+                continue
+            compared = scored.loc[scored.eligible].merge(
+                matched.drop_duplicates('fanduel_id', keep=False)[['fanduel_id', 'reference_fd']],
+                on='fanduel_id', validate='one_to_one').rename(columns={'reference_fd':'reference_points'})
+        else:
+            compared = compare_reference(scored, records)
+        for row in compared.itertuples():
+            def numeric(value, upper):
+                value = pd.to_numeric(value, errors='coerce')
+                return float(value) if pd.notna(value) and 0 <= value <= upper else None
+            points = numeric(row.reference_points, 150)
+            minutes = numeric(getattr(row, 'reference_minutes', None), 48)
+            daily = numeric(row.projected_fd_points, 150)
+            model = numeric(row.adjusted_fd_points, 150)
+            model_minutes = numeric(row.adjusted_minutes, 48)
+            gap = None if points is None or model is None else round(points-model, 2)
+            minute_gap = None if minutes is None or model_minutes is None else round(minutes-model_minutes, 2)
+            reasons = []
+            if points is not None and points > 0 and (daily is None or daily <= 0):
+                reasons.append('Missing DAILY points')
+            if points is not None and points > 0 and (model is None or model <= 0):
+                reasons.append('Missing usable model points')
+            if gap is not None and abs(gap) >= 5:
+                reasons.append('Points discrepancy')
+            if minute_gap is not None and abs(minute_gap) >= 4:
+                reasons.append('Minutes discrepancy')
+            if not reasons:
+                continue
+            rows.append([row.fanduel_id, row.fanduel_name, row.salary, name,
+                         'Unverified' if published is None else published.tz_convert('UTC').isoformat(),
+                         daily, model, points, gap, model_minutes, minutes, minute_gap, '; '.join(reasons)])
+    result = pd.DataFrame(rows, columns=columns)
+    if result.empty:
+        return result
+    result['_missing'] = result.Review.str.contains('Missing')
+    result['_gap'] = result[['FD gap', 'Minutes gap']].apply(pd.to_numeric, errors='coerce').abs().max(axis=1)
+    return result.sort_values(['_missing', '_gap', 'fanduel_id', 'Provider'],
+                              ascending=[False, False, True, True]).drop(columns=['_missing','_gap']).reset_index(drop=True)
+
+
 def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
     if slate != as_of.astimezone(ET).date():
