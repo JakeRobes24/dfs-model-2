@@ -30,7 +30,7 @@ def test_date_weighting_prospective_separation_and_minimum_evidence():
     assert recent.loc['Prospective','Improvement (equal date weight)'] == 0
     assert recent.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     assert recent.loc['Prospective','Improved dates'] == 1
-    assert len(details) == 18
+    assert len(details) == 21
     more = pd.concat([replay(date(2026,11,25)+timedelta(days=i),i+10,20,36)
                       for i in range(5)], ignore_index=True)
     _, result = compare_across_slates(more)
@@ -79,3 +79,12 @@ def test_combined_policy_frozen_sources_and_date_separation():
     assert rows.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     _, unsupported = compare_across_slates(b)
     assert unsupported.loc[unsupported.Policy.eq(COMBINED_POLICY),'Paired players'].iloc[0] == 0
+
+
+def test_paired_rate_policy_has_own_prospective_start():
+    from nba_combined_scoring_shadow import PAIRED_RATE_POLICY
+    frames = [replay(date(2026,11,25), 1, 2, 39), replay(date(2026,11,26), 2, 2, 39)]
+    _, result = compare_across_slates(pd.concat(frames,ignore_index=True))
+    rows = result.loc[result.Policy.eq(PAIRED_RATE_POLICY)].set_index('Period')
+    assert set(rows.index) == {'Exploratory','Prospective'}
+    assert rows['Paired players'].eq(0).all()
