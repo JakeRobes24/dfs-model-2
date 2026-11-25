@@ -633,6 +633,33 @@ def compare_reference(pool, records):
     return compared
 
 
+
+def get_reference_research(slate, as_of, contest_games):
+    """Refresh public reference boards independently, without accepting scoring inputs."""
+    if slate != as_of.astimezone(ET).date():
+        return {}, {name: 'Historical slate: current reference not checked' for name in
+                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors')}
+    jobs = (
+        ('LineupExperts', lambda: (lineupexperts_reference(slate, slate), None)),
+        ('FantasySportsEdge', lambda: fantasysportsedge_reference(slate, as_of)),
+        ('Fantasy Team Advisors', lambda: fta_nba_reference(slate, as_of, contest_games)),
+    )
+    boards, status = {}, {}
+    with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
+        futures = [workers.submit(job) for _, job in jobs]
+        for (name, _), future in zip(jobs, futures):
+            try:
+                result = future.result()
+                if not result[0]:
+                    status[name] = 'Reference checked: no public rows'
+                    continue
+                boards[name] = result
+                status[name] = f'Reference checked: {len(result[0])} returned rows; not scoring evidence'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+                status[name] = 'Reference unavailable for this slate or source format changed'
+    return boards, status
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
