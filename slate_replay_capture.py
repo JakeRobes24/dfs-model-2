@@ -122,6 +122,7 @@ def build_replay_rows(pool, results, slate):
 
     optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(COMBINED_FIELDS) | {
         'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc',
+        'propsims_distribution_json',
     }
     rows = pool[sorted(projection_fields | replay_fields | (optional_fields & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
