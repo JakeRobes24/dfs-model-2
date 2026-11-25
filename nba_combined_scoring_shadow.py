@@ -73,3 +73,59 @@ def compare_combined_shadow(pool, replay):
     return pd.DataFrame([{'Paired players':len(paired),'DAILY MAE':errors.daily_points,
         'Reviewed MAE':errors.adjusted_fd_points,'Experimental MAE':errors.shadow_combined_fd,
         'MAE improvement vs reviewed':errors.adjusted_fd_points-errors.shadow_combined_fd}])
+
+
+COMBINED_POLICY = 'Reviewed minutes + independent points (60/40)'
+
+
+def compare_frozen_combined(frame):
+    """Chronological paired comparison using frozen provider timestamps.
+
+    Older captures with missing provenance are unsupported, not zero forecasts.
+    The caller validates full-slate capture chronology and unique contest IDs.
+    """
+    summary = {'Policy': COMBINED_POLICY, 'Paired players': 0}
+    required = set(FIELDS) | {'fanduel_id', 'replay_captured_at_utc',
+                              'daily_points', 'actual_points', 'verified_outcome', 'nba_source'}
+    if not required <= set(frame):
+        return pd.DataFrame([summary])
+    if frame.fanduel_id.isna().any() or not frame.fanduel_id.is_unique:
+        raise ValueError('Combined comparison requires unique player IDs.')
+    def frozen(row):
+        try:
+            capture = pd.Timestamp(row.replay_captured_at_utc)
+            notes = json.loads(row.projection_sources_json)
+            if pd.isna(capture) or capture.tzinfo is None or not isinstance(notes, list) or not notes:
+                return False
+            for note in notes:
+                stamp = pd.Timestamp(note['observed_at'])
+                if pd.isna(stamp) or stamp.tzinfo is None or stamp > capture:
+                    return False
+            return True
+        except (ValueError, TypeError, KeyError, OverflowError):
+            return False
+    eligible = frame.eligible.astype(str).str.lower().eq('true')
+    played = frame.verified_outcome.eq('played') & frame.nba_source.fillna('').ne('')
+    baseline = pd.to_numeric(frame.daily_points, errors='coerce').map(math.isfinite)
+    summary['Eligible played with baseline'] = int((eligible & played & baseline).sum())
+    if frame.empty:
+        return pd.DataFrame([summary])
+    supported = frame.loc[frame.apply(frozen, axis=1)].copy()
+    if supported.empty:
+        return pd.DataFrame([summary])
+    predictions = reviewed_minutes_shadow(supported)
+    paired = supported.merge(predictions, on='fanduel_id', validate='one_to_one')
+    cols = ['daily_points', 'adjusted_fd_points', 'shadow_combined_fd', 'actual_points']
+    paired[cols] = paired[cols].apply(pd.to_numeric, errors='coerce')
+    finite = paired[cols].apply(lambda x: x.map(math.isfinite)).all(axis=1)
+    paired = paired.loc[finite & paired.verified_outcome.eq('played')
+                        & paired.nba_source.fillna('').ne('')]
+    if paired.empty:
+        return pd.DataFrame([summary])
+    errors = paired[cols[:3]].sub(paired.actual_points, axis=0)
+    mae = errors.abs().mean()
+    summary.update({'Paired players': len(paired), 'DAILY MAE': mae.daily_points,
+                    'Reviewed MAE': mae.adjusted_fd_points, 'Shadow MAE': mae.shadow_combined_fd,
+                    'MAE improvement vs reviewed': mae.adjusted_fd_points-mae.shadow_combined_fd,
+                    'Shadow bias': errors.shadow_combined_fd.mean()})
+    return pd.DataFrame([summary])
