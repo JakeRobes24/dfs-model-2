@@ -32,3 +32,28 @@ def test_courtside_and_4for4_are_retained_as_manual_references_only():
         assert row['Verified access link'].startswith(domain)
     assert 'no injury' in nba.loc['Courtside', 'Research purpose']
     assert 'authorized subscription' in nfl.loc['4for4', 'Research purpose']
+
+
+def test_public_coverage_counts_unique_eligible_exact_matches_and_empty_sources():
+    import pandas as pd
+    from slate_research import public_coverage, DFF, PROPSIMS, RW_MINUTES, ROTOGRINDERS
+    pool = pd.DataFrame([
+        dict(fanduel_id='100-1', fanduel_name='Alpha Player', team='BOS', game='BOS@NYK', eligible=True),
+        dict(fanduel_id='100-2', fanduel_name='Beta Player', team='NYK', game='BOS@NYK', eligible=False),
+        dict(fanduel_id='100-3', fanduel_name='Gamma Player', team='BOS', game='BOS@NYK', eligible=True),
+    ])
+    alpha = dict(player='Alpha Player', team='BOS', game='BOS@NYK', source=DFF, points=35)
+    beta = dict(player='Beta Player', team='NYK', game='BOS@NYK', source=DFF, points=20)
+    wrong = dict(alpha, game='BOS@MIA')
+    notes = [dict(alpha, source=RW_MINUTES, minutes=30),
+             dict(alpha, source=PROPSIMS, minutes=None)]
+    coverage = public_coverage(pool, notes, [alpha, alpha, beta, wrong]).set_index(['Evidence','Provider'])
+    row = coverage.loc[('Points',DFF)]
+    assert row['Returned rows'] == 4
+    assert row['Matched rows'] == 3
+    assert row['Unmatched rows'] == 1
+    assert row['Eligible players matched'] == 1
+    assert row['Eligible players missing'] == 1
+    assert coverage.loc[('Minutes',RW_MINUTES),'Eligible players matched'] == 1
+    assert coverage.loc[('Minutes',PROPSIMS),'Returned rows'] == 0
+    assert coverage.loc[('Points',ROTOGRINDERS),'Eligible players missing'] == 2
