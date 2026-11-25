@@ -12,6 +12,7 @@ SOURCES = (
     ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity'),
+    ('Courtside','Manual research','Not applicable','Prior minutes research; provider independence and fresh data require review'),
     ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections'),
     ('LineupExperts','Reference + verified upload','Manual required','Projections, comparisons and matchup research'),
@@ -24,6 +25,7 @@ SOURCES = (
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
+    ('4for4','Not applicable','Manual research','NFL projections and matchup research; exact access and provenance require verification'),
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
 )
