@@ -836,8 +836,22 @@ def render_slate(history_slot):
                     if can_reuse_candidates(result):
                         # Preserve a complete proven-optimal portfolio independently of changing
                         # research inputs. Never relabel its old projections as current.
+                        earlier = st.session_state.get('last_complete_portfolio')
+                        if earlier is not None and earlier[0] == prepared_key and len(earlier) == 4:
+                            from nba_checkpoint_changes import compare_portfolio_exposure
+                            try:
+                                exposure_changes = compare_portfolio_exposure(
+                                    earlier[3], scored, earlier[2], result[0])
+                            except ValueError as exc:
+                                st.session_state.pop('portfolio_exposure_review', None)
+                                st.caption(f'Portfolio comparison unavailable: {exc}')
+                            else:
+                                st.session_state['portfolio_exposure_review'] = (
+                                    prepared_key, candidate_key, exposure_changes)
+                        else:
+                            st.session_state.pop('portfolio_exposure_review', None)
                         st.session_state['last_complete_portfolio'] = (
-                            prepared_key, candidate_key, result[0].copy(deep=True))
+                            prepared_key, candidate_key, result[0].copy(deep=True), scored.copy(deep=True))
                 else:
                     st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
@@ -865,6 +879,16 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        exposure_review = st.session_state.get('portfolio_exposure_review')
+        if exposure_review is not None and exposure_review[:2] == (prepared_key, candidate_key):
+            with st.expander('Changes since previous complete portfolio'):
+                st.caption('Observed exposure changes and own-projection evidence, not proof of solver causality. A player may disappear even with an unchanged or rising projection because other combinations improve.')
+                if exposure_review[2].empty:
+                    st.info('No exposure changes across the four candidates.')
+                else:
+                    st.dataframe(exposure_review[2].round(3), hide_index=True)
+                    st.download_button('Download exposure change review', exposure_review[2].to_csv(index=False),
+                                       'portfolio_exposure_changes.csv', mime='text/csv')
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')

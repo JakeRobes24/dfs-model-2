@@ -76,3 +76,26 @@ def test_reuse_requires_complete_proven_optimal_portfolio_and_rival():
     assert not can_reuse_candidates((lineups,comparison,alternative.assign(solver_optimal=False)))
     assert not can_reuse_candidates((lineups.assign(team_rules_verified=False),comparison,alternative))
     assert not can_reuse_candidates((lineups,comparison,pd.DataFrame()))
+
+
+def test_portfolio_exposure_distinguishes_own_projection_and_other_combinations():
+    from nba_checkpoint_changes import compare_portfolio_exposure
+    base=dict(team='BOS',game='BOS@NYK',salary=5000,roster_eligibility='PG',
+              eligible=True,prelock_status='',prelock_starter='',prelock_role='',
+              confidence='medium',adjusted_minutes=30.,adjusted_fd_points=30.)
+    pool=pd.DataFrame([dict(base,fanduel_id=f'1-{i}',fanduel_name=f'Player {i}') for i in range(11)])
+    old=pd.DataFrame([dict(lineup=j,fanduel_id=f'1-{i}') for j in range(1,5) for i in range(9)])
+    new=old.copy()
+    new.loc[new.fanduel_id.eq('1-0'),'fanduel_id']='1-9'
+    new.loc[new.fanduel_id.eq('1-1'),'fanduel_id']='1-10'
+    current=pool.copy()
+    current.loc[current.fanduel_id.eq('1-0'),'adjusted_fd_points']=25
+    result=compare_portfolio_exposure(pool,current,old,new).set_index('fanduel_id')
+    assert result.loc['1-0','observed_evidence']=='Own projection fell'
+    assert result.loc['1-1','observed_evidence'].startswith('Own projection unchanged')
+    assert result.loc['1-0','exposure_delta']==-4
+    assert result.loc['1-9','exposure_delta']==4
+    assert result.exposure_delta.sum()==0
+    assert compare_portfolio_exposure(pool,pool,old,old.iloc[::-1]).empty
+    with pytest.raises(ValueError):
+        compare_portfolio_exposure(pool,current,old,new.iloc[:-1])

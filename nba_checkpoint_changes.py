@@ -102,3 +102,53 @@ def can_reuse_candidates(result):
             or not comparison['Alternative proven optimal'].all()):
         return False
     return True
+
+
+def compare_portfolio_exposure(previous_pool, current_pool, previous_lineups, current_lineups):
+    """Explain exposure changes between complete portfolios, without inventing causality.
+
+    Compare exact contest identities, and count roster sets rather than slot changes.
+    A falling projection or eligibility change is observed evidence, not proof that
+    it caused a solver choice. Same-score changes may reflect other constraints,
+    alternative combinations or ties. This does not modify candidate scores.
+    """
+    changes = compare_checkpoints(previous_pool, current_pool).set_index('fanduel_id')
+    old = previous_pool.set_index('fanduel_id')
+    new = current_pool.set_index('fanduel_id')
+    def exposure(lineups):
+        if not {'lineup','fanduel_id'} <= set(lineups):
+            raise ValueError('Complete portfolios required.')
+        if (set(lineups.lineup) != {1,2,3,4} or len(lineups)!=36
+                or not lineups.groupby('lineup').fanduel_id.nunique().eq(9).all()
+                or not lineups.fanduel_id.isin(new.index).all()):
+            raise ValueError('Require four complete nine-player contest lineups.')
+        return lineups.fanduel_id.value_counts()
+    before, after = exposure(previous_lineups), exposure(current_lineups)
+    rows=[]
+    for pid in sorted(set(before.index)|set(after.index)):
+        a,b=int(before.get(pid,0)),int(after.get(pid,0))
+        if a==b:
+            continue
+        prev,cur=old.loc[pid],new.loc[pid]
+        points=pd.to_numeric(pd.Series([prev.adjusted_fd_points,cur.adjusted_fd_points]),errors='coerce')
+        minutes=pd.to_numeric(pd.Series([prev.adjusted_minutes,cur.adjusted_minutes]),errors='coerce')
+        if str(cur.eligible).lower()!='true':
+            evidence='Currently ineligible'
+        elif str(prev.eligible).lower()!='true':
+            evidence='Previously ineligible'
+        elif points.isna().any():
+            evidence='Projection coverage changed or missing'
+        elif points.iloc[1]<points.iloc[0]:
+            evidence='Own projection fell'
+        elif points.iloc[1]>points.iloc[0]:
+            evidence='Own projection rose'
+        else:
+            evidence='Own projection unchanged; compare alternatives, constraints and ties'
+        rows.append(dict(fanduel_id=pid,player=cur.fanduel_name,previous_exposure=a,
+                         current_exposure=b,exposure_delta=b-a,previous_fd=points.iloc[0],
+                         current_fd=points.iloc[1],fd_delta=points.iloc[1]-points.iloc[0],
+                         minutes_delta=minutes.iloc[1]-minutes.iloc[0],observed_evidence=evidence,
+                         checkpoint_changes=changes.loc[pid,'changes'] if pid in changes.index else 'None'))
+    columns=['fanduel_id','player','previous_exposure','current_exposure','exposure_delta',
+             'previous_fd','current_fd','fd_delta','minutes_delta','observed_evidence','checkpoint_changes']
+    return pd.DataFrame(rows,columns=columns).sort_values(['exposure_delta','fanduel_id'])
