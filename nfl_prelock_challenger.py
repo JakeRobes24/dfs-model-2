@@ -35,6 +35,19 @@ def validate_snapshot(snapshot):
             raise ValueError("Invalid salary")
         if not isinstance(p.get("positions"), list) or not p["positions"]:
             raise ValueError("Missing eligibility")
+        # New contest snapshots carry explicit roster-slot permissions.
+        # Older descriptive fixtures only have positions; preserve that
+        # compatibility without overriding an explicit contest restriction.
+        if "roster_eligibility" in p:
+            roster = p["roster_eligibility"]
+            positions = set(p["positions"])
+            expected = positions | ({"FLEX"} if positions & {"RB", "WR", "TE"} else set())
+            if (not isinstance(roster, list) or not roster
+                    or any(not isinstance(slot, str) for slot in roster)
+                    or len(roster) != len(set(roster))
+                    or not set(roster) <= expected
+                    or not positions <= set(roster)):
+                raise ValueError("Invalid explicit roster eligibility")
         if p.get("projection_fd") is None:
             raise ValueError("Missing individual player projection")
         if type(p["projection_fd"]) not in (int, float):
@@ -71,6 +84,8 @@ def compare_prelock_candidates(snapshot, candidates):
             p = pool[pid]
             allowed = set(p["positions"])
             needed = "RB" if slot.startswith("RB") else "WR" if slot.startswith("WR") else slot
+            if "roster_eligibility" in p and needed not in p["roster_eligibility"]:
+                raise ValueError(f"Contest roster eligibility forbids {slot}")
             if needed == "FLEX":
                 if not allowed.intersection({"RB", "WR", "TE"}):
                     raise ValueError("Ineligible FLEX")

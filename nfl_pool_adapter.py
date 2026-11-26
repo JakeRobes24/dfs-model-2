@@ -54,7 +54,9 @@ def build_nfl_snapshot(rows, *, contest_id, slate_date, source_version, cutoff_u
     snapshot = {"contest_id": contest_id, "slate_date": slate_date,
                 "source_version": source_version, "cutoff_utc": cutoff_utc,
                 "salary_cap": salary_cap,
-                "players": [{k: row[k] for k in ("player_id", "salary", "positions", "projection_fd", "asof_utc")}
+                "players": [{**{k: row[k] for k in ("player_id", "salary", "positions", "projection_fd", "asof_utc")},
+                             **({"roster_eligibility": row["roster_eligibility"]}
+                                if "roster_eligibility" in row else {})}
                             for row in rows]}
     validate_snapshot(snapshot)
     return snapshot

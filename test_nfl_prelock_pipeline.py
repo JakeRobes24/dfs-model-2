@@ -155,6 +155,21 @@ class NFLPipelineTests(unittest.TestCase):
         kw["contest_id"]="999999"
         with self.assertRaises(ValueError):run_nfl_prelock_pipeline(csv,projections,candidates,**kw)
 
+    def test_explicit_flex_restriction_is_not_lost(self):
+        csv, projections, candidates, kw = inputs()
+        csv = csv.replace("Player7,RB,RB/FLEX,", "Player7,RB,RB,")
+        with self.assertRaisesRegex(ValueError, "Contest roster eligibility forbids FLEX"):
+            run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+
+    def test_restricted_rb_remains_eligible_at_rb(self):
+        csv, projections, candidates, kw = inputs()
+        csv = csv.replace("Player7,RB,RB/FLEX,", "Player7,RB,RB,")
+        slots = candidates[0]["slots"]
+        slots["RB1"], slots["FLEX"] = slots["FLEX"], slots["RB1"]
+        result = run_nfl_prelock_pipeline(csv, projections, candidates, **kw)
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["rankings"][0]["projected_fd"], 126)
+
     def test_salary_violation_rejected(self):
         csv,projections,candidates,kw=inputs()
         csv=csv.replace("5000,DAL", "9000,DAL")
