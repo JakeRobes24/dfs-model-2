@@ -1,0 +1,5 @@
+# November 26 next-day numerical acquisition
+
+Verified model 137bc798: 635 general and 15 private integration tests, all checks green. Private preflight 45816391438 verified no Nov26 games, 11 official Nov27 games beginning 7pm ET; actual FanDuel contest scope remains unknown. Fifteen public source responses, two access denials (LineupExperts and KeelStats), one unresolved provider (FantasyProjections). NBA House and PropSims displayed explicit Friday headings. Other pages' existence does not verify player forecasts. FTA heading referred to Nov25. Durable private evidence branch 97c8f5ac1aedbf121e726dfcf58c755d8d5cfe0c verified all three ZIP hashes.
+
+New separate next-day advisory module checks official future schedule, validates published PropSims forecasts with existing parser and explicit next-day mode, collects dated NBA House minutes, deduplicates exact name/team/matchup matches, measures overlap and minutes gaps. The live PropSims loader retains its same-day guard. No inferred contest eligibility/salaries, no scoring votes, no stale substitutions. Four tests submitted; real next-day numerical capture pending. Refresh on slate day. No production changes.

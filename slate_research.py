@@ -391,7 +391,11 @@ def propsims_distribution(row, median):
 
 
 def propsims_research(slate, as_of):
-    soup = BeautifulSoup(fetch_paired_provider(PROPSIMS), 'html.parser')
+    return _parse_propsims_board(fetch_paired_provider(PROPSIMS), slate, as_of)
+
+
+def _parse_propsims_board(raw, slate, as_of, *, next_day_preview=False):
+    soup = BeautifulSoup(raw, 'html.parser')
     heading = soup.select_one('h1')
     clock = soup.select_one('.updstamp time[datetime]')
     if heading is None or clock is None or not heading.get_text(strip=True).endswith(
@@ -404,7 +408,9 @@ def propsims_research(slate, as_of):
     if published.tzinfo is None or as_of.tzinfo is None:
         raise ValueError('PropSims requires timezone-aware publication and review times')
     stamp = published.astimezone(ET)
-    if (slate != as_of.astimezone(ET).date()
+    review_day = as_of.astimezone(ET).date()
+    expected_day = review_day + timedelta(days=1) if next_day_preview else review_day
+    if (slate != expected_day
             or stamp.date() not in {slate, slate - timedelta(days=1)}
             or not as_of - timedelta(hours=6) <= stamp <= as_of):
         raise ValueError('PropSims projections are stale or not for the current slate')
