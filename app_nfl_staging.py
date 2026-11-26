@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 from nfl_daily_audit import audit_nfl_daily
 from nfl_reviewed_candidates import compare_reviewed_nfl
+from nfl_weather_ui import render_nfl_weather
 from nfl_projection_review import review_nfl_projections
 from research_source_registry import research_checklist
 
@@ -31,6 +32,8 @@ if contest and daily and contest_id:
         st.dataframe(pd.DataFrame(report["players"]),hide_index=True)
         st.download_button("Download coverage audit",json.dumps(report,indent=2),
                            file_name="nfl_coverage_audit.json",mime="application/json")
+
+        render_nfl_weather(report)
 
         with st.expander("4for4 public FanDuel reference"):
             st.caption("Checks public weekly projections against exact contest identities. These values are advisory.")
