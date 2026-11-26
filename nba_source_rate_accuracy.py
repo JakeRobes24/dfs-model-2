@@ -1,4 +1,5 @@
 """Historical same-provider production-rate diagnostics; never modifies scoring."""
+import numpy as np
 import pandas as pd
 
 from nba_source_accuracy import review_source_dates, records
@@ -51,6 +52,9 @@ def review_source_rates(replay, target_day, *, source_details=None):
         reviewed = rate(row.reviewed_points,row.reviewed_minutes)
         result.append(dict(slate_date=row.slate_date,fanduel_id=row.fanduel_id,provider=row.provider,
                            observed_at=row.observed_at,actual_minutes=row.actual_minutes,
+                           source_minutes=row.forecast_minutes,source_fd_points=row.forecast_points,
+                           daily_minutes=row.daily_minutes,daily_fd_points=row.daily_points,
+                           nba_source=raw.get('nba_source'),
                            source_fppm=source,actual_fppm=actual,daily_fppm=daily,reviewed_fppm=reviewed,
                            source_error=source-actual,daily_error=None if daily is None else daily-actual,
                            reviewed_error=None if reviewed is None else reviewed-actual,
@@ -130,7 +134,6 @@ def fixed_rate_shrinkage_review(details):
     """
     if details.empty:
         return pd.DataFrame(), pd.DataFrame()
-    import numpy as np
     keys = ['slate_date', 'provider', 'fanduel_id']
     numbers = ['reviewed_minutes', 'actual_minutes', 'reviewed_fd',
                'actual_fd_points', 'source_fppm', 'source_rate_reviewed_minutes_fd']
@@ -175,4 +178,64 @@ def fixed_rate_shrinkage_review(details):
         equal_day_fppm_mae=('fppm_mae','mean'),
         equal_day_fd_edge=('fd_edge_vs_reviewed','mean'),
         improved_dates=('fd_edge_vs_reviewed',lambda s: int(s.gt(1e-9).sum())))
+    return daily, summary
+
+
+def paired_rate_attribution(details):
+    """Compare swapping minutes, production rate, or both on identical played rows."""
+    if details.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    keys = ['slate_date', 'provider', 'fanduel_id']
+    numbers = ['actual_minutes', 'actual_fd_points', 'daily_minutes', 'daily_fd_points',
+               'reviewed_minutes', 'reviewed_fd', 'source_minutes', 'source_fd_points', 'source_fppm']
+    provenance = 'nba_source'
+    if not set(keys + numbers + [provenance]) <= set(details):
+        raise ValueError('Use dated paired forecasts with official outcome provenance.')
+    if details[keys].isna().any().any() or details.duplicated(keys).any():
+        raise ValueError('Use one row per source, player and date.')
+    data = details[keys + numbers + [provenance]].copy()
+    data[numbers] = data[numbers].apply(pd.to_numeric, errors='coerce')
+    minutes = ['actual_minutes', 'daily_minutes', 'reviewed_minutes', 'source_minutes']
+    forecasts = ['daily_fd_points', 'reviewed_fd', 'source_fd_points']
+    valid = np.isfinite(data[numbers]).all(axis=1)
+    valid &= data[provenance].fillna('').astype(str).str.strip().ne('')
+    valid &= data[minutes].ge(MIN_ACTUAL_MINUTES).all(axis=1) & data[minutes].le(60).all(axis=1)
+    valid &= data.source_minutes.le(48) & data[forecasts].gt(0).all(axis=1)
+    data = data.loc[valid]
+    if data.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    if not np.isclose(data.source_fppm * data.source_minutes, data.source_fd_points,
+                      rtol=0, atol=1e-6).all():
+        raise ValueError('Source minutes and rate do not reproduce source points.')
+
+    rows = []
+    for (day, provider), group in data.groupby(['slate_date', 'provider']):
+        reviewed_rate = group.reviewed_fd / group.reviewed_minutes
+        actual_rate = group.actual_fd_points / group.actual_minutes
+        policies = [
+            ('DAILY', group.daily_minutes, group.daily_fd_points / group.daily_minutes),
+            ('Reviewed', group.reviewed_minutes, reviewed_rate),
+            ('Provider minutes only', group.source_minutes, reviewed_rate),
+            ('Provider scoring rate only', group.reviewed_minutes, group.source_fppm),
+            ('Provider minutes and rate', group.source_minutes, group.source_fppm),
+        ]
+        baseline_error = (group.reviewed_fd - group.actual_fd_points).abs()
+        for policy, time, rate in policies:
+            fd_error = time * rate - group.actual_fd_points
+            rate_error = rate - actual_rate
+            edge = baseline_error - fd_error.abs()
+            rows.append(dict(slate_date=day, provider=provider, policy=policy,
+                             paired_players=len(group), minutes_mae=(time-group.actual_minutes).abs().mean(),
+                             fppm_mae=rate_error.abs().mean(), fppm_bias=rate_error.mean(),
+                             fd_mae=fd_error.abs().mean(), fd_bias=fd_error.mean(),
+                             fd_edge_vs_reviewed=edge.mean(),
+                             players_improved=int(edge.gt(1e-9).sum()),
+                             players_worsened=int(edge.lt(-1e-9).sum())))
+    daily = pd.DataFrame(rows)
+    summary = daily.groupby(['provider', 'policy'], sort=False, as_index=False).agg(
+        dates=('slate_date', 'nunique'), paired_players=('paired_players', 'sum'),
+        equal_day_minutes_mae=('minutes_mae', 'mean'), equal_day_fppm_mae=('fppm_mae', 'mean'),
+        equal_day_fppm_bias=('fppm_bias', 'mean'), equal_day_fd_mae=('fd_mae', 'mean'),
+        equal_day_fd_bias=('fd_bias', 'mean'), equal_day_fd_edge=('fd_edge_vs_reviewed', 'mean'),
+        improving_dates=('fd_edge_vs_reviewed', lambda s: int(s.gt(1e-9).sum())))
     return daily, summary

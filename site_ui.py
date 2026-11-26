@@ -970,6 +970,14 @@ def render_slate(history_slot):
                                     st.download_button('Download dated rate blend sensitivity', shrink_days.to_csv(index=False),
                                                        file_name=f'{slate}-prior-rate-blends.csv', mime='text/csv',
                                                        key='slate_prior_rate_blends')
+                                from nba_source_rate_accuracy import paired_rate_attribution
+                                attribution_days, attribution = paired_rate_attribution(rate_details)
+                                if not attribution.empty:
+                                    st.caption('Compare replacing playing time, scoring rate or both on the same verified player outcomes.')
+                                    st.dataframe(attribution.round(3), hide_index=True)
+                                    st.download_button('Download minutes and rate comparison', attribution_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-rate-attribution.csv', mime='text/csv',
+                                                       key='slate_prior_rate_attribution')
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')

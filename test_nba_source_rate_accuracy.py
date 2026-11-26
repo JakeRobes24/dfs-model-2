@@ -105,3 +105,44 @@ def test_fixed_rate_shrinkage_weights_dates_equally_and_does_not_select_winner()
     assert full.paired_players == 3
     assert full.equal_day_fd_edge == pytest.approx(0)
     assert full.improved_dates == 1
+
+
+def test_paired_attribution_separates_minutes_from_scoring_rate():
+    from nba_source_rate_accuracy import paired_rate_attribution
+
+    base, _ = sample()
+    base.update(nba_source='NBA official box score', adjusted_fd_points=25)
+    details, _, _ = review_source_rates(pd.DataFrame([base]), date(2026, 11, 25))
+    original = details.copy(deep=True)
+    daily, summary = paired_rate_attribution(details)
+    rows = daily.set_index('policy')
+    assert len(summary) == 5
+    assert rows.paired_players.eq(1).all()
+    assert rows.loc['Reviewed', 'fd_mae'] == pytest.approx(5)
+    assert rows.loc['Provider minutes only', 'fd_mae'] == pytest.approx(0)
+    assert rows.loc['Provider scoring rate only', 'fd_mae'] == pytest.approx(0)
+    assert rows.loc['Provider scoring rate only', 'fppm_mae'] == pytest.approx(.2)
+    assert rows.loc['Provider minutes and rate', 'fd_mae'] == pytest.approx(6)
+    assert rows.loc['Provider minutes and rate', 'players_worsened'] == 1
+    pd.testing.assert_frame_equal(details, original)
+
+
+def test_paired_attribution_uses_one_common_sample_and_balances_dates():
+    from nba_source_rate_accuracy import paired_rate_attribution
+
+    base, _ = sample()
+    base.update(nba_source='NBA official box score', adjusted_fd_points=25)
+    first, _, _ = review_source_rates(pd.DataFrame([base]), date(2026, 11, 25))
+    other = first.assign(slate_date='2026-11-23', actual_fd_points=25)
+    details = pd.concat([first, other, other.assign(fanduel_id='137127-2'),
+                         first.assign(fanduel_id='137128-2', nba_source=''),
+                         first.assign(fanduel_id='137128-3', daily_minutes=None)])
+    daily, summary = paired_rate_attribution(details)
+    assert daily.groupby('slate_date').paired_players.nunique().eq(1).all()
+    assert summary.paired_players.eq(3).all()
+    provider_time = summary.set_index('policy').loc['Provider minutes only']
+    assert provider_time.equal_day_fd_edge == pytest.approx(0)
+    with pytest.raises(ValueError, match='one row'):
+        paired_rate_attribution(pd.concat([first, first]))
+    with pytest.raises(ValueError, match='reproduce'):
+        paired_rate_attribution(first.assign(source_fd_points=40))
