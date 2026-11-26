@@ -85,3 +85,14 @@ class NFLSingleGameImportTests(unittest.TestCase):
             import_nfl_contest(raw.replace("9300","9000"),single_game=True)
         with self.assertRaises(ValueError):
             import_nfl_contest(raw.replace("AnyFLEX","FLEX"),single_game=True)
+
+
+    def test_upload_template_padding_columns_not_mistaken_for_duplicate_fields(self):
+        raw = ('MVP - 1.5X Points,AnyFLEX,AnyFLEX,AnyFLEX,AnyFLEX,AnyFLEX,,Instructions\n'
+               ',,,,,,,Id,Nickname,Position,Roster Position,Salary,Team,Game,Injury Indicator,MVP 1.5x Salary,,\n'
+               ',,,,,,,137104-1,Running Back,RB,MVP - 1.5X Points/AnyFLEX,9600,LAR,GB@LAR,,14400,,')
+        pool = import_nfl_contest(raw,single_game=True,expected_contest_id='137104')
+        self.assertEqual(len(pool),1)
+        self.assertEqual(pool[0]['mvp_salary'],14400)
+        with self.assertRaises(ValueError):
+            import_nfl_contest(raw.replace('Injury Indicator,MVP','Salary,MVP'),single_game=True)

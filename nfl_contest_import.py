@@ -22,7 +22,10 @@ def _read(raw):
         columns = [x.strip().lower() for x in next(csv.reader([line]))]
         if {"id", "salary", "game"}.issubset(columns):
             reader = csv.DictReader(io.StringIO("\n".join(lines[start:])))
-            if len(reader.fieldnames) != len(set(reader.fieldnames)):
+            # Upload templates have repeated unnamed padding columns. Only
+            # duplicate named fields are ambiguous.
+            named = [key.strip().lower() for key in reader.fieldnames if key.strip()]
+            if len(named) != len(set(named)):
                 raise ValueError("Ambiguous duplicate CSV headers")
             return list(reader)
     raise ValueError("Missing FanDuel player-list header")
