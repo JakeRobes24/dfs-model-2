@@ -16,6 +16,8 @@ on:
       - 'test_nfl_contest_import.py'
       - 'nfl_prelock_pipeline.py'
       - 'test_nfl_prelock_pipeline.py'
+      - 'nfl_workload_scenarios.py'
+      - 'test_nfl_workload_scenarios.py'
       - 'nfl_replay_coverage.py'
       - 'test_nfl_replay_coverage.py'
       - 'tests/fixtures/nov22_2026_nfl_fd_preliminary.json'
@@ -35,7 +37,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run isolated NFL fixture regression tests
-        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates test_nfl_candidate_report test_nfl_prelock_challenger test_nfl_pool_adapter test_nfl_contest_import test_nfl_prelock_pipeline test_nfl_replay_coverage
+        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates test_nfl_candidate_report test_nfl_prelock_challenger test_nfl_pool_adapter test_nfl_contest_import test_nfl_prelock_pipeline test_nfl_replay_coverage test_nfl_workload_scenarios
       - name: Verify fixture CLI
         run: python nfl_fixture_validation.py
       - name: Generate descriptive candidate report

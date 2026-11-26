@@ -71,3 +71,17 @@ class NFLContestImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NFLSingleGameImportTests(unittest.TestCase):
+    def test_exact_mvp_salary_and_kicker_preserved(self):
+        raw = HEADER + ",MVP 1.5x Salary\n136799-1,Kicker,K,MVP - 1.5X Points/AnyFLEX,6200,DAL,DAL@NYG,,9300"
+        p = import_nfl_contest(raw,single_game=True)[0]
+        self.assertEqual(p["mvp_salary"],9300)
+        self.assertEqual(p["positions"],["K"])
+        with self.assertRaises(ValueError):
+            import_nfl_contest(raw)
+        with self.assertRaises(ValueError):
+            import_nfl_contest(raw.replace("9300","9000"),single_game=True)
+        with self.assertRaises(ValueError):
+            import_nfl_contest(raw.replace("AnyFLEX","FLEX"),single_game=True)

@@ -36,7 +36,7 @@ def _field(row, *names):
     return ""
 
 
-def import_nfl_contest(raw, *, expected_contest_id=None):
+def import_nfl_contest(raw, *, expected_contest_id=None, single_game=False):
     """Return full contest pool including out players; never silently drop rows."""
     rows = _read(raw)
     if not rows:
@@ -52,7 +52,7 @@ def import_nfl_contest(raw, *, expected_contest_id=None):
         pos = _field(row, "Position").upper()
         if pos == "D":
             pos = "DEF"
-        if pos not in NFL_POSITIONS:
+        if pos not in (NFL_POSITIONS | {"K"} if single_game else NFL_POSITIONS):
             raise ValueError(f"Invalid NFL position: {pos}")
         salary_text = _field(row, "Salary").replace("$", "").replace(",", "")
         if not salary_text.isdigit():
@@ -69,16 +69,27 @@ def import_nfl_contest(raw, *, expected_contest_id=None):
         roster = _field(row, "Roster Position", "Roster Eligibility").upper()
         tokens = {x.strip() for x in roster.split("/") if x.strip()}
         expected = {pos} | ({"FLEX"} if pos in {"RB", "WR", "TE"} else set())
-        if not tokens or not tokens.issubset(expected) or pos not in tokens:
+        mvp_salary = None
+        if single_game:
+            if tokens != {"MVP - 1.5X POINTS", "ANYFLEX"}:
+                raise ValueError("Incorrect NFL single-game roster eligibility")
+            mvp_text = _field(row, "MVP 1.5x Salary").replace("$", "").replace(",", "")
+            if not mvp_text.isdigit() or 2*int(mvp_text) != 3*salary:
+                raise ValueError("Missing or inconsistent contest MVP salary")
+            mvp_salary = int(mvp_text)
+        elif not tokens or not tokens.issubset(expected) or pos not in tokens:
             raise ValueError("Incorrect NFL roster eligibility")
         flag = _field(row, "Injury Indicator", "Injury Flag").upper()
         pool.append({"player_id": pid, "contest_id": contest_id, "player": name,
                      "salary": salary, "positions": [pos], "roster_eligibility": sorted(tokens),
                      "team": team, "game": game, "status": "out" if flag in OUT_FLAGS else
-                     "unknown" if not flag else flag.lower(), "injury_flag": flag})
+                     "unknown" if not flag else flag.lower(), "injury_flag": flag,
+                     **({"mvp_salary": mvp_salary} if single_game else {})})
     ids = [p["player_id"] for p in pool]
     if len(set(ids)) != len(ids) or len({p["contest_id"] for p in pool}) != 1:
         raise ValueError("Duplicate player IDs or mixed contest IDs")
+    if single_game and len({p["game"] for p in pool}) != 1:
+        raise ValueError("Single-game contest contains multiple matchups")
     return pool
 
 
