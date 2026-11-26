@@ -11,7 +11,7 @@ SOURCES = (
     ('Official NFL reports / statistics','Not applicable','Manual required','Availability, active/inactive, workload and verified results'),
     ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
-    ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity'),
+    ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
     ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections; public board does not expose projected minutes'),

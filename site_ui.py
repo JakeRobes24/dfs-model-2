@@ -1183,6 +1183,11 @@ def render_slate(history_slot):
     if archived_matchwiz is not None:
         from matchwiz_reference import freeze_matchwiz_reference
         archive_pool = freeze_matchwiz_reference(archive_pool, archived_matchwiz, slate, datetime.now(ET))
+    # Record the acquisition result even when no forecast survived matching.
+    # Review cutoff is not a provider's publication timestamp or a fresh fetch.
+    from nba_acquisition_receipt import acquisition_receipt
+    archive_pool = archive_pool.assign(replay_source_acquisition_json=acquisition_receipt(
+        slate, checked_at, source_status, notes, projections))
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes), market_events=archived_market_events)
 

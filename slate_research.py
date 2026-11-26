@@ -915,6 +915,29 @@ def get_reference_research(slate, as_of, contest_games):
     return boards, status
 
 
+def public_source_failure(error):
+    """Safe diagnostic category; never expose raw exceptions or credentials."""
+    if isinstance(error, HTTPError):
+        if error.code in (401, 403):
+            return 'Unavailable: access denied'
+        if error.code == 429:
+            return 'Unavailable: rate limited'
+        if 500 <= error.code <= 599:
+            return 'Unavailable: provider server error'
+        return 'Unavailable: HTTP error'
+    if isinstance(error, (TimeoutError, ConnectionError, URLError, OSError)):
+        return 'Unavailable: transport error'
+    if isinstance(error, ValueError):
+        reason = str(error).lower()
+        if any(word in reason for word in ('stale', 'different slate', 'current slate', 'date does not match')):
+            return 'Unavailable: freshness or slate date mismatch'
+        if any(word in reason for word in ('timestamp', 'update time', 'publication', 'timezone-aware', 'slate date unavailable')):
+            return 'Unavailable: timestamp or date evidence missing'
+        if any(word in reason for word in ('no verifiable', 'table unavailable', 'no public')):
+            return 'Unavailable: no verifiable public rows'
+    return 'Unavailable: data or source format could not be validated'
+
+
 def get_public_research(slate, as_of):
     """Return evidence plus report-level status. Never infer an injury from an absent row."""
     jobs = [('NBA injury report', lambda: league_injuries(slate, as_of), []),
@@ -929,8 +952,8 @@ def get_public_research(slate, as_of):
         for (label, _, empty), future in zip(jobs, futures):
             try:
                 data, detail = future.result()
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
-                data, detail = empty, 'Unavailable for this slate or source format changed'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as error:
+                data, detail = empty, public_source_failure(error)
             results.append(data)
             status.append((label, detail))
     injuries, starters, projections, *additional = results
