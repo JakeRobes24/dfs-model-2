@@ -234,3 +234,70 @@ def receiving_scenarios(contest, pair, *, team_pass_attempts, other_targets, cut
     return dict(baseline_pair_targets=total,baseline_first_share=base[0][1]/total,
                 scenarios=scenarios,timestamp_gate_used=cutoff_utc is not None,
                 status="Sensitivity only; caller-supplied team budget not independently certified")
+
+
+def compare_single_game_workload_candidates(contest, candidates, points, scenarios, *, salary_cap):
+    """Compare fixed six-player rosters with fixed MVP assignments.
+
+    Require all points for supplied candidates, exact roster slots and salary
+    eligibility. Do not infer missing projections or silently change MVP.
+    Reuse the exact salary validator for every baseline and scenario.
+    """
+    ids = [c.get("candidate_id") for c in candidates]
+    if not ids or any(not isinstance(i,str) or not i.strip() for i in ids) or len(ids)!=len(set(ids)):
+        raise ValueError("Unique nonempty candidate IDs required")
+    def scores(values):
+        rows=[]
+        for c in candidates:
+            roster=c.get("roster_ids")
+            mvp=c.get("mvp")
+            if not isinstance(roster,list) or mvp not in roster:
+                raise ValueError("Fixed roster and MVP required")
+            legal=compare_mvp_assignments(contest,roster,values,salary_cap=salary_cap)
+            selected=next((p for p in legal if p["mvp"]==mvp),None)
+            if selected is None:
+                raise ValueError("Fixed MVP assignment exceeds cap or is invalid")
+            rows.append(dict(candidate_id=c["candidate_id"],mvp=mvp,salary=selected["salary"],
+                             projected_fd=round(selected["projected_fd"],3)))
+        return sorted(rows,key=lambda r:(-r["projected_fd"],r["candidate_id"]))
+    baseline=scores(points)
+    by_base={r["candidate_id"]:r["projected_fd"] for r in baseline}
+    if not scenarios:
+        raise ValueError("Explicit workload scenarios required")
+    contest_ids={p["player_id"] for p in contest}
+    seen=set()
+    rows=[]
+    for s in scenarios:
+        sid=s.get("scenario_id")
+        if not isinstance(sid,str) or not sid.strip() or sid in seen:
+            raise ValueError("Unique scenario IDs required")
+        seen.add(sid)
+        updates=s.get("players")
+        if not isinstance(updates,list) or not updates:
+            raise ValueError("Explicit scenario player overrides required")
+        altered=dict(points)
+        used=set()
+        for p in updates:
+            pid=p.get("player_id")
+            if pid not in contest_ids or pid in used or pid not in points:
+                raise ValueError("Unknown, missing-baseline or duplicate scenario player")
+            used.add(pid)
+            altered[pid]=_number(p.get("projection_fd"),-30,150)
+        ranking=scores(altered)
+        best=ranking[0]["projected_fd"]
+        for r in ranking:
+            rows.append(dict(r,scenario_id=sid,baseline_fd=by_base[r["candidate_id"]],
+                             delta_fd=round(r["projected_fd"]-by_base[r["candidate_id"]],3),
+                             gap_to_best=round(best-r["projected_fd"],3),
+                             tied_best=r["projected_fd"]==best))
+    summary=[]
+    for cid in ids:
+        group=[r for r in rows if r["candidate_id"]==cid]
+        summary.append(dict(candidate_id=cid,baseline_fd=by_base[cid],
+                            min_fd=min(r["projected_fd"] for r in group),
+                            max_fd=max(r["projected_fd"] for r in group),
+                            worst_gap_to_best=max(r["gap_to_best"] for r in group),
+                            tied_best_scenarios=sum(r["tied_best"] for r in group),
+                            scenario_count=len(group)))
+    return dict(baseline=baseline,scenarios=rows,summary=summary,
+                status="Fixed roster and MVP sensitivity only; partial pool, not optimization or probabilities")

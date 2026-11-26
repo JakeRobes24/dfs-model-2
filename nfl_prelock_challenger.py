@@ -82,3 +82,62 @@ def compare_prelock_candidates(snapshot, candidates):
             raise ValueError("Salary cap exceeded")
         results.append({"candidate_id": candidate["candidate_id"], "projected_fd": round(score, 3), "salary": salary})
     return sorted(results, key=lambda x: (-x["projected_fd"], x["candidate_id"]))
+
+
+def compare_workload_candidates(snapshot, candidates, scenarios):
+    """Research-only classic candidate sensitivity on an unchanged full snapshot.
+
+    Scenario records contain a unique scenario_id and exactly specified
+    player point overrides. Unaffected players retain their original scores.
+    Validate every candidate and every scenario independently. Counts of
+    scenario wins are not estimated probabilities or GPP expected value.
+    """
+    from copy import deepcopy
+    import math
+    pool = validate_snapshot(snapshot)
+    baseline = compare_prelock_candidates(snapshot, candidates)
+    ids = [r['candidate_id'] for r in baseline]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate candidate IDs")
+    if not scenarios:
+        raise ValueError("At least one explicit workload scenario required")
+    by_base = {r['candidate_id']:r['projected_fd'] for r in baseline}
+    rows = []
+    seen = set()
+    for scenario in scenarios:
+        sid = scenario.get('scenario_id')
+        if not isinstance(sid,str) or not sid.strip() or sid in seen:
+            raise ValueError("Unique scenario IDs required")
+        seen.add(sid)
+        updates = scenario.get('players')
+        if not isinstance(updates,list) or not updates:
+            raise ValueError("Explicit scenario player overrides required")
+        overrides = {}
+        for p in updates:
+            pid = p.get('player_id')
+            v = p.get('projection_fd')
+            if pid not in pool or pid in overrides or type(v) not in (int,float) or not math.isfinite(v):
+                raise ValueError("Invalid or duplicate scenario player override")
+            overrides[pid] = v
+        altered = deepcopy(snapshot)
+        for p in altered['players']:
+            if p['player_id'] in overrides:
+                p['projection_fd'] = overrides[p['player_id']]
+        ranking = compare_prelock_candidates(altered,candidates)
+        best = ranking[0]['projected_fd']
+        for row in ranking:
+            rows.append(dict(row,scenario_id=sid,baseline_fd=by_base[row['candidate_id']],
+                             delta_fd=round(row['projected_fd']-by_base[row['candidate_id']],3),
+                             gap_to_best=round(best-row['projected_fd'],3),
+                             tied_best=row['projected_fd']==best))
+    summary=[]
+    for cid in ids:
+        group=[r for r in rows if r['candidate_id']==cid]
+        summary.append(dict(candidate_id=cid,baseline_fd=by_base[cid],
+                            min_fd=min(r['projected_fd'] for r in group),
+                            max_fd=max(r['projected_fd'] for r in group),
+                            worst_gap_to_best=max(r['gap_to_best'] for r in group),
+                            tied_best_scenarios=sum(r['tied_best'] for r in group),
+                            scenario_count=len(group)))
+    return dict(baseline=baseline,scenarios=rows,summary=summary,
+                status="Fixed candidate sensitivity only; scenario counts are not probabilities")

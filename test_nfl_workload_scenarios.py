@@ -95,3 +95,47 @@ class NFLTeamVolumeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             receiving_scenarios(pool(),records,team_pass_attempts=36,other_targets=17,
                                 cutoff_utc="2026-11-25T23:00:00Z")
+
+
+class NFLCandidateWorkloadTests(unittest.TestCase):
+    def test_classic_scenarios_change_preferred_candidate_without_mutating_snapshot(self):
+        from copy import deepcopy
+        from test_nfl_prelock_challenger import inputs
+        from nfl_prelock_challenger import compare_workload_candidates
+        s,a=inputs()
+        s["players"].append(dict(s["players"][1],player_id="9",projection_fd=10.))
+        b=deepcopy(a)
+        b["candidate_id"]="B"
+        b["slots"]["RB1"]="9"
+        original=deepcopy(s)
+        scenarios=[dict(scenario_id="low",players=[dict(player_id="1",projection_fd=5.)]),
+                   dict(scenario_id="high",players=[dict(player_id="1",projection_fd=20.)])]
+        r=compare_workload_candidates(s,[a,b],scenarios)
+        self.assertEqual(r["baseline"][0]["candidate_id"],"A")
+        self.assertEqual([p["candidate_id"] for p in r["scenarios"] if p["tied_best"]],["B","A"])
+        self.assertEqual(s,original)
+        with self.assertRaises(ValueError):
+            compare_workload_candidates(s,[a,b],scenarios+[scenarios[0]])
+        with self.assertRaises(ValueError):
+            compare_workload_candidates(s,[a,b],[dict(scenario_id="bad",players=[dict(player_id="X",projection_fd=1)])])
+
+    def test_single_game_preserves_mvp_and_rejects_missing_baselines(self):
+        from nfl_workload_scenarios import compare_single_game_workload_candidates
+        c=pool()
+        ids=[p["player_id"] for p in c]
+        values={pid:10. for pid in ids}
+        values.update({"0":16.6,"1":20.6})
+        candidates=[dict(candidate_id="Corum MVP",roster_ids=ids,mvp="0"),
+                    dict(candidate_id="Williams MVP",roster_ids=ids,mvp="1")]
+        s=backfield_scenarios(c,pair())["scenarios"]
+        scenarios=[dict(scenario_id=str(i),players=x["players"]) for i,x in enumerate(s)]
+        r=compare_single_game_workload_candidates(c,candidates,values,scenarios,salary_cap=60000)
+        self.assertEqual(r["baseline"][0]["candidate_id"],"Williams MVP")
+        wins={row["candidate_id"] for row in r["scenarios"] if row["tied_best"]}
+        self.assertEqual(wins,{"Corum MVP","Williams MVP"})
+        for row in r["scenarios"]:
+            self.assertEqual(row["salary"],52000)
+        with self.assertRaises(ValueError):
+            compare_single_game_workload_candidates(c,candidates,{"0":16.6,"1":20.6},scenarios,salary_cap=60000)
+        with self.assertRaises(ValueError):
+            compare_single_game_workload_candidates(c,candidates,values,scenarios,salary_cap=51000)
