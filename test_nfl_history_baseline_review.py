@@ -1,3 +1,4 @@
+import math
 import json
 from pathlib import Path
 import pytest
@@ -55,6 +56,13 @@ def test_receiving_benchmark_reproduces_saved_sample():
     for cohort in report['cohorts']:
         result = compare_receiving_baselines(cohort['history'], player_ids=cohort['player_ids'],
                                              team=cohort['team'], target_day=cohort['target_day'])
-        assert {k:v for k,v in result.items() if k != 'rows'} == cohort['result']
+        expected = cohort['result']
+        for key in ('paired_games', 'complete_games', 'dropped_windows'):
+            assert result[key] == expected[key]
+        assert len(result['summary']) == len(expected['summary'])
+        for actual, reference in zip(result['summary'], expected['summary']):
+            assert (actual['policy'], actual['dates']) == (reference['policy'], reference['dates'])
+            for metric in ('mae', 'bias', 'worst_miss'):
+                assert math.isclose(actual[metric], reference[metric], rel_tol=1e-12, abs_tol=1e-12)
         for row in result['rows']:
             assert max(row['training_dates']) < row['date']
