@@ -301,3 +301,56 @@ def compare_single_game_workload_candidates(contest, candidates, points, scenari
                             scenario_count=len(group)))
     return dict(baseline=baseline,scenarios=rows,summary=summary,
                 status="Fixed roster and MVP sensitivity only; partial pool, not optimization or probabilities")
+
+
+def historical_backfield_prior(contest, pair, history, *, target_day):
+    """Fixed retrospective hypothesis: shrink pair volume and carry share separately.
+
+    Use at most four earlier explicitly paired same-team regular-season games,
+    minimum three, with a 40% history weight. No current-game outcomes,
+    inferred zeros, or assumed workload transfer from a third player.
+    """
+    from datetime import date
+    day=date.fromisoformat(target_day)
+    base=backfield_scenarios(contest,pair)
+    ids=[p["player_id"] for p in pair]
+    team=next(p["team"] for p in contest if p["player_id"]==ids[0])
+    seen=set()
+    accepted=[]
+    for row in history:
+        stamp=date.fromisoformat(row["date"])
+        if stamp>=day:
+            continue
+        if row.get("team")!=team or row.get("season_type")!="regular":
+            continue
+        if not row.get("source") or not row.get("opponent"):
+            raise ValueError("Historical game provenance required")
+        if stamp in seen:
+            raise ValueError("Ambiguous duplicate historical date")
+        seen.add(stamp)
+        counts=row.get("carries")
+        if not isinstance(counts,dict) or set(counts)!=set(ids):
+            raise ValueError("Explicit same-game pair counts required")
+        a,b=(_number(counts[k],0,60) for k in ids)
+        if a+b>60 or a+b==0:
+            continue
+        accepted.append((stamp,a,b))
+    recent=sorted(accepted,reverse=True)[:4]
+    if len(recent)<3:
+        return dict(supported=False,games=len(recent),status="Insufficient paired history")
+    a=sum(r[1] for r in recent)
+    b=sum(r[2] for r in recent)
+    volume=(a+b)/len(recent)
+    share=a/(a+b)
+    total=.6*base["baseline_pair_carries"]+.4*volume
+    first=.6*base["baseline_first_share"]+.4*share
+    output=[]
+    for p,s in zip(pair,(first,1-first)):
+        rate=(.1*p["rushing_yards"]+6*p["rushing_td"])/p["carries"]
+        carries=total*s
+        output.append(dict(player_id=p["player_id"],carries=carries,
+                           projection_fd=p["projection_fd"]+(carries-p["carries"])*rate))
+    return dict(supported=True,games=len(recent),history_dates=[r[0].isoformat() for r in recent],
+                historical_pair_volume=volume,historical_first_share=share,
+                blended_pair_volume=total,blended_first_share=first,players=output,
+                status="Fixed exploratory historical prior; no live scoring or certified provenance")

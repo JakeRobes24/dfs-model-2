@@ -139,3 +139,20 @@ class NFLCandidateWorkloadTests(unittest.TestCase):
             compare_single_game_workload_candidates(c,candidates,{"0":16.6,"1":20.6},scenarios,salary_cap=60000)
         with self.assertRaises(ValueError):
             compare_single_game_workload_candidates(c,candidates,values,scenarios,salary_cap=51000)
+
+
+class NFLHistoricalPriorTests(unittest.TestCase):
+    def test_prior_excludes_current_and_future_games_and_preserves_pair_total(self):
+        from nfl_workload_scenarios import historical_backfield_prior
+        history=[dict(date=f"2026-11-{d:02}",team="LAR",opponent="GB",season_type="regular",
+                      source="team game log",carries={"0":17,"1":12}) for d in (1,8,15)]
+        history.append(dict(history[0],date="2026-11-25",carries={"0":32,"1":12}))
+        result=historical_backfield_prior(pool(),pair(),history,target_day="2026-11-25")
+        self.assertTrue(result["supported"])
+        self.assertEqual(result["games"],3)
+        self.assertAlmostEqual(result["historical_first_share"],17/29)
+        self.assertAlmostEqual(result["blended_pair_volume"],.6*26.29+.4*29)
+        self.assertAlmostEqual(sum(p["carries"] for p in result["players"]),result["blended_pair_volume"])
+        self.assertFalse(historical_backfield_prior(pool(),pair(),history[:2],target_day="2026-11-25")["supported"])
+        with self.assertRaises(ValueError):
+            historical_backfield_prior(pool(),pair(),history+[history[0]],target_day="2026-11-25")
