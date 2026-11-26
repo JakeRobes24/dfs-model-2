@@ -1,0 +1,37 @@
+{
+  "source_blob": "97ad8103cee5606f1074cd18bfcdb964e2d592b3",
+  "source": "tests/fixtures/nov24_historical_rate_replay.json",
+  "method": "Independent JS arithmetic on earlier archived official played outcomes; conditional on playing, 10+ actual/reviewed minutes, positive reviewed points; subtract date mean residual; report within-game teammate and opponent cross-products, equally weighted games",
+  "players": 50,
+  "dates": 1,
+  "games": [
+    {
+      "game": "DAL@DEN",
+      "players": 18,
+      "teammate_pairs": 72,
+      "opponent_pairs": 81,
+      "teammate_cross_product": 46.70930986489791,
+      "opponent_cross_product": -53.50995725157304
+    },
+    {
+      "game": "DET@ORL",
+      "players": 17,
+      "teammate_pairs": 64,
+      "opponent_pairs": 72,
+      "teammate_cross_product": -0.6445836254679397,
+      "opponent_cross_product": -9.180804531355372
+    },
+    {
+      "game": "BOS@WAS",
+      "players": 15,
+      "teammate_pairs": 49,
+      "opponent_pairs": 56,
+      "teammate_cross_product": -12.040860283594643,
+      "opponent_cross_product": 0.34290873565480445
+    }
+  ],
+  "mean_residual": 1.9292165960402727,
+  "teammate_equal_game": 11.341288651945112,
+  "opponent_equal_game": -20.782617682424537,
+  "limitations": "One date and three games. Player pairs overlap; no independent pair sample, calibrated correlation, held-out test or promotion. Review threshold five dates and twenty games is exploratory, not proof of adequacy. Current simulations unchanged."
+}
