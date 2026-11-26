@@ -1,0 +1,127 @@
+{
+  "date": "2026-11-25",
+  "contest_id": "137104",
+  "sources": [
+    "https://www.therams.com/team/players-roster/blake-corum/logs/",
+    "https://www.therams.com/team/players-roster/kyren-williams/logs/"
+  ],
+  "baseline_source": "Original DAILY 3(6).csv and original FanDuel contest CSV, recovered from user Library. Capture timestamp unverified.",
+  "contest": [
+    {
+      "player_id": "137104-137967",
+      "team": "LAR",
+      "game": "GB@LAR",
+      "positions": [
+        "RB"
+      ],
+      "status": "unknown",
+      "salary": 9600,
+      "mvp_salary": 14400,
+      "roster_eligibility": [
+        "MVP - 1.5X POINTS",
+        "ANYFLEX"
+      ]
+    },
+    {
+      "player_id": "137104-104433",
+      "team": "LAR",
+      "game": "GB@LAR",
+      "positions": [
+        "RB"
+      ],
+      "status": "unknown",
+      "salary": 10200,
+      "mvp_salary": 15300,
+      "roster_eligibility": [
+        "MVP - 1.5X POINTS",
+        "ANYFLEX"
+      ]
+    }
+  ],
+  "pair": [
+    {
+      "player_id": "137104-137967",
+      "player": "Blake Corum",
+      "projection_fd": 16.6,
+      "carries": 9.43,
+      "rushing_yards": 42.16,
+      "rushing_td": 0.22
+    },
+    {
+      "player_id": "137104-104433",
+      "player": "Kyren Williams",
+      "projection_fd": 20.6,
+      "carries": 16.86,
+      "rushing_yards": 74.86,
+      "rushing_td": 0.53
+    }
+  ],
+  "history": [
+    {
+      "date": "2026-10-25",
+      "opponent": "LV",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 17,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-11-01",
+      "opponent": "LAC",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 11,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "opponent": "WAS",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 11,
+        "137104-104433": 15
+      }
+    },
+    {
+      "date": "2026-11-15",
+      "opponent": "ARI",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 17,
+        "137104-104433": 12
+      }
+    }
+  ],
+  "results": {
+    "historical_pair_volume": 28.75,
+    "historical_corum_share": 0.48695652173913045,
+    "baseline_pair_volume": 26.29,
+    "baseline_corum_share": 0.3586915176873336,
+    "blended_pair_volume": 27.274,
+    "blended_corum_share": 0.40999751930805234,
+    "blended_carries": [
+      11.18227234160782,
+      16.091727658392184
+    ],
+    "actual_carries": [
+      32,
+      12
+    ],
+    "baseline_carry_mae": 13.715,
+    "shadow_carry_mae": 12.454727658392182,
+    "actual_pair_volume": 44,
+    "actual_corum_share": 0.7272727272727273
+  },
+  "method": "Existing historical_backfield_prior, four completed same-team games prior to Nov25, fixed 40% history shrinkage, separately for pair volume and share. JS arithmetic checked; direct Python parity test added.",
+  "limits": "One backfield and one retrospective date, not prospective or a certified final prelock replay. Pair carries exclude other rushers. Target-game stats excluded from prior. Team game logs retrieved after target, historical dates only. Contest status not independently verified for replay. No scoring promotion."
+}
