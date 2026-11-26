@@ -981,6 +981,21 @@ def render_slate(history_slot):
                                        for row in source_summary.itertuples()}
                             st.caption('Predictive evidence across saved NBA sources')
                             st.dataframe(predictive_coverage('NBA', matched=matched), hide_index=True, height=245)
+                        from nba_reference_accuracy import review_reference_dates
+                        try:
+                            ref_details, ref_daily, ref_summary, ref_coverage = review_reference_dates(training, slate)
+                        except ValueError as exc:
+                            st.warning(f'Reference accuracy review unavailable: {exc}')
+                        else:
+                            if not ref_coverage.empty:
+                                st.caption('Archived reference coverage: publication unknown, stale and post-news holds remain separate from dated predictive evidence.')
+                                st.dataframe(ref_coverage, hide_index=True)
+                            if not ref_summary.empty:
+                                st.caption('Reference-only predictive accuracy: matched played outcomes, equal date weighting. Not independent consensus or scoring weights.')
+                                st.dataframe(ref_summary.round(3), hide_index=True)
+                                st.download_button('Download reference accuracy details', ref_details.to_csv(index=False),
+                                                   file_name=f'{slate}-prior-reference-accuracy.csv', mime='text/csv',
+                                                   key='slate_prior_reference_accuracy')
                         if not source_summary.empty:
                             consensus_review = compare_minutes_consensus(source_details)
                             if not consensus_review.empty:
