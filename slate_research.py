@@ -910,8 +910,8 @@ def get_reference_research(slate, as_of, contest_games):
                     continue
                 boards[name] = result
                 status[name] = f'Reference checked: {len(result[0])} returned rows; not scoring evidence'
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
-                status[name] = 'Reference unavailable for this slate or source format changed'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+                status[name] = 'Reference ' + public_source_failure(exc)
     return boards, status
 
 

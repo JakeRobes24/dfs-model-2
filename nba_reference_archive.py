@@ -1,0 +1,86 @@
+"""Freeze reference-board numerical evidence, separate from accepted scoring.
+
+Keep exact eligible matches, explicit publication timestamp (or unknown),
+retrieval/observation time and source status. Never promote reference rows to
+independent votes or claim their publication date from retrieval time.
+"""
+import json
+from datetime import date
+from collections import defaultdict
+import pandas as pd
+from nba_distribution_review import bounded,timestamp
+from research_source_registry import RESEARCH_LINKS
+from slate_research import match_public,compare_reference,compare_keelstats
+
+PROVIDERS=('LineupExperts','FantasySportsEdge','Fantasy Team Advisors','MatchWiz','KeelStats')
+FIELDS=('replay_reference_forecasts_json','replay_reference_coverage_json')
+
+def freeze_reference_boards(pool,boards,status,slate,observed_at):
+    if type(slate) is not date or not pool.fanduel_id.is_unique or pool.fanduel_id.isna().any():
+        raise ValueError('Require exact dated unique contest pool')
+    cutoff=timestamp(observed_at)
+    if cutoff is None:
+        raise ValueError('Reference observation requires timezone')
+    eligible=set(pool.loc[pool.eligible.astype(str).str.lower().eq('true'),'fanduel_id'])
+    matched_by_player=defaultdict(list)
+    counts=[]
+    for name in PROVIDERS:
+        row=dict(provider=name,access_url=RESEARCH_LINKS[name],
+                 status=str(status.get(name,'Not checked this refresh')),returned_rows=None,
+                 matched_players=None,fresh_dated_players=None,publication_unknown_players=None,
+                 eligible_players=len(eligible),scope='Reference only; not an independent scoring vote')
+        if name not in boards:
+            counts.append(row)
+            continue
+        records,stamp=boards[name][:2]
+        row['returned_rows']=len(records)
+        published=timestamp(stamp)
+        row.update(matched_players=0,fresh_dated_players=0,publication_unknown_players=0)
+        if cutoff.tz_convert('America/New_York').date()!=slate:
+            row['status']='Reference observation not on selected slate date'
+            counts.append(row)
+            continue
+        if stamp is not None and (published is None or published>cutoff):
+            row['status']='Reference publication timestamp invalid or future'
+            counts.append(row)
+            continue
+        try:
+            if name=='LineupExperts':
+                compared=pd.DataFrame(match_public(pool,records))
+                if not compared.empty:
+                    compared=compared.drop_duplicates('fanduel_id',keep=False).rename(columns={'reference_fd':'reference_points'})
+            elif name in ('MatchWiz','KeelStats'):
+                compared=compare_keelstats(pool,records)
+            else:
+                compared=compare_reference(pool,records)
+            if not compared.empty:
+                for item in compared.to_dict('records'):
+                    pid=item['fanduel_id']
+                    if pid not in eligible:
+                        continue
+                    fp=bounded(item.get('reference_points'),0,150)
+                    minutes=bounded(item.get('reference_minutes'),0,48)
+                    if fp is None and minutes is None:
+                        continue
+                    freshness=('Publication unknown' if published is None else
+                               'Dated within six hours' if cutoff-pd.Timedelta(hours=6)<=published
+                               else 'Dated but stale')
+                    matched_by_player[pid].append(dict(provider=name,source=RESEARCH_LINKS[name],
+                        observed_at=cutoff.isoformat(),published_at=published.isoformat() if published is not None else None,
+                        slate_date=slate.isoformat(),freshness=freshness,fd_points=fp,minutes=minutes,
+                        scoring_accepted=False))
+                    row['matched_players']+=1
+                    row['fresh_dated_players']+=int(freshness=='Dated within six hours')
+                    row['publication_unknown_players']+=int(freshness=='Publication unknown')
+        except (ValueError,TypeError,KeyError,AttributeError):
+            row['status']='Reference matching could not be verified'
+            for entries in matched_by_player.values():
+                entries[:]=[e for e in entries if e['provider']!=name]
+            row.update(matched_players=0,fresh_dated_players=0,publication_unknown_players=0)
+        counts.append(row)
+    receipt=dict(version=1,slate_date=slate.isoformat(),observed_at=cutoff.isoformat(),providers=counts,
+                 warning='Observation time of cached reference board, not fetch or publication proof. Unknown is not zero; reference rows are not independent consensus.')
+    out=pool.assign(replay_reference_forecasts_json=pool.fanduel_id.map(
+        lambda pid:json.dumps(matched_by_player.get(pid,[]),sort_keys=True,allow_nan=False)),
+        replay_reference_coverage_json=json.dumps(receipt,sort_keys=True,allow_nan=False))
+    return out,pd.DataFrame(counts)

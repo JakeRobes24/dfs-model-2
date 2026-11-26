@@ -127,7 +127,8 @@ def build_replay_rows(pool, results, slate):
     from nba_research_triage import LARGE_MINUTES_CAPTURE_FIELDS
     from nba_consensus_history import FROZEN_FIELDS as CONSENSUS_HISTORY_FIELDS
     from nba_window_shadow import FROZEN_FIELDS as HISTORY_WINDOW_FIELDS
-    optional_fields = set(HISTORY_WINDOW_FIELDS) | set(CONSENSUS_HISTORY_FIELDS) | set(LARGE_MINUTES_CAPTURE_FIELDS) | set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | set(COMPONENT_FIELDS) | {'daily_box_'+k for k in COMPONENT_STATS} | {
+    from nba_reference_archive import FIELDS as REFERENCE_ARCHIVE_FIELDS
+    optional_fields = set(REFERENCE_ARCHIVE_FIELDS) | set(HISTORY_WINDOW_FIELDS) | set(CONSENSUS_HISTORY_FIELDS) | set(LARGE_MINUTES_CAPTURE_FIELDS) | set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | set(COMPONENT_FIELDS) | {'daily_box_'+k for k in COMPONENT_STATS} | {
         'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc',
         'propsims_distribution_json', 'matchwiz_reference_json', 'replay_source_acquisition_json',
     }

@@ -501,6 +501,7 @@ def render_slate(history_slot):
     archived_matchwiz = None
     archived_market_events = ()
     reference_status = {}
+    reference_boards = {}
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
             st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
@@ -1254,6 +1255,12 @@ def render_slate(history_slot):
                                               for c in columns})
     archive_pool = archive_pool.assign(replay_source_acquisition_json=acquisition_receipt(
         slate, checked_at, source_status, notes, projections))
+    from nba_reference_archive import freeze_reference_boards
+    archive_pool, reference_coverage = freeze_reference_boards(
+        archive_pool, reference_boards, reference_status, slate, datetime.now(ET))
+    with st.expander('Archived reference-board coverage'):
+        st.caption('Matched numerical references preserved for later research. Unknown publication times and unavailable sources do not become accepted projections.')
+        st.dataframe(reference_coverage, hide_index=True)
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes), market_events=archived_market_events)
 
