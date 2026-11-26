@@ -128,3 +128,25 @@ def test_reviewed_candidate_simulation_uses_adjusted_scores_and_prior_verified_r
         simulate_reviewed_candidates(prior, pool.assign(eligible=False), rosters, '2026-11-20')
     with pytest.raises(ValueError, match='Insufficient earlier'):
         simulate_reviewed_candidates(extra, pool, rosters, '2026-11-20')
+
+
+def test_residual_training_comparison_uses_identical_prior_and_heldout_samples():
+    from nba_simulation import compare_residual_training
+    def frozen(day,contest):
+        data=historical_rows(day,0)
+        return data.assign(fanduel_id=[f'{contest}-{i}' for i in range(len(data))],
+            adjusted_minutes=data.actual_minutes,adjusted_fd_points=data.actual_points,
+            verified_outcome='played',nba_source='Official NBA box',
+            replay_before_full_slate_tip=True,replay_timing='before_scheduled_tip',
+            replay_captured_at_utc=day+'T18:00:00Z',replay_cutoff_utc=day+'T23:00:00Z')
+    a,b,c=frozen('2026-11-18',1),frozen('2026-11-20',2),frozen('2026-11-22',3)
+    bad=frozen('2026-11-19',4).assign(replay_timing='at_or_after_cutoff')
+    result,summary=compare_residual_training(pd.concat([c,bad,a,b]),'2026-11-22',draws=256)
+    assert set(result.slate_date)=={'2026-11-20'}
+    assert result.train_players.eq(24).all() and result.test_players.eq(24).all()
+    assert len(result)==4
+    assert result.loc[result.policy.eq('Reviewed residuals'),'interval_score'].max()<1e-10
+    assert result.loc[result.policy.eq('DAILY residuals'),'interval_score'].min()>0
+    assert summary.dates.eq(1).all()
+    assert compare_residual_training(a,'2026-11-22')[0].empty
+    assert compare_residual_training(pd.concat([a,a,b]),'2026-11-22')[0].empty

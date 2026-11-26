@@ -964,6 +964,15 @@ def render_slate(history_slot):
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')
+                        from nba_simulation import compare_residual_training
+                        residual_days, residual_summary = compare_residual_training(training, slate)
+                        if not residual_summary.empty:
+                            st.caption('Held-out residual calibration: same verified played samples and reviewed target projections. Lower 80% interval score is better; no automatic simulator changes.')
+                            st.dataframe(residual_summary.round(3), hide_index=True)
+                            st.download_button('Download residual calibration by date', residual_days.to_csv(index=False),
+                                               'residual_training_calibration.csv', mime='text/csv')
+                        else:
+                            st.caption('Need at least two distinct verified pre-tip dates for matched residual calibration.')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
