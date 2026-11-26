@@ -168,6 +168,14 @@ def reconcile_exports(contest_raw, daily_raw):
     for column in stat_columns:
         values = number(field(daily, column.removeprefix('daily_'), required=False))
         daily[column] = values.where(values.ge(0))
+    # Optional original component forecasts, distinct from replay daily_points (FD).
+    box_stats = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'turnovers',
+                 'fieldGoalsAttempted', 'freeThrowsAttempted']
+    for stat in box_stats:
+        column = 'daily_box_' + stat
+        values = number(field(daily, stat, required=False))
+        daily[column] = values.where(values.between(0, 150))
+        stat_columns.append(column)
     daily['duplicate_daily'] = daily.daily_key.duplicated(keep=False) | daily.daily_key.isin(
         set(pool.loc[pool.daily_key.duplicated(keep=False), 'daily_key'])
     )

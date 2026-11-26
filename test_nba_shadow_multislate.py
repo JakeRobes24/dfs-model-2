@@ -30,7 +30,7 @@ def test_date_weighting_prospective_separation_and_minimum_evidence():
     assert recent.loc['Prospective','Improvement (equal date weight)'] == 0
     assert recent.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     assert recent.loc['Prospective','Improved dates'] == 1
-    assert len(details) == 27
+    assert len(details) == 33
     more = pd.concat([replay(date(2026,11,25)+timedelta(days=i),i+10,20,36)
                       for i in range(5)], ignore_index=True)
     _, result = compare_across_slates(more)
@@ -134,3 +134,12 @@ def test_new_opportunity_policies_have_separate_declaration_and_preserve_older_p
     assert rows['Paired players'].eq(0).all()
     recent = result.loc[result.Policy.eq('Recent rate')]
     assert recent['Paired players'].sum() == 4
+
+
+def test_historical_rate_policy_is_not_prospective_until_after_declaration():
+    from nba_shadow_research import HISTORY_RATE_POLICY
+    frames = [replay(date(2026,11,d),d,2,39) for d in (26,27)]
+    daily, result = compare_across_slates(pd.concat(frames,ignore_index=True))
+    rows = result.loc[result.Policy.eq(HISTORY_RATE_POLICY)]
+    assert set(rows.Period) == {'Exploratory','Prospective'}
+    assert rows['Paired players'].eq(0).all()

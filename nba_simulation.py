@@ -226,3 +226,80 @@ def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, d
     ranges.insert(1, 'reviewed_fd', ranges.lineup.map(totals))
     result = (ranges, outcomes.compare_lineups(rosters), len(_history_rows(history)))
     return (*result, outcomes) if return_draws else result
+
+
+def compare_residual_training(history, target_day, *, draws=4000, seed=42):
+    """Walk-forward comparison of DAILY vs reviewed residual distributions.
+
+    Train both on the same verified played rows from one complete pre-tip
+    capture per date. Hold the later reviewed forecast constant. Never
+    select a policy, infer availability, or modify candidate rankings.
+    """
+    fields={'slate_date','fanduel_id','eligible','daily_minutes','daily_points',
+            'adjusted_minutes','adjusted_fd_points','actual_minutes','actual_points',
+            'verified_outcome','nba_source','replay_before_full_slate_tip',
+            'replay_captured_at_utc','replay_cutoff_utc','replay_timing'}
+    if not fields <= set(history):
+        return pd.DataFrame(),pd.DataFrame()
+    data=history.copy()
+    data['slate_date']=pd.to_datetime(data.slate_date,errors='coerce').dt.normalize()
+    data=data.loc[data.slate_date.lt(pd.Timestamp(target_day).normalize())]
+    verified=[]
+    for day,frame in data.groupby('slate_date',sort=True):
+        ids=frame.fanduel_id.astype(str)
+        captured=pd.to_datetime(frame.replay_captured_at_utc,utc=True,errors='coerce',format='mixed')
+        cutoff=pd.to_datetime(frame.replay_cutoff_utc,utc=True,errors='coerce',format='mixed')
+        if (not ids.is_unique or not ids.str.fullmatch(r'[0-9]{1,12}-[0-9]+').all()
+            or ids.str.split('-').str[0].nunique()!=1 or captured.nunique()!=1
+            or not captured.lt(cutoff).all()
+            or not cutoff.dt.tz_convert('America/New_York').dt.date.eq(day.date()).all()
+            or not frame.replay_before_full_slate_tip.astype(str).str.lower().eq('true').all()
+            or not frame.replay_timing.eq('before_scheduled_tip').all()):
+            continue
+        frame=frame.copy()
+        frame['eligible']=frame.eligible.astype(str).str.lower().eq('true')
+        nums=['daily_minutes','daily_points','adjusted_minutes','adjusted_fd_points',
+              'actual_minutes','actual_points']
+        frame[nums]=_numeric(frame,nums)
+        mask=(frame.eligible & frame.verified_outcome.eq('played')
+              & frame.nba_source.fillna('').astype(str).str.strip().ne('')
+              & frame.daily_minutes.between(1/60,48) & frame.adjusted_minutes.between(1/60,48)
+              & frame.daily_points.gt(0) & frame.adjusted_fd_points.gt(0)
+              & frame.actual_minutes.between(1/60,60) & frame.actual_points.notna())
+        verified.append(frame.loc[mask])
+    if not verified:
+        return pd.DataFrame(),pd.DataFrame()
+    data=pd.concat(verified,ignore_index=True)
+    reports=[]
+    for day,held in data.groupby('slate_date',sort=True):
+        prior=data.loc[data.slate_date.lt(day)]
+        if len(prior)<MIN_COHORT:
+            continue
+        target=held[['fanduel_id','adjusted_minutes','adjusted_fd_points']].rename(
+            columns={'adjusted_minutes':'projected_minutes','adjusted_fd_points':'projected_fd_points'})
+        revised=prior.assign(daily_minutes=prior.adjusted_minutes,daily_points=prior.adjusted_fd_points)
+        for policy,train in [('DAILY residuals',prior),('Reviewed residuals',revised)]:
+            ranges=simulate_nba(train,target,day,draws=draws,seed=seed).player_ranges()
+            paired=held.merge(ranges,on='fanduel_id',validate='one_to_one')
+            for metric in ('fd','minutes'):
+                actual=paired.actual_points if metric=='fd' else paired.actual_minutes
+                lo,mid,hi=(paired[f'{metric}_p{p}'] for p in (10,50,90))
+                # Proper central 80% interval score penalizes excessive width
+                # as well as misses, so maximizing coverage alone cannot win.
+                interval=(hi-lo)+10*(lo-actual).clip(lower=0)+10*(actual-hi).clip(lower=0)
+                reports.append(dict(slate_date=day.date().isoformat(),policy=policy,metric=metric,
+                    train_players=len(prior),test_players=len(paired),
+                    coverage=actual.between(lo,hi).mean(),width=(hi-lo).mean(),
+                    interval_score=interval.mean(),median_mae=(mid-actual).abs().mean(),
+                    above_p90=actual.gt(hi).mean(),below_p10=actual.lt(lo).mean()))
+    daily=pd.DataFrame(reports)
+    if daily.empty:
+        return daily,pd.DataFrame()
+    summary=daily.groupby(['policy','metric'],as_index=False).agg(
+        dates=('slate_date','nunique'),paired_players=('test_players','sum'),
+        equal_date_interval_score=('interval_score','mean'),
+        equal_date_coverage=('coverage','mean'),equal_date_width=('width','mean'),
+        equal_date_median_mae=('median_mae','mean'),
+        equal_date_above_p90=('above_p90','mean'))
+    summary['status']='Experimental; no automatic promotion'
+    return daily,summary

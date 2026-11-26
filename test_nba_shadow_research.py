@@ -94,3 +94,61 @@ def test_frozen_single_absence_policies_require_exact_role_and_no_other_current_
     assert not compare_shadow_forecasts(replay.drop(columns=list(OPPORTUNITY_FEATURES))).empty
     multi = freeze_research_features(pool,summary,splits.assign(**{'Other currently out teammates':1}),pd.DataFrame())
     assert multi.shadow_single_absence_fppm.isna().all()
+
+
+def test_history_rate_prior_prefers_confirmed_role_without_double_counting():
+    from nba_shadow_research import historical_rate_shadow, compare_frozen_history_rate
+    base = dict(eligible=True, injury_flag='', prelock_status='', prelock_starter='starter',
+                adjusted_fd_points=30, adjusted_minutes=30, daily_points=30,
+                shadow_rate_sources='NBA box', shadow_recent_fppm=2.,
+                shadow_recent_games=5, shadow_recent_minutes=150,
+                shadow_role_fppm=1.5, shadow_role_games=3, shadow_role_minutes=90,
+                verified_outcome='played',nba_source='NBA box',actual_minutes=30,actual_points=36)
+    rows = pd.DataFrame([dict(base,fanduel_id='1-1'),
+        dict(base,fanduel_id='1-2',prelock_starter=''),
+        dict(base,fanduel_id='1-3',injury_flag='Q'),
+        dict(base,fanduel_id='1-4',shadow_recent_games=1,shadow_role_games=1),
+        dict(base,fanduel_id='1-5',shadow_rate_sources=''),
+        dict(base,fanduel_id='1-6',shadow_recent_minutes=1000,shadow_role_minutes=1000)])
+    original = rows.copy(deep=True)
+    out = historical_rate_shadow(rows)
+    assert out.history_rate_weight.iloc[0] == pytest.approx(90/330)
+    assert out.history_rate_weight.iloc[1] == pytest.approx(150/390)
+    assert out.history_rate_fd.iloc[0] == pytest.approx(30+15*90/330)
+    assert out.history_rate_fd.iloc[1] == pytest.approx(30+30*150/390)
+    assert out.history_rate_fd.iloc[2:].isna().all()
+    assert out.history_rate_basis.tolist() == ['Confirmed role','Recent complete games']+['Unsupported']*4
+    report = compare_frozen_history_rate(rows)
+    assert report['Paired players'].iloc[0] == 2
+    assert compare_frozen_history_rate(rows.assign(verified_outcome='did_not_play'))['Paired players'].iloc[0] == 0
+    pd.testing.assert_frame_equal(rows,original)
+    with pytest.raises(ValueError,match='unique'):
+        historical_rate_shadow(pd.concat([rows,rows]))
+    assert historical_rate_shadow(rows.drop(columns='shadow_rate_sources')).empty
+
+
+def test_component_rate_shadow_keeps_peripherals_separate_and_fails_closed():
+    from nba_shadow_research import COMPONENT_FIELDS, component_rate_shadow, compare_frozen_component_rate
+    row=dict(fanduel_id='1-1',eligible=True,injury_flag='',prelock_status='',prelock_starter='starter',
+             daily_minutes=30,daily_points=33,adjusted_fd_points=33,adjusted_minutes=30,
+             daily_box_points=20,daily_box_turnovers=2,daily_box_rebounds=5,daily_box_assists=4,
+             daily_box_steals=1,daily_box_blocks=0,daily_box_fieldGoalsAttempted=12,daily_box_freeThrowsAttempted=4,
+             shadow_rate_sources='NBA box',verified_outcome='played',nba_source='NBA box',
+             actual_points=36,actual_minutes=30)
+    row.update({k:None for k in COMPONENT_FIELDS})
+    for prefix in ('recent','starter'):
+        row.update({f'component_{prefix}_{k}':v for k,v in dict(games=3,minutes=90,
+                    opportunities_per_minute=.6,net_per_opportunity=1.2,peripheral_per_minute=.5).items()})
+    frame=pd.DataFrame([row])
+    original=frame.copy(deep=True)
+    out=component_rate_shadow(frame)
+    expected=33+30*((.8*15.76/30+.2*.6)*(.8*18/15.76+.2*1.2)+.5-33/30)
+    assert out.component_shadow_fd.iloc[0]==pytest.approx(expected)
+    assert out.component_basis.iloc[0]=='starter'
+    assert compare_frozen_component_rate(frame)['Paired players'].iloc[0]==1
+    assert component_rate_shadow(frame.assign(prelock_starter='')).component_basis.iloc[0]=='recent'
+    assert component_rate_shadow(frame.assign(daily_points=40)).component_shadow_fd.isna().all()
+    assert component_rate_shadow(frame.assign(daily_box_blocks=None)).component_shadow_fd.isna().all()
+    assert component_rate_shadow(frame.assign(injury_flag='Q')).component_shadow_fd.isna().all()
+    assert compare_frozen_component_rate(frame.assign(verified_outcome='did_not_play'))['Paired players'].iloc[0]==0
+    pd.testing.assert_frame_equal(frame,original)

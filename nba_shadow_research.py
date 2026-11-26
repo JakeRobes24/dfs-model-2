@@ -23,6 +23,13 @@ OPPORTUNITY_FEATURES = (
     'shadow_single_absence_fppm', 'shadow_single_absence_fd_games',
     'shadow_single_absence_fd_minutes', 'shadow_single_absence_sources',
 )
+COMPONENT_STATS = ('points','rebounds','assists','steals','blocks','turnovers',
+                   'fieldGoalsAttempted','freeThrowsAttempted')
+COMPONENT_FIELDS = tuple(f'component_{prefix}_{key}'
+                         for prefix in ('recent','starter','bench')
+                         for key in ('games','minutes','opportunities_per_minute',
+                                     'net_per_opportunity','peripheral_per_minute'))
+COMPONENT_POLICY = 'Component opportunity and efficiency rate (20%)'
 OPPORTUNITY_POLICIES = ('Single absence + confirmed role minutes',
                         'Single absence + confirmed role rate')
 
@@ -32,7 +39,7 @@ def freeze_research_features(pool, summaries, splits, matchup):
     out = pool.copy()
     if not out.fanduel_id.is_unique:
         raise ValueError('Research capture requires unique player IDs.')
-    for field in (*FEATURES, *OPPORTUNITY_FEATURES):
+    for field in (*FEATURES, *OPPORTUNITY_FEATURES, *COMPONENT_FIELDS):
         out[field] = None
     if not summaries.empty:
         if not summaries.fanduel_id.is_unique:
@@ -45,6 +52,9 @@ def freeze_research_features(pool, summaries, splits, matchup):
             'shadow_rate_sources': 'Box-score sources',
         }.items():
             out[target] = out.fanduel_id.map(s[source])
+        for field in COMPONENT_FIELDS:
+            if field in s:
+                out[field] = out.fanduel_id.map(s[field])
         for role, label in [('starter', 'Starter'), ('bench', 'Bench')]:
             mask = out.prelock_starter.eq(role)
             for target, source in {
@@ -186,3 +196,170 @@ def compare_frozen_opportunity(replay):
             'MAE improvement vs reviewed':(baseline-error).mean(),
             'Shadow bias':(predicted[mask]-actual[mask]).mean()})
     return pd.DataFrame(rows)
+
+
+HISTORY_RATE_POLICY = 'Role-aware sample-weighted historical rate'
+
+
+def historical_rate_shadow(frame):
+    """Exploratory prior: select one supported historical rate, not overlapping samples.
+
+    Prefer the same confirmed role when supported; otherwise use recent complete
+    games. At least 3 games/60 minutes, shrink toward the current forecast with
+    a fixed 240-minute prior and 40% cap. No live scores are modified.
+    """
+    columns = ['fanduel_id', 'history_rate_fd', 'history_rate_weight', 'history_rate_basis']
+    needed = {'fanduel_id', 'eligible', 'adjusted_fd_points', 'adjusted_minutes',
+              'prelock_starter', 'prelock_status', 'injury_flag', 'shadow_rate_sources'}
+    needed |= {f'shadow_{p}_{v}' for p in ('recent', 'role') for v in ('fppm', 'games', 'minutes')}
+    if not needed <= set(frame):
+        return pd.DataFrame(columns=columns)
+    if frame.fanduel_id.isna().any() or not frame.fanduel_id.is_unique:
+        raise ValueError('Historical rate comparison requires unique player IDs.')
+    result = frame[['fanduel_id']].copy()
+    num = lambda name: pd.to_numeric(frame[name], errors='coerce').replace([np.inf,-np.inf], np.nan)
+    base, mins = num('adjusted_fd_points'), num('adjusted_minutes')
+    available = (frame.eligible.astype(str).str.lower().eq('true')
+                 & ~frame.injury_flag.fillna('').astype(str).str.upper().isin(['O','OUT','Q','D','GTD'])
+                 & ~frame.prelock_status.fillna('').astype(str).str.lower().isin(
+                     ['out','inactive','suspended','questionable','doubtful'])
+                 & frame.shadow_rate_sources.fillna('').astype(str).str.strip().ne('')
+                 & base.gt(0) & mins.between(10,48))
+    supported = {}
+    for prefix in ('recent','role'):
+        rate, games, observed = (num(f'shadow_{prefix}_{v}') for v in ('fppm','games','minutes'))
+        ok = rate.between(0,5) & games.ge(3) & observed.ge(60) & observed.le(games*60)
+        supported[prefix] = (rate, observed, ok)
+    recent_rate, recent_mins, recent_ok = supported['recent']
+    role_rate, role_mins, role_ok = supported['role']
+    role_ok &= frame.prelock_starter.isin(['starter','bench'])
+    rate = recent_rate.where(~role_ok, role_rate)
+    evidence = recent_mins.where(~role_ok, role_mins)
+    use = available & (role_ok | recent_ok)
+    weight = (evidence/(evidence+240)).clip(upper=.4).where(use)
+    result['history_rate_fd'] = ((1-weight)*base+weight*mins*rate).where(use)
+    result['history_rate_weight'] = weight
+    result['history_rate_basis'] = np.where(use, np.where(role_ok, 'Confirmed role', 'Recent complete games'), 'Unsupported')
+    return result[columns]
+
+
+def compare_frozen_history_rate(frame):
+    """Evaluate the fixed historical policy on verified played outcomes only."""
+    report = {'Policy': HISTORY_RATE_POLICY, 'Paired players': 0}
+    needed = {'fanduel_id','eligible','verified_outcome','nba_source','actual_points',
+              'actual_minutes','daily_points','adjusted_fd_points'}
+    if not needed <= set(frame):
+        return pd.DataFrame([report])
+    shadow = historical_rate_shadow(frame)
+    if shadow.empty:
+        return pd.DataFrame([report])
+    data = frame.merge(shadow,on='fanduel_id',validate='one_to_one')
+    cols = ['daily_points','adjusted_fd_points','history_rate_fd','actual_points','actual_minutes']
+    data[cols] = data[cols].apply(pd.to_numeric,errors='coerce')
+    baseline = (data.eligible.astype(str).str.lower().eq('true') & data.verified_outcome.eq('played')
+                & data.nba_source.fillna('').ne('') & data.actual_minutes.between(10,60)
+                & np.isfinite(data[['daily_points','adjusted_fd_points','actual_points']]).all(axis=1))
+    report['Eligible played with baseline'] = int(baseline.sum())
+    matched = data.loc[baseline & np.isfinite(data.history_rate_fd)]
+    if matched.empty:
+        return pd.DataFrame([report])
+    errors = matched[cols[:3]].sub(matched.actual_points,axis=0)
+    mae = errors.abs().mean()
+    report.update({'Paired players':len(matched),'DAILY MAE':mae.daily_points,
+                   'Reviewed MAE':mae.adjusted_fd_points,'Shadow MAE':mae.history_rate_fd,
+                   'MAE improvement vs reviewed':mae.adjusted_fd_points-mae.history_rate_fd,
+                   'Shadow bias':errors.history_rate_fd.mean()})
+    return pd.DataFrame([report])
+
+
+def component_rate_shadow(frame):
+    """Fixed exploratory component forecast; no live scoring or eligibility changes.
+
+    Require complete, self-consistent DAILY box forecasts and one joint historical
+    sample. Blend volume, net scoring efficiency and peripheral rate separately.
+    Use the existing reviewed minutes once. No assumed team-usage percentage.
+    """
+    columns = ['fanduel_id','component_shadow_fd','component_basis']
+    needed = {'fanduel_id','eligible','prelock_status','prelock_starter','injury_flag',
+              'daily_minutes','daily_points','adjusted_fd_points','adjusted_minutes',
+              'shadow_rate_sources',*COMPONENT_FIELDS}
+    needed |= {'daily_box_'+k for k in COMPONENT_STATS}
+    if not needed <= set(frame):
+        return pd.DataFrame(columns=columns)
+    if frame.fanduel_id.isna().any() or not frame.fanduel_id.is_unique:
+        raise ValueError('Component rate review requires unique contest IDs.')
+    rows = []
+    def n(row, key):
+        value = float(row[key])
+        if not np.isfinite(value):
+            raise ValueError
+        return value
+    for row in frame.to_dict('records'):
+        result = dict(fanduel_id=row['fanduel_id'],component_shadow_fd=None,component_basis='Unsupported')
+        rows.append(result)
+        if (str(row['eligible']).lower()!='true'
+                or str(row['injury_flag']).upper() in {'O','OUT','Q','D','GTD'}
+                or str(row['prelock_status']).lower() in {'out','inactive','suspended','questionable','doubtful'}
+                or not isinstance(row['shadow_rate_sources'],str) or not row['shadow_rate_sources'].strip()):
+            continue
+        try:
+            dm,m,base,daily = (n(row,k) for k in ('daily_minutes','adjusted_minutes','adjusted_fd_points','daily_points'))
+            d = {k:n(row,'daily_box_'+k) for k in COMPONENT_STATS}
+            if not (10<=dm<=48 and 10<=m<=48 and base>0 and daily>0
+                    and all(0<=v<=150 for v in d.values())):
+                continue
+            o = d['fieldGoalsAttempted']+.44*d['freeThrowsAttempted']+d['turnovers']
+            net = d['points']-d['turnovers']
+            peripheral = 1.2*d['rebounds']+1.5*d['assists']+3*(d['steals']+d['blocks'])
+            if not (o>0 and abs(net+peripheral-daily)<=.5
+                    and 0<o/dm<=2 and -1<=net/o<=4 and 0<=peripheral/dm<=4):
+                continue
+        except (TypeError,ValueError,KeyError):
+            continue
+        role = row['prelock_starter']
+        for prefix in ([role,'recent'] if role in ('starter','bench') else ['recent']):
+            try:
+                g,h,vol,eff,per = (n(row,f'component_{prefix}_{k}') for k in
+                    ('games','minutes','opportunities_per_minute','net_per_opportunity','peripheral_per_minute'))
+                if not (g>=3 and 60<=h<=60*g and 0<vol<=2 and -1<=eff<=4 and 0<=per<=4):
+                    continue
+                # Fixed 20% component shrinkage. Preserve reviewed-vs-DAILY rate
+                # adjustments, adding only the component-model change in rate.
+                volume=.8*o/dm+.2*vol
+                efficiency=.8*net/o+.2*eff
+                peripherals=.8*peripheral/dm+.2*per
+                delta=volume*efficiency+peripherals-(net+peripheral)/dm
+                forecast=base+m*delta
+                if 0<forecast<=150:
+                    result.update(component_shadow_fd=forecast,component_basis=prefix)
+                break
+            except (TypeError,ValueError,KeyError):
+                continue
+    return pd.DataFrame(rows,columns=columns)
+
+
+def compare_frozen_component_rate(frame):
+    report = {'Policy':COMPONENT_POLICY,'Paired players':0}
+    needed = {'fanduel_id','eligible','verified_outcome','nba_source','actual_minutes',
+              'actual_points','daily_points','adjusted_fd_points'}
+    if not needed <= set(frame):
+        return pd.DataFrame([report])
+    prediction = component_rate_shadow(frame)
+    if prediction.empty:
+        return pd.DataFrame([report])
+    data=frame.merge(prediction,on='fanduel_id',validate='one_to_one')
+    cols=['daily_points','adjusted_fd_points','component_shadow_fd','actual_points','actual_minutes']
+    data[cols]=data[cols].apply(pd.to_numeric,errors='coerce')
+    base=(data.eligible.astype(str).str.lower().eq('true') & data.verified_outcome.eq('played')
+          & data.nba_source.fillna('').ne('') & data.actual_minutes.between(10,60)
+          & np.isfinite(data[['daily_points','adjusted_fd_points','actual_points']]).all(axis=1))
+    report['Eligible played with baseline']=int(base.sum())
+    matched=data.loc[base & np.isfinite(data.component_shadow_fd)]
+    if not matched.empty:
+        errors=matched[cols[:3]].sub(matched.actual_points,axis=0)
+        mae=errors.abs().mean()
+        report.update({'Paired players':len(matched),'DAILY MAE':mae.daily_points,
+                       'Reviewed MAE':mae.adjusted_fd_points,'Shadow MAE':mae.component_shadow_fd,
+                       'MAE improvement vs reviewed':mae.adjusted_fd_points-mae.component_shadow_fd,
+                       'Shadow bias':errors.component_shadow_fd.mean()})
+    return pd.DataFrame([report])

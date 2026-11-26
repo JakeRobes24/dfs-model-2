@@ -46,3 +46,16 @@ class UIIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_manual_reviewed_pool_export_preserves_same_research_features_as_archive():
+    tree = ast.parse(Path(__file__).with_name('site_ui.py').read_text(encoding='utf-8'))
+    render = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='render_slate')
+    calls = [n for n in ast.walk(render) if isinstance(n,ast.Call)]
+    freeze = [n for n in calls if isinstance(n.func,ast.Name) and n.func.id=='freeze_research_features']
+    assert len(freeze)==1
+    downloads = [n for n in calls if n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='Download reviewed pool']
+    assert len(downloads)==1
+    assert ast.unparse(downloads[0].args[1])=='reviewed_export.to_csv(index=False)'
+    assigns = [n for n in ast.walk(render) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='archive_pool' for t in n.targets)]
+    assert any('reviewed_export' in ast.unparse(n.value) for n in assigns)

@@ -11,7 +11,7 @@ import streamlit as st
 
 from advanced_ui import render_advanced
 from evidence import validate_sources
-from history_intake_ui import render_slate_archive
+from history_intake_ui import render_slate_archive, render_archive_receipt_check
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
@@ -434,6 +434,8 @@ def render_slate(history_slot):
             st.download_button('Download team opportunity review', team_review.to_csv(index=False),
                                file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
     matchup = matchup_context(scored, rotation_rows, slate)
+    # Retain the same historical evidence in manual exports and archive packets.
+    reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
@@ -638,7 +640,8 @@ def render_slate(history_slot):
             'independent_fd_points':'Independent FD', 'blended_fd_points':'Weighted blend FD', 'recent_mpg':'Recent minutes',
             'prelock_status':'Official status', 'prelock_starter':'Starter',
         }), hide_index=True)
-        st.download_button('Download reviewed pool', scored.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
+        st.caption('Manual export includes historical rate, role and matchup evidence. It is not a certified pre-tip archive receipt.')
+        st.download_button('Download reviewed pool', reviewed_export.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
 
     st.header('3. Challenge and optimize')
     objective = 'adjusted_fd_points'
@@ -833,8 +836,22 @@ def render_slate(history_slot):
                     if can_reuse_candidates(result):
                         # Preserve a complete proven-optimal portfolio independently of changing
                         # research inputs. Never relabel its old projections as current.
+                        earlier = st.session_state.get('last_complete_portfolio')
+                        if earlier is not None and earlier[0] == prepared_key and len(earlier) == 4:
+                            from nba_checkpoint_changes import compare_portfolio_exposure
+                            try:
+                                exposure_changes = compare_portfolio_exposure(
+                                    earlier[3], scored, earlier[2], result[0])
+                            except ValueError as exc:
+                                st.session_state.pop('portfolio_exposure_review', None)
+                                st.caption(f'Portfolio comparison unavailable: {exc}')
+                            else:
+                                st.session_state['portfolio_exposure_review'] = (
+                                    prepared_key, candidate_key, exposure_changes)
+                        else:
+                            st.session_state.pop('portfolio_exposure_review', None)
                         st.session_state['last_complete_portfolio'] = (
-                            prepared_key, candidate_key, result[0].copy(deep=True))
+                            prepared_key, candidate_key, result[0].copy(deep=True), scored.copy(deep=True))
                 else:
                     st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
@@ -862,6 +879,16 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        exposure_review = st.session_state.get('portfolio_exposure_review')
+        if exposure_review is not None and exposure_review[:2] == (prepared_key, candidate_key):
+            with st.expander('Changes since previous complete portfolio'):
+                st.caption('Observed exposure changes and own-projection evidence, not proof of solver causality. A player may disappear even with an unchanged or rising projection because other combinations improve.')
+                if exposure_review[2].empty:
+                    st.info('No exposure changes across the four candidates.')
+                else:
+                    st.dataframe(exposure_review[2].round(3), hide_index=True)
+                    st.download_button('Download exposure change review', exposure_review[2].to_csv(index=False),
+                                       'portfolio_exposure_changes.csv', mime='text/csv')
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
@@ -926,9 +953,26 @@ def render_slate(history_slot):
                                     st.download_button('Download fixed-minutes rate comparison', fixed_days.to_csv(index=False),
                                                        file_name=f'{slate}-prior-fixed-minutes-rate.csv', mime='text/csv',
                                                        key='slate_prior_fixed_rate_accuracy')
+                                from nba_source_rate_accuracy import fixed_rate_shrinkage_review
+                                shrink_days, shrink_summary = fixed_rate_shrinkage_review(rate_details)
+                                if not shrink_summary.empty:
+                                    st.caption('Experimental fixed-rate blends (0/20/40/100% independent): same minutes and matched players, equal date weight. No live scoring changes.')
+                                    st.dataframe(shrink_summary.round(3), hide_index=True)
+                                    st.download_button('Download dated rate blend sensitivity', shrink_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-rate-blends.csv', mime='text/csv',
+                                                       key='slate_prior_rate_blends')
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')
+                        from nba_simulation import compare_residual_training
+                        residual_days, residual_summary = compare_residual_training(training, slate)
+                        if not residual_summary.empty:
+                            st.caption('Held-out residual calibration: same verified played samples and reviewed target projections. Lower 80% interval score is better; no automatic simulator changes.')
+                            st.dataframe(residual_summary.round(3), hide_index=True)
+                            st.download_button('Download residual calibration by date', residual_days.to_csv(index=False),
+                                               'residual_training_calibration.csv', mime='text/csv')
+                        else:
+                            st.caption('Need at least two distinct verified pre-tip dates for matched residual calibration.')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
@@ -1135,8 +1179,7 @@ def render_slate(history_slot):
             except (ValueError, TypeError, KeyError) as exc:
                 st.warning(f'Ownership comparison unavailable: {exc}')
     hashes = (sha256(contest_bytes).hexdigest(), sha256(daily_bytes).hexdigest())
-    archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
-    archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
+    archive_pool = archive_ownership(reviewed_export, *archived_ownership) if archived_ownership else reviewed_export
     if archived_matchwiz is not None:
         from matchwiz_reference import freeze_matchwiz_reference
         archive_pool = freeze_matchwiz_reference(archive_pool, archived_matchwiz, slate, datetime.now(ET))
@@ -1147,6 +1190,7 @@ def render_slate(history_slot):
 def render_site():
     st.set_page_config(page_title='DFS Model 2.0', layout='centered')
     st.title('DFS Model 2.0')
+    render_archive_receipt_check()
     view = st.radio('Workspace', ('Build a slate', 'Post-slate review', 'History and advanced'), horizontal=True,
                     label_visibility='collapsed', key='site_view')
     if view == 'Build a slate':

@@ -121,3 +121,58 @@ def fixed_minutes_rate_review(details):
         equal_day_edge_vs_reviewed=('source_edge_vs_reviewed','mean'),
         days_better_than_reviewed=('source_edge_vs_reviewed',lambda s: int(s.gt(0).sum())))
     return daily, summary
+
+def fixed_rate_shrinkage_review(details):
+    """Compare fixed rate blends on identical supported rows and playing time.
+
+    Input is the accepted same-record, earlier-date output of review_source_rates.
+    No forecast weights are selected here; no changes to the live player pool.
+    """
+    if details.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    import numpy as np
+    keys = ['slate_date', 'provider', 'fanduel_id']
+    numbers = ['reviewed_minutes', 'actual_minutes', 'reviewed_fd',
+               'actual_fd_points', 'source_fppm', 'source_rate_reviewed_minutes_fd']
+    if not set(keys + numbers) <= set(details):
+        raise ValueError('Complete accepted paired rate details required.')
+    if details[keys].isna().any().any() or details.duplicated(keys).any():
+        raise ValueError('Rate shrinkage requires unique player/provider/date observations.')
+    frame = details[keys + numbers].copy()
+    frame[numbers] = frame[numbers].apply(pd.to_numeric, errors='coerce')
+    finite = np.isfinite(frame[numbers]).all(axis=1)
+    frame = frame.loc[finite & frame.reviewed_minutes.between(10, 60)
+                      & frame.actual_minutes.between(10, 60)
+                      & frame.reviewed_fd.gt(0)
+                      & frame.source_fppm.gt(0) & frame.source_fppm.le(5)].copy()
+    if frame.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    consistent = np.isclose(frame.source_rate_reviewed_minutes_fd,
+                            frame.source_fppm * frame.reviewed_minutes,
+                            rtol=0, atol=1e-6)
+    if not consistent.all():
+        raise ValueError('Same-provider rate and fixed-minutes points disagree.')
+    base_rate = frame.reviewed_fd / frame.reviewed_minutes
+    observed_rate = frame.actual_fd_points / frame.actual_minutes
+    frame = frame.assign(base_rate=base_rate, observed_rate=observed_rate)
+    rows = []
+    for (day, provider), g in frame.groupby(['slate_date', 'provider']):
+        for weight in (0., .2, .4, 1.):
+            rate = (1-weight)*g.base_rate + weight*g.source_fppm
+            err = rate*g.reviewed_minutes-g.actual_fd_points
+            rate_err = rate-g.observed_rate
+            rows.append(dict(slate_date=day, provider=provider, independent_weight=weight,
+                             paired_players=len(g), fd_mae=err.abs().mean(), fd_bias=err.mean(),
+                             fppm_mae=rate_err.abs().mean(), fppm_bias=rate_err.mean()))
+    daily = pd.DataFrame(rows)
+    baseline = daily.loc[daily.independent_weight.eq(0),
+                         ['slate_date', 'provider', 'fd_mae']].rename(columns={'fd_mae':'baseline_mae'})
+    daily = daily.merge(baseline, on=['slate_date', 'provider'], validate='many_to_one')
+    daily['fd_edge_vs_reviewed'] = daily.baseline_mae-daily.fd_mae
+    summary = daily.groupby(['provider','independent_weight'],as_index=False).agg(
+        dates=('slate_date','nunique'), paired_players=('paired_players','sum'),
+        equal_day_fd_mae=('fd_mae','mean'), equal_day_fd_bias=('fd_bias','mean'),
+        equal_day_fppm_mae=('fppm_mae','mean'),
+        equal_day_fd_edge=('fd_edge_vs_reviewed','mean'),
+        improved_dates=('fd_edge_vs_reviewed',lambda s: int(s.gt(1e-9).sum())))
+    return daily, summary
