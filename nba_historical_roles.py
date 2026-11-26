@@ -116,3 +116,82 @@ def enrich_roles(rows, roles, *, source, by_name=False):
             r['started']=lookup[k][1]
             r['historical_role_source']=source
     return result
+
+
+def recover_espn_roles(rows, *, cutoff_day, load_json, max_games=48, max_workers=4):
+    """Bounded research-only recovery from exact final ESPN games.
+
+    Dates and games come exclusively from existing NBA box observations.
+    Schedule mapping is exact by Eastern game date and ordered teams.
+    Return untouched rows for unavailable/ambiguous sources, with counts.
+    """
+    from collections import defaultdict
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import date,datetime
+    from zoneinfo import ZoneInfo
+    if not 1<=max_games<=150 or not 1<=max_workers<=8:
+        raise ValueError('Invalid role research request bounds')
+    grouped=defaultdict(list)
+    for r in rows:
+        try:
+            day=r['game_date'] if type(r['game_date']) is date else date.fromisoformat(r['game_date'])
+            away,home=r['game'].split('@')
+            if day>=cutoff_day or away==home or r['team'] not in {away,home}:
+                raise ValueError
+            grouped[(day,away,home)].append(dict(r))
+        except (ValueError,TypeError,KeyError):
+            raise ValueError('Role recovery requires earlier dated exact NBA boxes')
+    pending=[k for k,g in grouped.items() if any(type(r.get('started')) is not bool for r in g)]
+    chosen=sorted(pending,reverse=True)[:max_games]
+    def schedule(day):
+        url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={day:%Y%m%d}'
+        found=defaultdict(list)
+        try:
+            for event in load_json(url).get('events',[]):
+                comps=event.get('competitions',[])
+                if len(comps)!=1 or comps[0].get('status',{}).get('type',{}).get('completed') is not True:
+                    continue
+                stamp=datetime.fromisoformat(str(event.get('date','')).replace('Z','+00:00'))
+                if stamp.tzinfo is None or stamp.astimezone(ZoneInfo('America/New_York')).date()!=day:
+                    continue
+                teams={p.get('homeAway'):team_code(p.get('team',{}).get('abbreviation',''))
+                       for p in comps[0].get('competitors',[])}
+                eid=str(event.get('id',''))
+                if set(teams)=={'away','home'} and eid.isdigit():
+                    found[(teams['away'],teams['home'])].append(eid)
+            return day,found,'ok'
+        except (OSError,ValueError,KeyError,TypeError,AttributeError):
+            return day,{},'unavailable'
+    def retrieve(key):
+        day,away,home=key
+        original=grouped[key]
+        ids=schedules.get(day,{}).get((away,home),[])
+        if len(ids)!=1:
+            return key,original,'unmatched or ambiguous event'
+        url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={ids[0]}'
+        try:
+            roles=espn_roles(load_json(url),ids[0],away,home)
+            result=enrich_roles(original,roles,source=url,by_name=True)
+            return key,result,('complete' if all(type(r.get('started')) is bool for r in result)
+                               else 'partial or mismatch')
+        except (OSError,ValueError,KeyError,TypeError,AttributeError):
+            return key,original,'source unavailable or invalid'
+    statuses=Counter()
+    with ThreadPoolExecutor(max_workers=max_workers) as workers:
+        schedules={}
+        for day,mapping,status in workers.map(schedule,sorted({k[0] for k in chosen})):
+            schedules[day]=mapping
+            statuses['schedule '+status]+=1
+        # Probe a small batch; avoid dozens of calls if the source is blocked.
+        probe=list(workers.map(retrieve,chosen[:3]))
+        results=probe
+        if any(s in {'complete','partial or mismatch'} for _,_,s in probe):
+            results+=list(workers.map(retrieve,chosen[3:]))
+        for key,result,status in results:
+            grouped[key]=result
+            statuses[status]+=1
+        statuses['not attempted']=len(pending)-len(results)
+    enriched=[r for group in grouped.values() for r in group]
+    report=dict(total=len(enriched),known=sum(type(r.get('started')) is bool for r in enriched),
+                pending_games=len(pending),attempted_games=len(results),statuses=dict(statuses))
+    return enriched,report

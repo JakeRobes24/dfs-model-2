@@ -111,6 +111,13 @@ def teammate_participation(row, teammate):
     return 'played' if played and not absent else 'absent' if absent and not played else 'unknown'
 
 
+def box_sources(rows):
+    # Preserve both official production and explicit secondary role evidence.
+    return ' · '.join(sorted({source for r in rows
+                             for source in (r.get('source'),r.get('historical_role_source'))
+                             if isinstance(source,str) and source.strip()}))
+
+
 def opportunity_evidence(pool, rotations, slate):
     logs_by_player = defaultdict(list)
     for row in rotations:
@@ -174,7 +181,7 @@ def opportunity_evidence(pool, rotations, slate):
                                                          for stat in FD_WEIGHTS)),
             'Shot/FT/turnover opportunities per minute': stat_rate(
                 logs, {'fieldGoalsAttempted': 1, 'freeThrowsAttempted': .44, 'turnovers': 1}),
-            'Box-score sources': ' · '.join(sorted({row['source'] for row in logs})),
+            'Box-score sources': box_sources(logs),
         })
         for teammate, display in unavailable[player.team]:
             with_player = [row for row in logs if teammate_participation(row, teammate) == 'played']
@@ -242,6 +249,6 @@ def opportunity_evidence(pool, rotations, slate):
                 'Current role FD/min without': current_fd['without_rate'] if current_fd['sufficient'] else None,
                 'Current role complete FD games per side': min(current_fd['with_games'], current_fd['without_games']),
                 'Current role complete FD minutes per side': min(current_fd['with_minutes'], current_fd['without_minutes']),
-                'Box-score sources': ' · '.join(sorted({row['source'] for row in with_player + without_player})),
+                'Box-score sources': box_sources(with_player + without_player),
             })
     return pd.DataFrame(summaries), pd.DataFrame(splits)

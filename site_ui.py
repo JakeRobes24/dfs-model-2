@@ -73,6 +73,17 @@ def extended_rotations(slate, games):
     return recent_boxscores(slate, set(games), game_limit=10, days_back=24, box_cache=FINAL_BOX_CACHE)
 
 
+@st.cache_data(ttl=1800, max_entries=12, show_spinner=False)
+def public_historical_roles(rows, slate, longer):
+    # Public final-box role research only. Never feed recovered roles back into
+    # the existing live score calculation or eligibility decision.
+    from nba_historical_roles import recover_espn_roles
+    from slate_research import fetch
+    return recover_espn_roles(rows, cutoff_day=slate,
+                              load_json=lambda url: json.loads(fetch(url)),
+                              max_games=120 if longer else 48)
+
+
 @st.cache_data(ttl=300, max_entries=4, show_spinner=False)
 def public_lineupexperts_reference(slate, today):
     return lineupexperts_reference(slate, today)
@@ -420,10 +431,21 @@ def render_slate(history_slot):
     with st.expander('Historical research window'):
         st.caption('The longer window feeds both discrepancy review and frozen experimental evidence. Reviewed live scoring continues to use its established recent rotation inputs.')
         longer = st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}')
+        recover_roles = st.checkbox('Cross-check missing historical starter and bench roles', value=True,
+                                    key=f'role_window_{contest_id}_{slate}')
+        st.caption('Public final-game role recovery is cached and research-only. Disable if time to lock is short; missing roles remain unknown.')
     rotation_rows, coverage = rotations, rotation_status
     if longer:
         with st.spinner('Checking up to ten recent team games…'):
             rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
+    if recover_roles and rotation_rows:
+        try:
+            with st.spinner('Cross-checking historical starting roles…'):
+                rotation_rows, role_coverage = public_historical_roles(rotation_rows, slate, longer)
+            st.caption(f'Historical starter/bench coverage: {role_coverage["known"]}/{role_coverage["total"]} played box observations. '
+                       f'{role_coverage["attempted_games"]}/{role_coverage["pending_games"]} games with missing role flags checked.')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            st.warning(f'Historical role recovery unavailable: {exc}. Unverified roles remain unknown.')
     recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
     team_review = team_opportunity_review(scored, audit, now)
     if not team_review.empty:

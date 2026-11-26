@@ -63,3 +63,44 @@ def test_explicit_flag_and_minutes_parsing():
     assert minutes('32:30')==32.5
     assert minutes('32')==32
     assert minutes('32:90') is None
+
+
+def test_role_recovery_exact_schedule_and_source():
+    from datetime import date
+    from nba_historical_roles import recover_espn_roles
+    day=date(2026,11,24)
+    f=[dict(r,game_date=day,game='BOS@NYK') for r in rows()]
+    event=dict(id='42',date='2026-11-25T01:00:00Z',competitions=[dict(
+        status={'type':{'completed':True}},competitors=[
+            dict(homeAway='away',team={'abbreviation':'BOS'}),
+            dict(homeAway='home',team={'abbreviation':'NYK'})])])
+    def side(t,b):
+        return dict(team={'abbreviation':t},statistics=[dict(labels=['MIN'],athletes=[
+            dict(athlete={'displayName':f'Player {b+i}'},starter=i<5,stats=['30']) for i in range(6)])])
+    summary=dict(header=dict(id='42',competitions=event['competitions']),
+                 boxscore=dict(players=[side('BOS',100),side('NYK',200)]))
+    def load(url):
+        return {'events':[event]} if 'scoreboard?' in url else summary
+    out,report=recover_espn_roles(f,cutoff_day=date(2026,11,26),load_json=load)
+    assert report['known']==12 and report['attempted_games']==1
+    assert sum(r['started'] is True for r in out)==10
+    assert all(r['started'] is None for r in f)
+    assert all(r['historical_role_source'].endswith('event=42') for r in out)
+    event['date']='2026-11-24T01:00:00Z'
+    out,report=recover_espn_roles(f,cutoff_day=date(2026,11,26),load_json=load)
+    assert report['known']==0 and report['statuses']['unmatched or ambiguous event']==1
+
+def test_role_recovery_source_unavailable_is_bounded():
+    from datetime import date,timedelta
+    from nba_historical_roles import recover_espn_roles
+    day=date(2026,11,24)
+    f=[dict(r,game_date=day-timedelta(days=i),game='BOS@NYK') for i in range(6) for r in rows()]
+    def load(url):
+        raise OSError('not available')
+    out,report=recover_espn_roles(f,cutoff_day=date(2026,11,26),load_json=load,max_games=4)
+    assert report['known']==0 and report['attempted_games']==3
+    assert report['statuses']['not attempted']==3 and len(out)==len(f)
+
+def test_secondary_role_source_survives_opportunity_summary():
+    from opportunity_evidence import box_sources
+    assert box_sources([{'source':'NBA box','historical_role_source':'ESPN final box'}])=='ESPN final box · NBA box'
