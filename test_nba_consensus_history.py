@@ -78,3 +78,47 @@ def test_post_tip_and_duplicate_contest_rows_fail_closed():
     with pytest.raises(ValueError):forecast_consensus_history(f)
     f=fixture()
     with pytest.raises(ValueError):forecast_consensus_history(pd.concat([f,f],ignore_index=True))
+
+
+def test_frozen_forecast_roundtrip_no_score_change_and_tamper_rejected():
+    from nba_consensus_history import freeze_consensus_history
+    f=fixture().assign(projected_minutes=22,projected_fd_points=22)
+    saved=freeze_consensus_history(f)
+    pd.testing.assert_frame_equal(saved[f.columns],f)
+    assert saved.shadow_ch_consensus_history_fd.iloc[0]==31.875
+    assert compare_consensus_history(saved,require_frozen=True)['Paired players'].tolist()==[1,1,1]
+    assert compare_consensus_history(f,require_frozen=True)['Paired players'].tolist()==[0,0,0]
+    changed=saved.assign(shadow_ch_consensus_history_fd=99.)
+    assert compare_consensus_history(changed,require_frozen=True)['Paired players'].tolist()==[0,0,0]
+    changed=saved.assign(shadow_consensus_history_as_of='2026-11-27T20:01:00Z')
+    assert compare_consensus_history(changed,require_frozen=True)['Paired players'].tolist()==[0,0,0]
+
+def test_freeze_uses_daily_fantasy_not_box_score_points():
+    from nba_consensus_history import freeze_consensus_history
+    f=fixture().assign(projected_minutes=22,projected_fd_points=22,daily_points=999)
+    saved=freeze_consensus_history(f)
+    assert saved.daily_points.iloc[0]==999
+    assert saved.shadow_ch_consensus_history_fd.iloc[0]==31.875
+
+def test_post_tip_freeze_leaves_input_unmodified():
+    from nba_consensus_history import freeze_consensus_history,FROZEN_FIELDS
+    f=fixture().assign(projected_minutes=22,projected_fd_points=22,
+                       replay_before_full_slate_tip=False)
+    pd.testing.assert_frame_equal(freeze_consensus_history(f),f)
+    assert not set(FROZEN_FIELDS)&set(f)
+
+def test_capture_and_replay_roundtrip_frozen_predictions():
+    from datetime import date
+    from io import StringIO
+    from slate_replay_capture import capture_pool,build_replay_rows
+    f=fixture().assign(projected_minutes=22,projected_fd_points=22,
+                       fanduel_name='Player')
+    evidence=pd.DataFrame(json.loads(f.replay_evidence_json.iloc[0])).assign(
+        fanduel_id='137200-1',review='Reviewed',status='',starter='',role='')
+    schedule=[dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},gameTimeUtc=TIP)]
+    saved=capture_pool(f,evidence,schedule,date(2026,11,27),CAP,('a'*64,'b'*64))
+    saved=pd.read_csv(StringIO(saved.to_csv(index=False)))
+    results=pd.DataFrame([dict(fanduel_id='137200-1',outcome='Played',
+        nba_actual_minutes=30,nba_fd_points=36,nba_source='official',recorded_fd_points=36)])
+    replay=build_replay_rows(saved.drop(columns=['daily_points','daily_minutes','actual_points','actual_minutes','verified_outcome','nba_source']),results,date(2026,11,27))
+    assert compare_consensus_history(replay,require_frozen=True)['Paired players'].tolist()==[1,1,1]

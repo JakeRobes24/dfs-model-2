@@ -67,7 +67,7 @@ def compare_across_slates(replays):
         if set(LARGE_MINUTES_CAPTURE_FIELDS) <= set(frame):
             report = pd.concat([report, compare_frozen_large_minutes(frame)], ignore_index=True)
         if {'projection_sources_json','replay_evidence_json','shadow_recent_fppm'} <= set(frame):
-            report = pd.concat([report, compare_consensus_history(frame)], ignore_index=True)
+            report = pd.concat([report, compare_consensus_history(frame, require_frozen=day > date(2026,11,26))], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):

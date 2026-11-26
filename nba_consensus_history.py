@@ -21,6 +21,9 @@ POLICIES = {
 }
 COLUMNS = ['fanduel_id', 'consensus_minutes', 'minute_families', 'history_rate',
            'history_rate_weight', *POLICIES.values()]
+POLICY_VERSION = '2026-11-26-v1'
+FROZEN_FIELDS = ('shadow_consensus_history_policy','shadow_consensus_history_as_of',
+                 *('shadow_ch_'+c for c in COLUMNS if c!='fanduel_id'))
 NEWS_STATUS = {'out','inactive','suspended','available','probable','questionable','doubtful'}
 
 def _notes(value):
@@ -131,14 +134,74 @@ def forecast_consensus_history(frame):
                            consensus_history_fd=median*rate))
     return pd.DataFrame(result,columns=COLUMNS)
 
-def compare_consensus_history(frame):
+
+def freeze_consensus_history(pool):
+    """Attach exact predictions to an already schedule-checked capture.
+
+    Unsupported players are present but blank; no post-tip capture is labelled
+    as a pre-lock forecast. Original score/eligibility columns stay untouched.
+    """
+    archived=pool.copy()
+    if not {'replay_before_full_slate_tip','replay_captured_at_utc',
+            'replay_timing','fanduel_id'}<=set(archived) or archived.empty:
+        return archived
+    if (not archived.replay_before_full_slate_tip.astype(str).str.lower().eq('true').all()
+            or not archived.replay_timing.eq('before_scheduled_tip').all()):
+        return archived
+    required={'team','game','eligible','adjusted_minutes','adjusted_fd_points',
+              'projected_minutes','projected_fd_points','projection_sources_json',
+              'replay_evidence_json','shadow_rate_sources','shadow_recent_fppm'}
+    if not required<=set(archived):
+        return archived
+    # Replay terminology differs from the original DAILY export.
+    # Assign only in a temporary view, not to archive's DAILY box-score points.
+    view=archived.assign(daily_minutes=archived.projected_minutes,
+                         daily_points=archived.projected_fd_points)
+    pred=forecast_consensus_history(view).set_index('fanduel_id')
+    archived['shadow_consensus_history_policy']=POLICY_VERSION
+    archived['shadow_consensus_history_as_of']=archived.replay_captured_at_utc
+    for c in COLUMNS:
+        if c!='fanduel_id':
+            archived['shadow_ch_'+c]=archived.fanduel_id.map(pred[c])
+    return archived
+
+def _frozen_predictions(frame):
+    """Use only the declared, captured values for prospective accuracy.
+
+    Check the frozen values against their captured input arithmetic, reject
+    wrong versions/timestamps and tampered forecasts, never repair a row
+    by replacing its saved forecast with a hindsight reconstruction.
+    """
+    if not set(FROZEN_FIELDS)<=set(frame):
+        return pd.DataFrame(columns=COLUMNS)
+    # Validate full-pool input and policy integrity before selecting rows.
+    expected=forecast_consensus_history(frame)
+    if expected.empty:
+        return expected
+    columns=[c for c in COLUMNS if c!='fanduel_id']
+    stored=frame[['fanduel_id',*FROZEN_FIELDS,'replay_captured_at_utc']].copy()
+    matched=stored.merge(expected,on='fanduel_id',validate='one_to_one')
+    good=(matched.shadow_consensus_history_policy.eq(POLICY_VERSION)
+          & matched.shadow_consensus_history_as_of.map(timestamp).notna()
+          & matched.shadow_consensus_history_as_of.map(timestamp).eq(matched.replay_captured_at_utc.map(timestamp))
+          & matched.shadow_ch_minute_families.eq(matched.minute_families))
+    for c in columns:
+        if c=='minute_families':
+            continue
+        a=pd.to_numeric(matched['shadow_ch_'+c],errors='coerce')
+        b=pd.to_numeric(matched[c],errors='coerce')
+        good &= np.isfinite(a) & np.isclose(a,b,rtol=1e-9,atol=1e-8)
+    return matched.loc[good,['fanduel_id',*('shadow_ch_'+c for c in columns)]].rename(
+        columns={'shadow_ch_'+c:c for c in columns})[COLUMNS]
+
+def compare_consensus_history(frame, *, require_frozen=False):
     """Paired played-player evaluation, no imputed DNPs or new scoring."""
     reports = [{'Policy':p,'Paired players':0} for p in POLICIES]
     required={'fanduel_id','eligible','verified_outcome','nba_source','actual_minutes',
               'actual_points','daily_points','adjusted_fd_points','adjusted_minutes'}
     if not required<=set(frame):
         return pd.DataFrame(reports)
-    forecast=forecast_consensus_history(frame)
+    forecast=_frozen_predictions(frame) if require_frozen else forecast_consensus_history(frame)
     if forecast.empty:
         return pd.DataFrame(reports)
     cols=['daily_points','adjusted_fd_points','actual_points','actual_minutes','adjusted_minutes']
