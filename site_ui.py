@@ -348,7 +348,7 @@ def render_slate(history_slot):
     notes, projections, source_status = live
     rotations, rotation_status = recent
     if need_reference:
-        st.session_state['slate_reference_snapshot'] = (reference_key, refs)
+        st.session_state['slate_reference_snapshot'] = (reference_key, refs, datetime.now(ET))
     with st.expander('Research retrieval timing'):
         st.caption(f'Acquisition wall time: {timing["elapsed_seconds"]:.2f}s. Task times overlap and include cache access; not publication times.')
         st.dataframe(pd.DataFrame([{'Research batch': name, 'Seconds': round(seconds, 3)}
@@ -502,13 +502,20 @@ def render_slate(history_slot):
     archived_market_events = ()
     reference_status = {}
     reference_boards = {}
+    reference_observed_at = checked_at
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
             st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
             now = datetime.now(ET)
             saved_reference = st.session_state.get('slate_reference_snapshot')
             if saved_reference is not None and saved_reference[0] == reference_key:
-                reference_boards, reference_status = saved_reference[1]
+                # Legacy session snapshots have no recorded observation time.
+                # Do not silently certify them as freshly retrieved.
+                if len(saved_reference) >= 3:
+                    reference_observed_at = saved_reference[2]
+                    reference_boards, reference_status = saved_reference[1]
+                else:
+                    reference_status = {name: 'Legacy snapshot lacks observation timestamp; recheck board' for name in saved_reference[1][1]}
                 reference_status = dict(reference_status)
                 for name, result in reference_boards.items():
                     rows, stamp = result[:2]
@@ -1272,7 +1279,7 @@ def render_slate(history_slot):
         slate, checked_at, source_status, notes, projections))
     from nba_reference_archive import freeze_reference_boards
     archive_pool, reference_coverage = freeze_reference_boards(
-        archive_pool, reference_boards, reference_status, slate, datetime.now(ET))
+        archive_pool, reference_boards, reference_status, slate, reference_observed_at)
     with st.expander('Archived reference-board coverage'):
         st.caption('Matched numerical references preserved for later research. Unknown publication times and unavailable sources do not become accepted projections.')
         st.dataframe(reference_coverage, hide_index=True)
