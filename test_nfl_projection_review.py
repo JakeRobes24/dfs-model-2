@@ -61,3 +61,48 @@ class ProjectionReviewTests(unittest.TestCase):
     def test_invalid_number_and_unknown_player(self):
         r=review([evidence(score=float("nan")),evidence(player_id="not-in-contest")])
         self.assertEqual(len(r["rejected_evidence"]),2)
+
+    def test_conflicting_duplicate_quarantines_family_in_both_orders(self):
+        records=[evidence(),evidence(score=9),evidence("two"),evidence("three")]
+        for submitted in (records,list(reversed(records))):
+            r=review(submitted)
+            row=r["rows"][0]
+            self.assertEqual(row["decision"],"source_disagreement")
+            self.assertEqual(row["conflicting_families"],["one"])
+            self.assertIsNone(row["review_consensus_fd"])
+            self.assertNotIn("one",row["family_scores"])
+            self.assertEqual(sum(e["reason"]=="conflicting_duplicate_record" for e in r["rejected_evidence"]),2)
+
+    def test_same_source_cannot_vote_as_two_families(self):
+        r=review([evidence(),evidence("two",source=" ONE ")])
+        self.assertIsNone(r["rows"][0]["review_consensus_fd"])
+        self.assertEqual(r["rows"][0]["conflicting_families"],["one","two"])
+        self.assertEqual(r["rows"][0]["independent_family_count"],0)
+
+    def test_inconsistent_source_family_detected_across_players(self):
+        a=deepcopy(AUDIT)
+        p2="137123-2"
+        a["players"].append(dict(a["players"][0],player_id=p2))
+        r=review([evidence(),evidence("two",source="one",player_id=p2)],a)
+        self.assertTrue(all(row["decision"]=="source_disagreement" for row in r["rows"]))
+        self.assertTrue(all(row["review_consensus_fd"] is None for row in r["rows"]))
+
+    def test_same_record_changed_publication_not_silently_accepted(self):
+        r=review([evidence(),evidence(asof_utc="2026-11-26T14:30:00Z"),evidence("two")])
+        self.assertEqual(r["rows"][0]["decision"],"source_disagreement")
+        self.assertIsNone(r["rows"][0]["review_consensus_fd"])
+
+    def test_same_record_reobserved_is_one_vote(self):
+        r=review([evidence(observed_at="2026-11-26T15:30:00Z"),
+                  evidence(observed_at="2026-11-26T15:00:00Z"),evidence("two")])
+        self.assertEqual(r["rows"][0]["decision"],"corroborated_gap_review")
+        self.assertEqual(r["rows"][0]["independent_family_count"],2)
+        self.assertEqual(r["rows"][0]["accepted_source_records"][0]["observed_at"],"2026-11-26T15:00:00Z")
+
+    def test_unavailable_status_suppresses_consensus(self):
+        for status in ("out","inactive","suspended","IR"):
+            a=deepcopy(AUDIT)
+            a["players"][0]["status"]=status
+            r=review([evidence(),evidence("two")],a)
+            self.assertEqual(r["rows"][0]["decision"],"contest_out")
+            self.assertIsNone(r["rows"][0]["review_consensus_fd"])

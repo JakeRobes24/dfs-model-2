@@ -1,0 +1,5 @@
+# NFL source-evidence integrity — November 26
+
+Previously, a repeated (player ID, source family, record ID) was dropped after the first valid record, even if the repeated record contradicted the earlier value. The reviewer now quarantines conflicting record identities and suppresses consensus for that player; exact re-observations remain a single vote, retaining the earliest verified observation. One normalized source label cannot vote under two different family labels across the same review. Conflicting source labels block the affected families. Unavailable contest statuses cannot yield a suggested numerical consensus.
+
+These checks use reviewer-attested identity and source labels; they do not independently establish that differently named sites are independent. No new source data accepted, no score change or optimization authorization. Six regression cases cover conflicting duplicates in both orders, shared source labels within/across players, publication timestamp conflicts, legitimate re-observation and unavailable statuses. CI pending.
