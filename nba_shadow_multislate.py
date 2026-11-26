@@ -10,6 +10,7 @@ from nba_combined_scoring_shadow import compare_frozen_combined, compare_frozen_
 
 from nba_research_triage import compare_frozen_large_minutes, LARGE_MINUTES_POLICIES, LARGE_MINUTES_CAPTURE_FIELDS
 from nba_consensus_history import compare_consensus_history, POLICIES as CONSENSUS_HISTORY_POLICIES
+from nba_window_shadow import compare_frozen_history_windows, POLICIES as HISTORY_WINDOW_POLICIES, FROZEN_FIELDS as HISTORY_WINDOW_FIELDS
 
 # The fixed policy was introduced on this date; earlier replays are exploratory.
 POLICY_DECLARED = date(2026, 11, 24)
@@ -68,12 +69,14 @@ def compare_across_slates(replays):
             report = pd.concat([report, compare_frozen_large_minutes(frame)], ignore_index=True)
         if {'projection_sources_json','replay_evidence_json','shadow_recent_fppm'} <= set(frame):
             report = pd.concat([report, compare_consensus_history(frame, require_frozen=day > date(2026,11,26))], ignore_index=True)
+        if set(HISTORY_WINDOW_FIELDS) <= set(frame):
+            report = pd.concat([report, compare_frozen_history_windows(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):
             report.loc[report.Policy.isin((PAIRED_RATE_POLICY, *OPPORTUNITY_POLICIES)), 'Period'] = 'Exploratory'
         if day <= date(2026,11,26):
-            report.loc[report.Policy.isin((HISTORY_RATE_POLICY, COMPONENT_POLICY, *LARGE_MINUTES_POLICIES, *CONSENSUS_HISTORY_POLICIES)), 'Period'] = 'Exploratory'
+            report.loc[report.Policy.isin((HISTORY_RATE_POLICY, COMPONENT_POLICY, *LARGE_MINUTES_POLICIES, *CONSENSUS_HISTORY_POLICIES, *HISTORY_WINDOW_POLICIES)), 'Period'] = 'Exploratory'
         reports.append(report)
     daily = pd.concat(reports, ignore_index=True)
     for col in ['Eligible played with baseline', 'DAILY MAE', 'Reviewed MAE', 'Shadow MAE',

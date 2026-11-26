@@ -458,6 +458,11 @@ def render_slate(history_slot):
     matchup = matchup_context(scored, rotation_rows, slate)
     # Retain the same historical evidence in manual exports and archive packets.
     reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
+    from nba_window_shadow import attach_window_inputs
+    reviewed_export = attach_window_inputs(reviewed_export, rotation_rows, slate)
+    window_supported = int(reviewed_export.shadow_hw_history_json.ne('[]').sum())
+    st.caption(f'{window_supported} players with eight matched historical observations for experimental window review. '
+               'Completeness, availability and pre-tip checks still apply. Enable the longer rotation window early in the session for coverage.')
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:

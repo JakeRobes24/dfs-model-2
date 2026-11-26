@@ -1,0 +1,67 @@
+from datetime import date,timedelta
+import json
+import pandas as pd
+import pytest
+from nba_window_shadow import attach_window_inputs,freeze_history_windows,compare_frozen_history_windows,POLICIES
+from slate_replay_capture import capture_pool,build_replay_rows
+
+DAY=date(2026,11,27)
+CAP='2026-11-27T20:00:00Z'
+TIP='2026-11-28T00:00:00Z'
+def pool():
+    return pd.DataFrame([dict(fanduel_id='137200-1',fanduel_name='Player A',team='BOS',game='BOS@NYK',
+        eligible=True,injury_flag='',prelock_status='',prelock_starter='starter',
+        projected_minutes=30,projected_fd_points=30,adjusted_minutes=30,adjusted_fd_points=30)])
+def logs():
+    return [dict(nba_id='101',player='Player A',team='BOS',game='BOS@NYK',
+        source='https://www.nba.com/game/bos-vs-nyk/box-score',
+        game_date=DAY-timedelta(days=8-i),minutes=32,points=24 if i<4 else 16,
+        reboundsTotal=5,assists=4,steals=1,blocks=0,turnovers=2,
+        fieldGoalsAttempted=15,freeThrowsAttempted=4) for i in range(8)]
+def saved(p=None,history=None):
+    f=attach_window_inputs(pool() if p is None else p,logs() if history is None else history,DAY)
+    schedule=[dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},gameTimeUtc=TIP)]
+    return capture_pool(f,pd.DataFrame(),schedule,DAY,CAP,('a'*64,'b'*64))
+def replay(f):
+    results=pd.DataFrame([dict(fanduel_id='137200-1',outcome='Played',nba_actual_minutes=32,
+                              nba_fd_points=33,nba_source='NBA box',recorded_fd_points=33)])
+    return build_replay_rows(f,results,DAY)
+
+def test_four_and_eight_rate_challengers_same_sample_and_score_unchanged():
+    f=saved()
+    pd.testing.assert_frame_equal(f[pool().columns],pool())
+    assert f.shadow_hw_rate4.iloc[0]==pytest.approx(.8*30+.2*30*29/32)
+    assert f.shadow_hw_rate8.iloc[0]==pytest.approx(.8*30+.2*30*33/32)
+    assert f.shadow_hw_minutes8.iloc[0]==pytest.approx(30.4)
+    assert compare_frozen_history_windows(replay(f))['Paired players'].tolist()==[1]*4
+
+def test_missing_incomplete_duplicate_and_mixed_identity_rejected():
+    for history in [logs()[:-1], logs()+[dict(logs()[0])],
+                    [dict(r,nba_id='202') if i==0 else r for i,r in enumerate(logs())],
+                    [dict(r,assists=None) if i==0 else r for i,r in enumerate(logs())]]:
+        f=saved(history=history)
+        assert f[list(POLICIES.values())].isna().all().all()
+
+def test_same_day_outcomes_cannot_enter_history():
+    f=saved(history=logs()+[dict(logs()[0],game_date=DAY,points=100)])
+    pd.testing.assert_frame_equal(f,saved())
+
+def test_frozen_tamper_and_timestamp_fail_closed():
+    r=replay(saved())
+    assert compare_frozen_history_windows(r.assign(shadow_hw_rate4=99))['Paired players'].tolist()==[0]*4
+    assert compare_frozen_history_windows(r.assign(shadow_hw_captured_at='2026-11-27T20:01:00Z'))['Paired players'].tolist()==[0]*4
+
+def test_uncertain_status_and_post_tip_hold():
+    f=saved(p=pool().assign(injury_flag='Q'))
+    assert f[list(POLICIES.values())].isna().all().all()
+    f=saved().assign(replay_before_full_slate_tip=False)
+    assert compare_frozen_history_windows(f)['Paired players'].tolist()==[0]*4
+
+def test_multislate_prospective_roundtrip():
+    from nba_shadow_multislate import compare_across_slates
+    r=replay(saved())
+    _,summary=compare_across_slates(r)
+    rows=summary.loc[summary.Policy.isin(POLICIES)]
+    assert len(rows)==4 and rows['Paired players'].eq(1).all()
+    assert rows.Period.eq('Prospective').all()
+    assert rows['Review status'].eq('Insufficient prospective evidence').all()
