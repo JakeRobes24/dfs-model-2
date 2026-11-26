@@ -28,7 +28,7 @@ SOURCES = (
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
-    ('4for4','Not applicable','Manual research','Accessible NFL matchup research; full DFS projections/ownership/ceilings require authorized subscription access; verify provenance'),
+    ('4for4','Not applicable','Public weekly reference','Visible FanDuel by-position points and component previews; full DFS coverage requires authorized subscription access'),
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
 )

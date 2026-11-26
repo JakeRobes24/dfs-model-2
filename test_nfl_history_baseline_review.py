@@ -45,3 +45,16 @@ def test_duplicate_and_missing_counts_refused():
     f=fixture()
     f['history'][0]['carries'].pop(f['player_ids'][0])
     with pytest.raises(ValueError):run(f)
+
+
+def test_receiving_benchmark_reproduces_saved_sample():
+    import json
+    from pathlib import Path
+    from nfl_history_baseline_review import compare_receiving_baselines
+    report = json.loads((Path(__file__).parent/'docs/validation/nfl-receiving-target-benchmark.json').read_text())
+    for cohort in report['cohorts']:
+        result = compare_receiving_baselines(cohort['history'], player_ids=cohort['player_ids'],
+                                             team=cohort['team'], target_day=cohort['target_day'])
+        assert {k:v for k,v in result.items() if k != 'rows'} == cohort['result']
+        for row in result['rows']:
+            assert max(row['training_dates']) < row['date']

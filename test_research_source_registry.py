@@ -18,7 +18,7 @@ def test_saved_sources_remain_visible_with_incomplete_automatic_refresh():
     assert nfl.loc['The Fantasy Footballers','Integration'] == 'Manual required'
 
 
-def test_courtside_and_4for4_are_retained_as_manual_references_only():
+def test_courtside_and_4for4_have_reference_only_status():
     nba = research_checklist('NBA', [('Courtside', 'claimed estimates')]).set_index('Source')
     nfl = research_checklist('NFL', [('4for4', 'claimed estimates')]).set_index('Source')
     assert 'Courtside' in nba.index and 'Courtside' not in nfl.index
@@ -26,7 +26,8 @@ def test_courtside_and_4for4_are_retained_as_manual_references_only():
     for table, source, domain in ((nba, 'Courtside', 'https://courtside.higgsfield.app/'),
                                   (nfl, '4for4', 'https://www.4for4.com/')):
         row = table.loc[source]
-        assert row['Integration'] == 'Manual research'
+        expected = 'Public weekly reference' if source == '4for4' else 'Manual research'
+        assert row['Integration'] == expected
         assert 'Not verified' in row['Refresh evidence']
         assert 'claimed estimates' not in row['Refresh evidence']
         assert row['Verified access link'].startswith(domain)

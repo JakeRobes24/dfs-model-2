@@ -134,7 +134,7 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
             else:
                 if save:
                     if commit:
-                        st.success(f'Slate submitted ({commit}). The backup job is pending.')
+                        st.success(f'Exact slate packet verified in the archive ({commit}). Backup publication is separate.')
                     else:
                         st.info('These exact slate inputs are already in the private archive queue.')
         prepared = st.session_state.get('history_prepared_packet')
@@ -146,7 +146,7 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                                key='history_packet_download',on_click='ignore')
             receipt=st.session_state.get('history_packet_receipt')
             if receipt is not None and receipt[0]==path:
-                st.caption('Archive submission acknowledged; backup publication not verified.')
+                st.caption('Archive packet verified by readback. Backup publication is separate.')
 
 
 def render_archive_receipt_check():

@@ -675,6 +675,15 @@ def render_slate(history_slot):
                 st.info('Late swap requires verified NBA tip times for every contest game.')
         elif not complete:
             st.info('NBA tip times could not be verified for every contest game. Confirm the contest lock in FanDuel.')
+    minutes_shadow = None
+    if complete and not started:
+        from nba_research_triage import large_minutes_disagreement_shadow
+        minutes_shadow = large_minutes_disagreement_shadow(scored, now)
+        if not minutes_shadow.empty:
+            with st.expander('Large minutes disagreements with corroborating evidence'):
+                st.caption('Experimental comparison of time-only and combined time and scoring-rate forecasts.')
+                st.dataframe(minutes_shadow.merge(scored[['fanduel_id', 'fanduel_name', 'team']], on='fanduel_id',
+                                                 validate='one_to_one').round(2), hide_index=True)
     if research_replay:
         st.caption('Historical replay. Generated lineups are for research.')
     if not started:
@@ -1186,6 +1195,13 @@ def render_slate(history_slot):
     # Record the acquisition result even when no forecast survived matching.
     # Review cutoff is not a provider's publication timestamp or a fresh fetch.
     from nba_acquisition_receipt import acquisition_receipt
+    if minutes_shadow is not None:
+        columns = ['estimated_minutes', 'time_only_fd', 'time_and_rate_fd', 'capped_time_only_fd']
+        lookup = minutes_shadow.set_index('fanduel_id')
+        archive_pool = archive_pool.assign(shadow_large_minutes_policy='2026-11-26',
+                                           shadow_large_minutes_as_of=now.isoformat(),
+                                           **{'shadow_large_minutes_' + c: archive_pool.fanduel_id.map(lookup[c])
+                                              for c in columns})
     archive_pool = archive_pool.assign(replay_source_acquisition_json=acquisition_receipt(
         slate, checked_at, source_status, notes, projections))
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,

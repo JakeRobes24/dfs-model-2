@@ -32,6 +32,30 @@ if contest and daily and contest_id:
         st.download_button("Download coverage audit",json.dumps(report,indent=2),
                            file_name="nfl_coverage_audit.json",mime="application/json")
 
+        with st.expander("4for4 public FanDuel reference"):
+            st.caption("Checks public weekly projections against exact contest identities. These values are advisory.")
+            season = st.number_input("NFL season", min_value=2000, max_value=2100, value=None)
+            week = st.number_input("Regular-season week", min_value=1, max_value=18, value=None)
+            reference_cutoff = st.text_input("Reference cutoff (ISO 8601 with timezone)")
+            if st.button("Check public projections") and season and week and reference_cutoff:
+                from nfl_public_projection_reference import collect_4for4_reference
+                try:
+                    reference = collect_4for4_reference(report, season=season, week=week,
+                                                        cutoff_utc=reference_cutoff)
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state["nfl_4for4_reference"] = reference
+            reference = st.session_state.get("nfl_4for4_reference", {})
+            if (reference.get("contest_sha256") == report["contest_sha256"]
+                    and reference.get("daily_sha256") == report["daily_sha256"]
+                    and reference.get("season") == season and reference.get("week") == week
+                    and reference.get("cutoff_utc") == reference_cutoff):
+                st.dataframe(pd.DataFrame(reference["coverage"]), hide_index=True)
+                st.dataframe(pd.DataFrame(reference["rows"]), hide_index=True)
+                st.download_button("Download 4for4 comparison", json.dumps(reference, indent=2),
+                                   file_name="nfl_4for4_public_reference.json", mime="application/json")
+
         with st.expander("Independent projection review (advisory)"):
             st.caption("Upload reviewer-verified source records in JSON. No score will be automatically replaced.")
             slate_date=st.date_input("Slate date",value=None)

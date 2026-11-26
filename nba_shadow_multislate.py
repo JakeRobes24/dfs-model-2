@@ -8,6 +8,8 @@ from nba_shadow_research import (compare_shadow_forecasts, FEATURES, POLICIES,
                                  compare_frozen_component_rate, COMPONENT_POLICY)
 from nba_combined_scoring_shadow import compare_frozen_combined, compare_frozen_paired_rate, PAIRED_RATE_POLICY
 
+from nba_research_triage import compare_frozen_large_minutes, LARGE_MINUTES_POLICIES, LARGE_MINUTES_CAPTURE_FIELDS
+
 # The fixed policy was introduced on this date; earlier replays are exploratory.
 POLICY_DECLARED = date(2026, 11, 24)
 MIN_DATES = 5
@@ -61,12 +63,14 @@ def compare_across_slates(replays):
             report = pd.DataFrame({'Policy': POLICIES, 'Paired players': 0})
         report = pd.concat([report, compare_frozen_combined(frame), compare_frozen_paired_rate(frame),
                             compare_frozen_opportunity(frame), compare_frozen_history_rate(frame), compare_frozen_component_rate(frame)], ignore_index=True)
+        if set(LARGE_MINUTES_CAPTURE_FIELDS) <= set(frame):
+            report = pd.concat([report, compare_frozen_large_minutes(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):
             report.loc[report.Policy.isin((PAIRED_RATE_POLICY, *OPPORTUNITY_POLICIES)), 'Period'] = 'Exploratory'
         if day <= date(2026,11,26):
-            report.loc[report.Policy.isin((HISTORY_RATE_POLICY,COMPONENT_POLICY)), 'Period'] = 'Exploratory'
+            report.loc[report.Policy.isin((HISTORY_RATE_POLICY, COMPONENT_POLICY, *LARGE_MINUTES_POLICIES)), 'Period'] = 'Exploratory'
         reports.append(report)
     daily = pd.concat(reports, ignore_index=True)
     for col in ['Eligible played with baseline', 'DAILY MAE', 'Reviewed MAE', 'Shadow MAE',

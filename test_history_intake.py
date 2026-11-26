@@ -143,3 +143,21 @@ def test_prepare_packet_does_not_submit_and_save_reuses_exact_bytes():
         app.button(key='history_intake_save').click().run()
         assert not app.exception
         send.assert_called_once_with('test-only',path,raw)
+
+
+@pytest.mark.parametrize('readback_matches', [True, False])
+def test_created_packet_requires_exact_pinned_readback(readback_matches):
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    commit = 'a'*40
+    created = BytesIO(json.dumps({'commit':{'sha':commit}}).encode())
+    created.status = 201
+    response = BytesIO(raw if readback_matches else raw+b' ')
+    with patch('history_intake.build_opener') as opener:
+        call = opener.return_value.open
+        call.side_effect = [created, response]
+        if readback_matches:
+            assert submit_reviewed_slate('test-only', path, raw) == commit[:7]
+        else:
+            with pytest.raises(OSError, match='did not confirm'):
+                submit_reviewed_slate('test-only', path, raw)
+        assert call.call_args.args[0].full_url.endswith('?ref='+commit)

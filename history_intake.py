@@ -93,13 +93,14 @@ def submit_reviewed_slate(token, path, raw):
         'message': 'Archive reviewed DFS slate from Streamlit',
         'content': base64.b64encode(raw).decode('ascii'), 'branch': 'main',
     }).encode()
+    commit = None
     try:
         with opener.open(Request(url, payload, headers, method='PUT'), timeout=15) as response:
             result = json.load(response)
             commit = result.get('commit', {}).get('sha')
             if response.status != 201 or not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
                 raise OSError('GitHub did not confirm a new submission.')
-            return commit[:7]
+            # A 201 acknowledges creation. Verify the packet at that exact revision.
     except HTTPError as error:
         if error.code not in (409, 422):
             raise OSError('The private archive rejected the submission.') from error
@@ -107,9 +108,9 @@ def submit_reviewed_slate(token, path, raw):
         pass
     read_headers = dict(headers, Accept='application/vnd.github.raw+json')
     try:
-        with opener.open(Request(url + '?ref=main', headers=read_headers), timeout=15) as response:
+        with opener.open(Request(url + '?ref=' + (commit or 'main'), headers=read_headers), timeout=15) as response:
             if response.read(len(raw) + 1) == raw:
-                return None
+                return commit[:7] if commit else None
     except (URLError, TimeoutError):
         pass
     raise OSError('The private archive did not confirm the save. Retry with the same inputs.')
