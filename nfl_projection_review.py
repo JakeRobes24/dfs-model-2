@@ -97,6 +97,11 @@ def review_nfl_projections(audit, evidence, *, cutoff_utc, slate_date, max_age_h
         center=median(values) if values else None
         tolerance=max(2.0,0.20*abs(center)) if center is not None else None
         agreement=len(values)>=2 and not conflicts and max(values)-min(values)<=tolerance
+        accepted_records=[
+            {k:record[k] for k in ("source","source_family","source_record_id","asof_utc","observed_at","projection_fd")}
+            for family,records in groups[pid].items() if family in family_values
+            for record in records
+        ]
         baseline=p.get("projection_fd")
         unlabeled=p.get("unlabeled_fd_candidate")
         if p["status"]=="out":
@@ -115,6 +120,7 @@ def review_nfl_projections(audit, evidence, *, cutoff_utc, slate_date, max_age_h
                      "status":p["status"],"daily_fd":baseline,
                      "unlabeled_fd_candidate":unlabeled,"independent_family_count":len(values),
                      "family_scores":family_values,"conflicting_families":conflicts,
+                     "accepted_source_records":accepted_records,
                      "review_consensus_fd":center if agreement else None,
                      "decision":decision})
     return {"contest_id":audit["contest_id"],"slate_date":slate_date,"cutoff_utc":cutoff_utc,

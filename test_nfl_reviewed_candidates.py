@@ -72,6 +72,15 @@ class ReviewedCandidateTests(unittest.TestCase):
     def test_conflicting_sources_block(self):
         c,d,kw=fixture();kw["evidence"][1]["projection_fd"]=30
         self.assertFalse(compare_reviewed_nfl(c,d,**kw)["ready"])
+    def test_actual_evidence_observation_times_preserved(self):
+        c,d,kw=fixture()
+        kw["daily_capture"]["observed_at"]="2026-11-26T14:00:00Z"
+        for record in kw["evidence"]:
+            record.update(asof_utc="2026-11-26T14:00:00Z",observed_at="2026-11-26T15:00:00Z")
+        r=compare_reviewed_nfl(c,d,**kw)
+        self.assertEqual(r["accepted_players"][0]["asof_utc"],"2026-11-26T14:00:00Z")
+        self.assertEqual(r["accepted_players"][-1]["asof_utc"],"2026-11-26T15:00:00Z")
+        self.assertEqual(len(r["source_review"]["rows"][-1]["accepted_source_records"]),2)
     def test_capture_not_reviewed(self):
         c,d,kw=fixture();kw["daily_capture"]["reviewed"]=False
         with self.assertRaises(ValueError):compare_reviewed_nfl(c,d,**kw)

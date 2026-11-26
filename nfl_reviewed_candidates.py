@@ -44,17 +44,23 @@ def compare_reviewed_nfl(contest_raw,daily_raw,*,contest_id,single_game,slate_da
         r=by_id[pid]
         score=p["projection_fd"]
         origin="DAILY"
+        score_observed_at=daily_capture["observed_at"]
+        score_records=[daily_capture["source_record_id"]]
         if r["decision"] in {"source_disagreement","baseline_disagreement"}:
             unresolved.append({"player_id":pid,"player":p["player"],"reason":r["decision"]})
             continue
         if score is None and r["decision"]=="corroborated_gap_review":
             score=r["review_consensus_fd"]
             origin="experimental_independent_consensus"
+            records=r["accepted_source_records"]
+            score_observed_at=max((record["observed_at"] for record in records),key=stamp)
+            score_records=[record["source_record_id"] for record in records]
         if type(score) not in (int,float) or not math.isfinite(score):
             unresolved.append({"player_id":pid,"player":p["player"],"reason":"missing_reviewed_score"})
             continue
         accepted.append({**p,"projection_fd":score,"score_origin":origin,
-                         "slate_date":slate_date,"asof_utc":cutoff_utc})
+                         "slate_date":slate_date,"asof_utc":score_observed_at,
+                         "score_source_record_ids":score_records})
     report={"contest_id":str(contest_id),"slate_date":slate_date,"cutoff_utc":cutoff_utc,
             "contest_sha256":audit["contest_sha256"],"daily_sha256":audit["daily_sha256"],
             "daily_capture":daily_capture,"source_review":review,"salary_cap":salary_cap,
