@@ -104,3 +104,133 @@ def compare_mvp_assignments(contest, roster_ids, projected_points, *, salary_cap
                         projected_fd=base+.5*points[p["player_id"]])
                    for p in rows if total+p["mvp_salary"]-p["salary"]<=salary_cap],
                   key=lambda p:(-p["projected_fd"],p["salary"],p["mvp"]))
+
+
+OFFENSE = {"QB","RB","WR","TE"}
+UNAVAILABLE = {"out","inactive","suspended","ir"}
+
+
+def team_workload_review(contest, records, *, team, game, cutoff_utc=None):
+    """Audit full team opportunity coverage before using a team-level budget.
+
+    Missing/invalid/late records remain unresolved. Sum only individually
+    accepted records, never treat missing players as zero. Contest status is
+    not independent official availability certification.
+    """
+    ids=[p["player_id"] for p in contest]
+    if len(ids)!=len(set(ids)):
+        raise ValueError("Duplicate contest IDs")
+    by_id={p["player_id"]:p for p in contest}
+    supplied={}
+    for r in records:
+        pid=r.get("player_id")
+        if pid not in by_id or pid in supplied:
+            raise ValueError("Duplicate or noncontest projection ID")
+        supplied[pid]=r
+    if cutoff_utc is not None:
+        cutoff=_stamp(cutoff_utc)
+    expected=[p for p in contest if p["team"]==team and p["game"]==game
+              and len(p["positions"])==1 and p["positions"][0] in OFFENSE]
+    if not expected:
+        raise ValueError("No matching team offense")
+    missing, invalid, conflicts, excluded, accepted = [],[],[],[],[]
+    totals=dict(pass_attempts=0.,targets=0.,carries=0.)
+    for p in expected:
+        pid=p["player_id"]
+        r=supplied.get(pid)
+        out=p["status"].lower() in UNAVAILABLE
+        if out:
+            excluded.append(pid)
+        if r is None:
+            if not out:
+                missing.append(pid)
+            continue
+        try:
+            vals={k:_number(r.get(k),0,80) for k in totals}
+            if cutoff_utc is not None and (
+                not r.get("source") or not r.get("source_record_id")
+                or _stamp(r.get("asof_utc"))>cutoff):
+                raise ValueError("Unverified record")
+        except ValueError:
+            if not out:
+                invalid.append(pid)
+            continue
+        if out:
+            if any(v>0 for v in vals.values()):
+                conflicts.append(pid)
+            continue
+        accepted.append(pid)
+        for k,v in vals.items():
+            totals[k]+=v
+    gap=totals["pass_attempts"]-totals["targets"]
+    # Independent rounding across players warrants a small tolerance.
+    tolerance=max(.1,.01*len(accepted))
+    complete=not (missing or invalid or conflicts)
+    budget_ok=complete and totals["pass_attempts"]>0 and gap>=-tolerance
+    return dict(team=team,game=game,offensive_players=len(expected),
+                accepted_ids=accepted,missing_ids=missing,invalid_ids=invalid,
+                excluded_ids=excluded,out_workload_conflicts=conflicts,
+                matched_totals=totals,attempt_minus_target_gap=gap,
+                complete_numeric_coverage=complete,receiving_budget_supported=budget_ok,
+                timestamp_gate_used=cutoff_utc is not None,
+                status="Research coverage only; not official availability or live forecast certification")
+
+
+def receiving_scenarios(contest, pair, *, team_pass_attempts, other_targets, cutoff_utc=None):
+    """Explicit team passing budget, two receivers, fixed other-player targets.
+
+    Preserve each player's catch efficiency, yards/target, TD/target and all
+    nonreceiving FD. Never allocate more targets than the stated pass budget.
+    The fixed 35/50/65% pair-share grid is a sensitivity, not a probability.
+    """
+    ids=[p["player_id"] for p in contest]
+    if len(ids)!=len(set(ids)):
+        raise ValueError("Duplicate contest IDs")
+    by_id={p["player_id"]:p for p in contest}
+    if len(pair)!=2 or len({p.get("player_id") for p in pair})!=2:
+        raise ValueError("Exactly two distinct receivers required")
+    if any(p.get("player_id") not in by_id for p in pair):
+        raise ValueError("Unknown contest player")
+    matched=[by_id[p["player_id"]] for p in pair]
+    if (len({(p["team"],p["game"]) for p in matched})!=1
+        or any(len(p["positions"])!=1 or p["positions"][0] not in {"RB","WR","TE"}
+               or p["status"].lower() in UNAVAILABLE for p in matched)):
+        raise ValueError("Require eligible same-team receiving players")
+    attempts=_number(team_pass_attempts,1,80)
+    residual=_number(other_targets,0,80)
+    base=[]
+    for p in pair:
+        if cutoff_utc is not None and (
+            not p.get("source") or not p.get("source_record_id")
+            or _stamp(p.get("asof_utc"))>_stamp(cutoff_utc)):
+            raise ValueError("Unverified or post-cutoff opportunity inputs")
+        t=_number(p.get("targets"),.1,40)
+        rec=_number(p.get("receptions"),0,t)
+        y=_number(p.get("receiving_yards"),0,500)
+        td=_number(p.get("receiving_td"),0,rec)
+        fd=_number(p.get("projection_fd"),0,150)
+        rate=(.5*rec+.1*y+6*td)/t
+        base.append((p["player_id"],t,fd,rate,rec/t))
+    total=sum(x[1] for x in base)
+    # Explicit budget may include unallocated attempts. Never silently
+    # normalize conflicting input or transfer targets from other players.
+    if total+residual>attempts+1e-8:
+        raise ValueError("Baseline targets exceed explicit passing budget")
+    scenarios=[]
+    for factor in TOTAL_MULTIPLIERS:
+        volume=attempts*factor
+        if volume>80 or volume<residual:
+            continue
+        pair_budget=min(total*factor,volume-residual)
+        for share in SHARES:
+            players=[]
+            for (pid,t,fd,rate,catch),s in zip(base,(share,1-share)):
+                targets=pair_budget*s
+                players.append(dict(player_id=pid,targets=targets,receptions=targets*catch,
+                                    projection_fd=fd+(targets-t)*rate,receiving_fd_per_target=rate))
+            scenarios.append(dict(pass_attempts=volume,other_targets=residual,
+                                  pair_targets=pair_budget,unallocated_attempts=volume-residual-pair_budget,
+                                  first_player_share=share,players=players))
+    return dict(baseline_pair_targets=total,baseline_first_share=base[0][1]/total,
+                scenarios=scenarios,timestamp_gate_used=cutoff_utc is not None,
+                status="Sensitivity only; caller-supplied team budget not independently certified")

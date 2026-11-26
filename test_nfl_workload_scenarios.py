@@ -51,3 +51,47 @@ class NFLWorkloadTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
+
+class NFLTeamVolumeTests(unittest.TestCase):
+    def test_missing_and_out_conflict_cannot_certify_budget(self):
+        from nfl_workload_scenarios import team_workload_review
+        c=pool()
+        c[3]["status"]="out"
+        records=[dict(player_id="0",pass_attempts=0,targets=6,carries=12),
+                 dict(player_id="1",pass_attempts=0,targets=5,carries=10),
+                 dict(player_id="3",pass_attempts=0,targets=1,carries=0)]
+        r=team_workload_review(c,records,team="LAR",game="GB@LAR")
+        self.assertEqual(r["missing_ids"],["2"])
+        self.assertEqual(r["out_workload_conflicts"],["3"])
+        self.assertFalse(r["receiving_budget_supported"])
+        self.assertEqual(r["matched_totals"]["targets"],11)
+        c[2]["positions"]=["QB"]
+        records=[dict(x,targets=0) if x["player_id"]=="3" else x for x in records]
+        records.append(dict(player_id="2",pass_attempts=12,targets=0,carries=1))
+        r=team_workload_review(c,records,team="LAR",game="GB@LAR")
+        self.assertTrue(r["receiving_budget_supported"])
+        self.assertEqual(r["attempt_minus_target_gap"],1)
+        self.assertFalse(team_workload_review(c,records,team="LAR",game="GB@LAR",
+                         cutoff_utc="2026-11-25T23:00:00Z")["receiving_budget_supported"])
+
+    def test_receiving_scenarios_conserve_budget_and_nonreceiving_points(self):
+        from nfl_workload_scenarios import receiving_scenarios
+        records=[dict(player_id="0",projection_fd=16.6,targets=9.53,receptions=6.86,
+                      receiving_yards=59,receiving_td=.29),
+                 dict(player_id="1",projection_fd=20.6,targets=8.82,receptions=6.23,
+                      receiving_yards=50.79,receiving_td=.33)]
+        result=receiving_scenarios(pool(),records,team_pass_attempts=36,other_targets=17)
+        self.assertEqual(len(result["scenarios"]),9)
+        for s in result["scenarios"]:
+            self.assertAlmostEqual(sum(p["targets"] for p in s["players"]),s["pair_targets"])
+            self.assertLessEqual(s["pair_targets"]+s["other_targets"],s["pass_attempts"]+1e-8)
+            for p,old in zip(s["players"],records):
+                self.assertAlmostEqual(p["projection_fd"]-old["projection_fd"],
+                    (p["targets"]-old["targets"])*p["receiving_fd_per_target"])
+                self.assertLessEqual(p["receptions"],p["targets"])
+        with self.assertRaises(ValueError):
+            receiving_scenarios(pool(),records,team_pass_attempts=35,other_targets=17)
+        with self.assertRaises(ValueError):
+            receiving_scenarios(pool(),records,team_pass_attempts=36,other_targets=17,
+                                cutoff_utc="2026-11-25T23:00:00Z")
