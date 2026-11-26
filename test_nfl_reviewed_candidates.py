@@ -84,3 +84,49 @@ class ReviewedCandidateTests(unittest.TestCase):
     def test_capture_not_reviewed(self):
         c,d,kw=fixture();kw["daily_capture"]["reviewed"]=False
         with self.assertRaises(ValueError):compare_reviewed_nfl(c,d,**kw)
+
+    def test_conflicting_daily_salary_blocks_even_with_finite_projection(self):
+        c,d,kw=fixture(True)
+        d=d.replace(b"Player 0,KC,KC@BUF,5000,",b"Player 0,KC,KC@BUF,5100,",1)
+        kw["daily_capture"]["daily_sha256"]=sha256(d).hexdigest()
+        report=compare_reviewed_nfl(c,d,**kw)
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["rankings"],[])
+        self.assertEqual(report["unresolved"][0]["issues"],["daily_salary_mismatch"])
+
+    def test_ambiguous_daily_identity_blocks_even_with_independent_evidence(self):
+        c,d,kw=fixture()
+        d+=b"\n"+d.splitlines()[1]
+        kw["daily_capture"]["daily_sha256"]=sha256(d).hexdigest()
+        for family in ("a","b"):
+            kw["evidence"].append(dict(kw["evidence"][0],player_id="137123-1",
+                                       source=family,source_family=family))
+        report=compare_reviewed_nfl(c,d,**kw)
+        self.assertFalse(report["ready"])
+        self.assertIn("ambiguous_identity",report["unresolved"][0]["issues"])
+
+    def test_classic_and_single_game_use_same_score_bounds(self):
+        for single in (False,True):
+            c,d,kw=fixture(single)
+            d=d.replace(b",10,,,",b",151,,,",1)
+            kw["daily_capture"]["daily_sha256"]=sha256(d).hexdigest()
+            report=compare_reviewed_nfl(c,d,**kw)
+            self.assertFalse(report["ready"])
+            self.assertEqual(report["unresolved"][0]["reason"],"score_outside_review_bounds")
+
+    def test_outside_bounds_consensus_cannot_fill_missing_score(self):
+        c,d,kw=fixture()
+        for record in kw["evidence"]:
+            record["projection_fd"]=151
+        report=compare_reviewed_nfl(c,d,**kw)
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["unresolved"][0]["reason"],"score_outside_review_bounds")
+
+    def test_negative_finite_score_preserved(self):
+        c,d,kw=fixture(True)
+        d=d.replace(b",10,,,",b",-1,,,",1)
+        kw["daily_capture"]["daily_sha256"]=sha256(d).hexdigest()
+        report=compare_reviewed_nfl(c,d,**kw)
+        self.assertTrue(report["ready"])
+        self.assertEqual(report["accepted_players"][0]["projection_fd"],-1)
+        self.assertEqual(report["rankings"][0]["projected_fd"],48.5)

@@ -42,6 +42,13 @@ def compare_reviewed_nfl(contest_raw,daily_raw,*,contest_id,single_game,slate_da
             excluded.append(pid)
             continue
         r=by_id[pid]
+        # A numeric score does not resolve conflicting contest/export identity
+        # or price evidence. Keep the contest price authoritative, but require
+        # explicit reconciliation before using the potentially mismatched export.
+        hard_issues=sorted(set(p["issues"]) & {"ambiguous_identity","position_layout_mismatch","daily_salary_mismatch"})
+        if hard_issues:
+            unresolved.append({"player_id":pid,"player":p["player"],"reason":"contest_daily_conflict","issues":hard_issues})
+            continue
         score=p["projection_fd"]
         origin="DAILY"
         score_observed_at=daily_capture["observed_at"]
@@ -58,6 +65,9 @@ def compare_reviewed_nfl(contest_raw,daily_raw,*,contest_id,single_game,slate_da
         if type(score) not in (int,float) or not math.isfinite(score):
             unresolved.append({"player_id":pid,"player":p["player"],"reason":"missing_reviewed_score"})
             continue
+        if not -30<=score<=150:
+            unresolved.append({"player_id":pid,"player":p["player"],"reason":"score_outside_review_bounds"})
+            continue
         accepted.append({**p,"projection_fd":score,"score_origin":origin,
                          "slate_date":slate_date,"asof_utc":score_observed_at,
                          "score_source_record_ids":score_records})
@@ -68,7 +78,7 @@ def compare_reviewed_nfl(contest_raw,daily_raw,*,contest_id,single_game,slate_da
             "excluded_out_ids":excluded,"unresolved":unresolved,"rankings":[],
             "ready":False,"certified":False,
             "warning":"Experimental fixed-roster comparison only. No official status certification, full contest-rule certification or live recommendation."}
-    if unresolved or not accepted:
+    if unresolved or not accepted or len(accepted)!=audit["eligible_players"]:
         return report
     if not isinstance(candidates,list) or not candidates or any(not isinstance(c,dict) for c in candidates):
         raise ValueError("Supply at least one fixed candidate")
