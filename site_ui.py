@@ -926,6 +926,14 @@ def render_slate(history_slot):
                                     st.download_button('Download fixed-minutes rate comparison', fixed_days.to_csv(index=False),
                                                        file_name=f'{slate}-prior-fixed-minutes-rate.csv', mime='text/csv',
                                                        key='slate_prior_fixed_rate_accuracy')
+                                from nba_source_rate_accuracy import fixed_rate_shrinkage_review
+                                shrink_days, shrink_summary = fixed_rate_shrinkage_review(rate_details)
+                                if not shrink_summary.empty:
+                                    st.caption('Experimental fixed-rate blends (0/20/40/100% independent): same minutes and matched players, equal date weight. No live scoring changes.')
+                                    st.dataframe(shrink_summary.round(3), hide_index=True)
+                                    st.download_button('Download dated rate blend sensitivity', shrink_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-rate-blends.csv', mime='text/csv',
+                                                       key='slate_prior_rate_blends')
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')
