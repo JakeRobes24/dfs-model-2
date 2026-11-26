@@ -11,7 +11,7 @@ import streamlit as st
 
 from advanced_ui import render_advanced
 from evidence import validate_sources
-from history_intake_ui import render_slate_archive
+from history_intake_ui import render_slate_archive, render_archive_receipt_check
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
@@ -1190,6 +1190,7 @@ def render_slate(history_slot):
 def render_site():
     st.set_page_config(page_title='DFS Model 2.0', layout='centered')
     st.title('DFS Model 2.0')
+    render_archive_receipt_check()
     view = st.radio('Workspace', ('Build a slate', 'Post-slate review', 'History and advanced'), horizontal=True,
                     label_visibility='collapsed', key='site_view')
     if view == 'Build a slate':

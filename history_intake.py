@@ -162,3 +162,42 @@ def load_slate_packet(token, commit, folder, filename):
             or not pool.fanduel_id.str.fullmatch(fr'{contest}-\d+').fillna(False).all()):
         raise ValueError('Saved slate does not contain a verified contest pool.')
     return pool, _csv(record['lineups_csv']) if record.get('lineups_csv') else None
+
+
+def recovery_packet_path(raw):
+    """Identify exact downloaded bytes, without trusting any claimed replay timing."""
+    if not isinstance(raw, bytes) or not raw or len(raw)>MAX_PACKET:
+        raise ValueError('Use a nonempty archive packet smaller than 8 MiB.')
+    try:
+        record=json.loads(raw)
+    except (UnicodeDecodeError,ValueError) as exc:
+        raise ValueError('Invalid archive packet JSON.') from exc
+    if not isinstance(record,dict) or record.get('version')!=1:
+        raise ValueError('Unsupported archive packet version.')
+    slate,contest=record.get('slate_date'),record.get('contest_id')
+    if (not isinstance(slate,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',slate)
+            or not isinstance(contest,str) or not re.fullmatch(r'\d{1,12}',contest)):
+        raise ValueError('Invalid archive date or contest ID.')
+    date.fromisoformat(slate)
+    if not isinstance(record.get('research_csv'),str) or not record['research_csv'].strip():
+        raise ValueError('Packet has no reviewed pool.')
+    return f'incoming-app/{slate}/{contest}/{hashlib.sha256(raw).hexdigest()}.json'
+
+
+def check_recovery_receipt(token, raw):
+    """Read-only exact-byte receipt at a pinned main commit; no upload or backup claim."""
+    from history_snapshot import history_head, _request
+    if not token:
+        raise ValueError('A history read credential is required.')
+    path=recovery_packet_path(raw)
+    commit=history_head(token)
+    try:
+        with _request(f'{PRIVATE_API}{path}?ref={commit}',token,raw=True) as response:
+            saved=response.read(len(raw)+1)
+    except HTTPError as exc:
+        if exc.code==404:
+            return dict(path=path,commit=commit,status='not_found')
+        raise
+    if saved!=raw:
+        raise ValueError('Remote archive bytes do not match the local packet.')
+    return dict(path=path,commit=commit,status='verified')

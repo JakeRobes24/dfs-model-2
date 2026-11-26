@@ -99,3 +99,47 @@ def test_existing_key_is_reused_only_for_main_site_configuration():
                 assert _intake_token() == ''
         with patch('history_intake_ui.st.secrets', {'auth': {'redirect_uri': 'https://preview.example.org/oauth2callback'}}):
             assert _intake_token() == ''
+
+
+def test_read_only_recovery_receipt_checks_exact_bytes_at_pinned_commit():
+    from history_intake import recovery_packet_path,check_recovery_receipt
+    path,raw=make_submission(reviewed_pool(),SLATE)
+    assert recovery_packet_path(raw)==path
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',return_value=BytesIO(raw)) as read:
+        result=check_recovery_receipt('fixture',raw)
+        assert result==dict(path=path,commit='a'*40,status='verified')
+        assert read.call_args.args[0].endswith(path+'?ref='+'a'*40)
+        assert read.call_args.kwargs==dict(raw=True)
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',side_effect=HTTPError('https://example.org',404,'missing',{},None)):
+        assert check_recovery_receipt('fixture',raw)['status']=='not_found'
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',return_value=BytesIO(raw+b' ')):
+        with pytest.raises(ValueError,match='bytes'):
+            check_recovery_receipt('fixture',raw)
+    for bad in (b'',b'[]',b'{"version":1,"slate_date":"../x"}'):
+        with pytest.raises(ValueError):
+            recovery_packet_path(bad)
+
+
+def test_prepare_packet_does_not_submit_and_save_reuses_exact_bytes():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    environment={'DFS_HISTORY_OWNER_EMAIL':'owner@example.org','DFS_HISTORY_INTAKE_TOKEN':'test-only'}
+    owner={'email':'owner@example.org','email_verified':True,'is_logged_in':True}
+    csv=(ROOT/'nov20_reconciled_example.csv').read_bytes()
+    with patch.dict('os.environ',environment,clear=True),patch.object(st,'user',owner),patch(
+            'history_intake_ui.submit_reviewed_slate',return_value='abcdef0') as send:
+        app=AppTest.from_file(str(ROOT/'app_staging.py')).run()
+        app.radio(key='site_view').set_value('History and advanced').run()
+        app.file_uploader(key='base').upload('pool.csv',csv,'text/csv').run()
+        app.checkbox(key='history_intake_reviewed').check()
+        app.button(key='history_intake_prepare').click().run()
+        assert not app.exception
+        send.assert_not_called()
+        path,raw=app.session_state['history_prepared_packet']
+        assert path.endswith('.json')
+        app.button(key='history_intake_save').click().run()
+        assert not app.exception
+        send.assert_called_once_with('test-only',path,raw)
