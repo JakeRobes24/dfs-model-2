@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import streamlit as st
 from nfl_daily_audit import audit_nfl_daily
+from nfl_reviewed_candidates import compare_reviewed_nfl
 from nfl_projection_review import review_nfl_projections
 from research_source_registry import research_checklist
 
@@ -49,3 +50,24 @@ if contest and daily and contest_id:
                         st.dataframe(pd.DataFrame(review["rejected_evidence"]),hide_index=True)
                     st.download_button("Download independent review",json.dumps(review,indent=2),
                                        file_name="nfl_projection_review.json",mime="application/json")
+
+        with st.expander("Fixed-candidate research comparison"):
+            st.caption("Requires the exact DAILY capture receipt, source evidence and timestamped candidate records. No official availability certification or optimization.")
+            bundle=st.file_uploader("Reviewed candidate bundle JSON",type=["json"])
+            if bundle:
+                try:
+                    args=json.loads(bundle.getvalue())
+                    result=compare_reviewed_nfl(contest.getvalue(),daily.getvalue(),
+                        contest_id=contest_id,single_game=mode=="Single game",
+                        **{k:args[k] for k in ("slate_date","cutoff_utc","daily_capture","evidence","candidates","salary_cap")})
+                except (ValueError,TypeError,KeyError,UnicodeError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.warning(result["warning"])
+                    if result["ready"]:
+                        st.dataframe(pd.DataFrame(result["rankings"]),hide_index=True)
+                    else:
+                        st.info("Comparison blocked until every eligible player has a reviewed score.")
+                        st.dataframe(pd.DataFrame(result["unresolved"]),hide_index=True)
+                    st.download_button("Download fixed-candidate review",json.dumps(result,indent=2),
+                                       file_name="nfl_candidate_review.json",mime="application/json")
