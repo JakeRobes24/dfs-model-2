@@ -1,0 +1,241 @@
+{
+  "source": "docs/validation/nfl-multi-backfield-baselines.json",
+  "method": "Full 3x3 volume/share weighting grid; equal-weight across three backfields, same 29 held-out pair games; largest individual carry error across all observations also reported.",
+  "results": [
+    {
+      "volume": "last",
+      "share": "last",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.5,
+          "worst": 15
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 4.8076923076923075,
+          "worst": 14
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 5.045454545454546,
+          "worst": 13
+        }
+      ],
+      "equal_pair_mae": 4.784382284382285,
+      "worst": 15
+    },
+    {
+      "volume": "last",
+      "share": "equal",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.898509316770186,
+          "worst": 17.878260869565217
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 4.543245694310236,
+          "worst": 9.571428571428571
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.955980861244019,
+          "worst": 13.64835164835165
+        }
+      ],
+      "equal_pair_mae": 4.799245290774813,
+      "worst": 17.878260869565217
+    },
+    {
+      "volume": "last",
+      "share": "recent",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.899209173586398,
+          "worst": 17.551601423487543
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 4.615177091489138,
+          "worst": 10.204946996466433
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 5.004289699893396,
+          "worst": 13.139240506329113
+        }
+      ],
+      "equal_pair_mae": 4.839558654989644,
+      "worst": 17.551601423487543
+    },
+    {
+      "volume": "equal",
+      "share": "last",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.3500582750582755,
+          "worst": 15.146551724137932
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 4.066597985347985,
+          "worst": 12.649999999999999
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.327674471992654,
+          "worst": 8.9
+        }
+      ],
+      "equal_pair_mae": 4.248110244132971,
+      "worst": 15.146551724137932
+    },
+    {
+      "volume": "equal",
+      "share": "equal",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.5,
+          "worst": 18
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 3.548076923076923,
+          "worst": 8.499999999999998
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.284090909090909,
+          "worst": 12.500000000000002
+        }
+      ],
+      "equal_pair_mae": 4.110722610722611,
+      "worst": 18
+    },
+    {
+      "volume": "equal",
+      "share": "recent",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.5199430961746,
+          "worst": 17.676156583629894
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 3.563811562811778,
+          "worst": 9.13957597173145
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.305892363450503,
+          "worst": 11.920886075949367
+        }
+      ],
+      "equal_pair_mae": 4.129882340812294,
+      "worst": 17.676156583629894
+    },
+    {
+      "volume": "recent",
+      "share": "last",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.454340844340844,
+          "worst": 15.527586206896551
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 4.154139194139195,
+          "worst": 12.98
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.345714722987451,
+          "worst": 8.545454545454547
+        }
+      ],
+      "equal_pair_mae": 4.318064920489164,
+      "worst": 15.527586206896551
+    },
+    {
+      "volume": "recent",
+      "share": "equal",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.324732919254659,
+          "worst": 18.316521739130433
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 3.753068051193935,
+          "worst": 8.747747747747747
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.2595763459841125,
+          "worst": 12.103296703296705
+        }
+      ],
+      "equal_pair_mae": 4.112459105477569,
+      "worst": 18.316521739130433
+    },
+    {
+      "volume": "recent",
+      "share": "recent",
+      "team": [
+        {
+          "team": "LAR",
+          "dates": 5,
+          "mae": 4.37,
+          "worst": 18
+        },
+        {
+          "team": "DET",
+          "dates": 13,
+          "mae": 3.769230769230769,
+          "worst": 9.400000000000002
+        },
+        {
+          "team": "CHI",
+          "dates": 11,
+          "mae": 4.35,
+          "worst": 11.5
+        }
+      ],
+      "equal_pair_mae": 4.163076923076923,
+      "worst": 18
+    }
+  ],
+  "limitations": "Same retrospective cohorts, no new source acquisition or prospective data. No independent DAILY comparisons. Grid is exploratory and must not be selected by in-sample results; paired observations omit missing participation records."
+}
