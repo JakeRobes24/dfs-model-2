@@ -22,6 +22,24 @@ def complete_stat_rows(rows, weights):
                     and 0 <= row[stat] <= 150 for stat in weights)]
 
 
+def component_rate_evidence(rows):
+    """Joint complete-stat sample: net scoring, peripheral FD, opportunity proxy.
+    
+    Opportunities are FGA + .44 FTA + turnovers, NOT official usage percentage.
+    Never divide rates derived from different sets of games.
+    """
+    complete = complete_stat_rows(rows, FD_WEIGHTS | OPPORTUNITY_WEIGHTS)
+    minutes = sum(r['minutes'] for r in complete)
+    opportunities = sum(sum(r[k]*w for k,w in OPPORTUNITY_WEIGHTS.items()) for r in complete)
+    net = sum(r['points']-r['turnovers'] for r in complete)
+    peripheral = sum(sum(r[k]*w for k,w in FD_WEIGHTS.items()
+                         if k not in ('points','turnovers')) for r in complete)
+    return dict(games=len(complete), minutes=minutes,
+                opportunities_per_minute=opportunities/minutes if minutes else None,
+                net_per_opportunity=net/opportunities if opportunities else None,
+                peripheral_per_minute=peripheral/minutes if minutes else None)
+
+
 def rate_comparison(present, absent, weights):
     """Report observed and shrunk gaps with separate complete-stat denominators."""
     left, right = (complete_stat_rows(rows, weights) for rows in (present, absent))
@@ -123,7 +141,12 @@ def opportunity_evidence(pool, rotations, slate):
         start_logs = [row for row in logs if row.get('started') is True]
         role_fd = rate_comparison(bench_logs, start_logs, FD_WEIGHTS)
         role_opp = rate_comparison(bench_logs, start_logs, OPPORTUNITY_WEIGHTS)
+        component_samples = {}
+        for prefix, group in [('recent', logs), ('starter', start_logs), ('bench', bench_logs)]:
+            component_samples.update({f'component_{prefix}_{key}': value
+                                      for key,value in component_rate_evidence(group).items()})
         summaries.append({
+            **component_samples,
             'fanduel_id': player.fanduel_id, 'Player': player.fanduel_name, 'Team': player.team,
             'Games observed': len(logs), 'Known starts': sum(starts_known) if starts_known else None,
             'Games with starter status': len(starts_known), 'Last played': logs[-1]['game_date'],

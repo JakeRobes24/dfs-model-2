@@ -30,7 +30,7 @@ def test_date_weighting_prospective_separation_and_minimum_evidence():
     assert recent.loc['Prospective','Improvement (equal date weight)'] == 0
     assert recent.loc['Prospective','Review status'] == 'Insufficient prospective evidence'
     assert recent.loc['Prospective','Improved dates'] == 1
-    assert len(details) == 30
+    assert len(details) == 33
     more = pd.concat([replay(date(2026,11,25)+timedelta(days=i),i+10,20,36)
                       for i in range(5)], ignore_index=True)
     _, result = compare_across_slates(more)

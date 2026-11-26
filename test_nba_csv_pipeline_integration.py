@@ -202,3 +202,18 @@ def test_independent_blend_reaches_optimizer_and_reviewed_simulation():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_optional_component_forecasts_retained_without_changing_contest_authority():
+    contest,daily=synthetic_exports()
+    rows=list(csv.DictReader(io.StringIO(daily.decode('utf-8'))))
+    for r in rows:
+        r.update(fieldGoalsAttempted='12',freeThrowsAttempted='4',turnovers='2',points='18')
+    rows[1]['fieldGoalsAttempted']=''
+    rows[2]['turnovers']='-1'
+    matched,_,_=reconcile_exports(contest,export_bytes(list(rows[0]),rows))
+    assert matched.daily_box_fieldGoalsAttempted.iloc[0]==12
+    assert matched.daily_box_freeThrowsAttempted.iloc[0]==4
+    assert pd.isna(matched.daily_box_fieldGoalsAttempted.iloc[1])
+    assert pd.isna(matched.daily_box_turnovers.iloc[2])
+    assert matched.salary.eq(6000).all()
