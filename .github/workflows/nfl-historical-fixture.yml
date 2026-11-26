@@ -1,0 +1,44 @@
+name: NFL historical fixture regression
+
+on:
+  pull_request:
+    paths:
+      - 'nfl_fixture_validation.py'
+      - 'test_nfl_fixture_validation.py'
+      - 'test_nfl_original_candidates.py'
+      - 'test_nfl_candidate_report.py'
+      - 'nfl_candidate_report.py'
+      - 'nfl_prelock_challenger.py'
+      - 'test_nfl_prelock_challenger.py'
+      - 'nfl_pool_adapter.py'
+      - 'test_nfl_pool_adapter.py'
+      - 'nfl_contest_import.py'
+      - 'test_nfl_contest_import.py'
+      - 'nfl_prelock_pipeline.py'
+      - 'test_nfl_prelock_pipeline.py'
+      - 'nfl_workload_scenarios.py'
+      - 'test_nfl_workload_scenarios.py'
+      - 'nfl_replay_coverage.py'
+      - 'test_nfl_replay_coverage.py'
+      - 'tests/fixtures/nov22_2026_nfl_fd_preliminary.json'
+      - 'tests/fixtures/nov22_2026_nfl_four_preliminary_candidates.json'
+      - '.github/workflows/nfl-historical-fixture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-nfl-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run isolated NFL fixture regression tests
+        run: python -m unittest -v test_nfl_fixture_validation test_nfl_original_candidates test_nfl_candidate_report test_nfl_prelock_challenger test_nfl_pool_adapter test_nfl_contest_import test_nfl_prelock_pipeline test_nfl_replay_coverage test_nfl_workload_scenarios
+      - name: Verify fixture CLI
+        run: python nfl_fixture_validation.py
+      - name: Generate descriptive candidate report
+        run: python nfl_candidate_report.py
