@@ -6,7 +6,7 @@ from nfl_daily_audit import audit_nfl_daily
 from nfl_reviewed_candidates import compare_reviewed_nfl
 from nfl_weather_ui import render_nfl_weather
 from nfl_projection_review import review_nfl_projections
-from research_source_registry import research_checklist
+from research_source_registry import predictive_coverage, research_checklist
 
 st.set_page_config(page_title="DFS Model 2.0 NFL staging",layout="centered")
 st.title("DFS Model 2.0 — NFL import staging")
@@ -58,6 +58,12 @@ if contest and daily and contest_id:
                 st.dataframe(pd.DataFrame(reference["rows"]), hide_index=True)
                 st.download_button("Download 4for4 comparison", json.dumps(reference, indent=2),
                                    file_name="nfl_4for4_public_reference.json", mime="application/json")
+                captured = {'4for4': len(reference['rows'])}
+            else:
+                captured = {}
+        with st.expander('Predictive evidence across saved NFL sources'):
+            st.caption('Forecasts are counted here after exact contest matching. Accuracy requires final results for those same players.')
+            st.dataframe(predictive_coverage('NFL', captured=captured), hide_index=True)
 
         with st.expander("Independent projection review (advisory)"):
             st.caption("Upload reviewer-verified source records in JSON. No score will be automatically replaced.")

@@ -376,3 +376,18 @@ def test_paired_data_documentation_does_not_promote_manual_providers():
         assert 'count shared provenance once' in rows.loc['RotoQL / stat-api', 'Research purpose']
     nba = research_checklist('NBA').set_index('Source')
     assert 'does not expose projected minutes' in nba.loc['Daily Fantasy Fuel', 'Research purpose']
+
+
+def test_predictive_coverage_distinguishes_matched_forecasts_from_capture_and_gaps():
+    from research_source_registry import predictive_coverage
+
+    nba = predictive_coverage('NBA', matched={('propsims', 'Minutes'): 56,
+                                             ('propsims', 'FD points'): 59,
+                                             ('lineupexperts', 'Minutes'): 0}).set_index('Source')
+    assert nba.index.tolist() == research_checklist('NBA').Source.tolist()
+    assert nba.loc['PropSims', 'Matched forecast rows by metric'] == 'FD points (59), Minutes (56)'
+    assert nba.loc['LineupExperts', 'Evidence'] == 'No comparable rows in this archive'
+    nfl = predictive_coverage('NFL', captured={'4for4': 14}).set_index('Source')
+    assert nfl.index.tolist() == research_checklist('NFL').Source.tolist()
+    assert nfl.loc['4for4', 'Forecast rows awaiting outcomes'] == 14
+    assert nfl.loc['4for4', 'Evidence'] == 'Captured forecasts'

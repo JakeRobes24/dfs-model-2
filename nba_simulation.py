@@ -104,7 +104,8 @@ class OutcomeDraws:
         return reviewed
 
 
-def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_projection=True):
+def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_projection=True,
+                 rate_scaled=False):
     """Sample paired minutes and efficiency errors from earlier completed games.
 
     By default, center residuals on the supplied projections. Role bands use
@@ -119,6 +120,8 @@ def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_pr
     prior['slate_date'] = pd.to_datetime(prior.slate_date, errors='coerce').dt.normalize()
     prior = _history_rows(prior.loc[prior.slate_date.lt(pd.Timestamp(slate_date).normalize())])
     prior = prior.sort_values(['slate_date', 'fanduel_id'])
+    if rate_scaled:
+        prior = prior.loc[prior.actual_minutes.ge(10)]
     if len(prior) < MIN_COHORT:
         raise ValueError('Insufficient earlier, verified played outcomes for simulated ranges.')
     target = _numeric(pool, ['projected_minutes', 'projected_fd_points'])
@@ -131,8 +134,10 @@ def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_pr
     base_minutes = target.projected_minutes.to_numpy()
     rate = target.projected_fd_points.to_numpy() / base_minutes
     historic_rate = prior.daily_points / prior.daily_minutes
-    errors = np.column_stack((prior.actual_minutes - prior.daily_minutes,
-                              prior.actual_points - prior.actual_minutes * historic_rate))
+    production_error = prior.actual_points - prior.actual_minutes * historic_rate
+    if rate_scaled:
+        production_error = production_error / prior.actual_minutes
+    errors = np.column_stack((prior.actual_minutes - prior.daily_minutes, production_error))
     if not np.isfinite(errors).all() or not np.isfinite(rate).all():
         raise ValueError('Simulation inputs produced non-finite point rates.')
     train_bands = np.digitize(prior.daily_minutes, MINUTE_BANDS)
@@ -149,7 +154,8 @@ def simulate_nba(history, pool, slate_date, *, draws=4000, seed=42, center_on_pr
             group = group - group.mean(axis=0)
         sampled = group[rng.integers(len(group), size=(draws, chosen.sum()))]
         minutes[:, chosen] = np.clip(base_minutes[chosen] + sampled[:, :, 0], 1 / 60, 60)
-        points[:, chosen] = minutes[:, chosen] * rate[chosen] + sampled[:, :, 1]
+        residual = sampled[:, :, 1] * minutes[:, chosen] if rate_scaled else sampled[:, :, 1]
+        points[:, chosen] = minutes[:, chosen] * rate[chosen] + residual
     return OutcomeDraws(pd.Index(pool.fanduel_id), minutes, points)
 
 
@@ -228,12 +234,13 @@ def simulate_reviewed_candidates(history, scored_pool, rosters, slate_date, *, d
     return (*result, outcomes) if return_draws else result
 
 
-def compare_residual_training(history, target_day, *, draws=4000, seed=42):
+def compare_residual_training(history, target_day, *, draws=4000, seed=42, rate_scale_comparison=False):
     """Walk-forward comparison of DAILY vs reviewed residual distributions.
 
     Train both on the same verified played rows from one complete pre-tip
-    capture per date. Hold the later reviewed forecast constant. Never
-    select a policy, infer availability, or modify candidate rankings.
+    capture per date. Hold the later reviewed forecast constant. The optional
+    rate-scale comparison uses reviewed errors and identical ten-minute minimum
+    training rows for both policies. It is separate from lineup simulation.
     """
     fields={'slate_date','fanduel_id','eligible','daily_minutes','daily_points',
             'adjusted_minutes','adjusted_fd_points','actual_minutes','actual_points',
@@ -273,13 +280,18 @@ def compare_residual_training(history, target_day, *, draws=4000, seed=42):
     reports=[]
     for day,held in data.groupby('slate_date',sort=True):
         prior=data.loc[data.slate_date.lt(day)]
+        if rate_scale_comparison:
+            prior = prior.loc[prior.actual_minutes.ge(10)]
         if len(prior)<MIN_COHORT:
             continue
         target=held[['fanduel_id','adjusted_minutes','adjusted_fd_points']].rename(
             columns={'adjusted_minutes':'projected_minutes','adjusted_fd_points':'projected_fd_points'})
         revised=prior.assign(daily_minutes=prior.adjusted_minutes,daily_points=prior.adjusted_fd_points)
-        for policy,train in [('DAILY residuals',prior),('Reviewed residuals',revised)]:
-            ranges=simulate_nba(train,target,day,draws=draws,seed=seed).player_ranges()
+        policies = [('DAILY residuals', prior, False), ('Reviewed residuals', revised, False)]
+        if rate_scale_comparison:
+            policies = [('Reviewed point errors', revised, False), ('Reviewed rate errors', revised, True)]
+        for policy, train, rate_scaled in policies:
+            ranges=simulate_nba(train,target,day,draws=draws,seed=seed,rate_scaled=rate_scaled).player_ranges()
             paired=held.merge(ranges,on='fanduel_id',validate='one_to_one')
             for metric in ('fd','minutes'):
                 actual=paired.actual_points if metric=='fd' else paired.actual_minutes

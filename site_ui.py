@@ -932,7 +932,7 @@ def render_slate(history_slot):
                                 raise ValueError('Combined replay files must be smaller than 8 MiB.')
                             training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
                                                   for file in files], ignore_index=True).drop_duplicates()
-                        from nba_source_accuracy import review_source_dates
+                        from nba_source_accuracy import compare_minutes_consensus, review_source_dates
                         source_summary = pd.DataFrame()
                         try:
                             source_details, source_daily, source_summary = review_source_dates(training, slate)
@@ -948,7 +948,16 @@ def render_slate(history_slot):
                                                    mime='text/csv', key='slate_prior_source_accuracy')
                             else:
                                 st.caption('No qualifying frozen independent provider forecasts in these earlier replays.')
+                            from research_source_registry import predictive_coverage
+                            matched = {(row.provider, row.metric): row.paired_forecasts
+                                       for row in source_summary.itertuples()}
+                            st.caption('Predictive evidence across saved NBA sources')
+                            st.dataframe(predictive_coverage('NBA', matched=matched), hide_index=True, height=245)
                         if not source_summary.empty:
+                            consensus_review = compare_minutes_consensus(source_details)
+                            if not consensus_review.empty:
+                                st.caption('Historical minutes challenger for players with at least two verified forecasts. Includes a 50% blend with reviewed minutes.')
+                                st.dataframe(consensus_review.round(3), hide_index=True)
                             from nba_source_rate_accuracy import review_source_rates
                             rate_details, rate_daily, rate_summary = review_source_rates(training, slate, source_details=source_details)
                             if not rate_summary.empty:
@@ -988,6 +997,12 @@ def render_slate(history_slot):
                             st.dataframe(residual_summary.round(3), hide_index=True)
                             st.download_button('Download residual calibration by date', residual_days.to_csv(index=False),
                                                'residual_training_calibration.csv', mime='text/csv')
+                            rate_sim_days, rate_sim_summary = compare_residual_training(training, slate, rate_scale_comparison=True)
+                            if not rate_sim_summary.empty:
+                                st.caption('Test whether scoring-rate errors should expand or shrink with simulated minutes. Both methods train on the same earlier players.')
+                                st.dataframe(rate_sim_summary.round(3), hide_index=True)
+                                st.download_button('Download simulated rate-error comparison', rate_sim_days.to_csv(index=False),
+                                                   'simulated_rate_error_calibration.csv', mime='text/csv')
                         else:
                             st.caption('Need at least two distinct verified pre-tip dates for matched residual calibration.')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()

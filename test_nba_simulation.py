@@ -150,3 +150,15 @@ def test_residual_training_comparison_uses_identical_prior_and_heldout_samples()
     assert summary.dates.eq(1).all()
     assert compare_residual_training(a,'2026-11-22')[0].empty
     assert compare_residual_training(pd.concat([a,a,b]),'2026-11-22')[0].empty
+
+
+def test_rate_scaled_residuals_use_sampled_minutes_and_ignore_short_training():
+    prior = historical_rows('2026-11-18', 0)
+    short = prior.iloc[[0]].assign(fanduel_id='short', actual_minutes=5, actual_points=60)
+    pool = pd.DataFrame({'fanduel_id': ['p'], 'projected_minutes': [20], 'projected_fd_points': [30]})
+    additive = simulate_nba(prior, pool, '2026-11-20', draws=256)
+    rate = simulate_nba(prior, pool, '2026-11-20', draws=256, rate_scaled=True)
+    with_short = simulate_nba(pd.concat([prior, short]), pool, '2026-11-20', draws=256, rate_scaled=True)
+    np.testing.assert_array_equal(additive.minutes, rate.minutes)
+    np.testing.assert_array_equal(rate.fd_points, with_short.fd_points)
+    assert not np.array_equal(additive.fd_points, rate.fd_points)

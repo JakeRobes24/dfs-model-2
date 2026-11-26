@@ -14,6 +14,32 @@ FIELDS = ['fanduel_id','provider','metric','role','outcome','forecast','actual',
           'daily','reviewed','observed_at','source_error','daily_error','reviewed_error']
 
 
+def compare_minutes_consensus(details):
+    """Challenge reviewed minutes using matched players with two or more forecasts."""
+    columns = ['slate_date', 'players', 'daily_mae', 'reviewed_mae',
+               'provider_median_mae', 'half_consensus_mae']
+    if details.empty:
+        return pd.DataFrame(columns=columns)
+    minutes = details.loc[details.metric.eq('Minutes')].dropna(subset=['forecast', 'actual', 'reviewed', 'daily'])
+    comparisons = []
+    for (day, _), rows in minutes.groupby(['slate_date', 'fanduel_id']):
+        if rows.provider.nunique() < 2 or not rows.provider.is_unique:
+            continue
+        if rows[['actual', 'reviewed', 'daily']].nunique().ne(1).any():
+            continue
+        best = rows.iloc[0]
+        consensus = rows.forecast.median()
+        comparisons.append(dict(slate_date=day, players=1,
+                                daily_mae=abs(best.daily - best.actual),
+                                reviewed_mae=abs(best.reviewed - best.actual),
+                                provider_median_mae=abs(consensus - best.actual),
+                                half_consensus_mae=abs((consensus + best.reviewed) / 2 - best.actual)))
+    if not comparisons:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(comparisons).groupby('slate_date', as_index=False).agg(
+        {column: 'sum' if column == 'players' else 'mean' for column in columns[1:]})
+
+
 def records(value):
     try:
         data = json.loads(value)

@@ -62,6 +62,15 @@ AUTOMATIC_NBA = {
     'Daily Fantasy Fuel': ('Daily Fantasy Fuel',),
 }
 
+NBA_FORECAST_PROVIDERS = {
+    'daily-fantasy-fuel': 'Daily Fantasy Fuel',
+    'lineupexperts': 'LineupExperts',
+    'nba-house': 'NBA House',
+    'propsims': 'PropSims',
+    'rotogrinders': 'RotoGrinders',
+    'rotowire': 'RotoWire',
+}
+
 
 def research_checklist(sport, source_status=()):
     """Every saved source remains visible; unattempted sources never look checked."""
@@ -86,3 +95,26 @@ def research_checklist(sport, source_status=()):
                      'Verified access link': RESEARCH_LINKS.get(name, ''),
                      'Historical reference link': HISTORICAL_RESEARCH_LINKS.get(name, '')})
     return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link','Historical reference link'])
+
+
+def predictive_coverage(sport, *, matched=None, captured=None):
+    """Label records in the selected archive independently of provider accessibility.
+
+    Matched counts use (provider, metric) because one player can contribute to
+    multiple metrics. Captured counts describe forecast rows awaiting outcomes.
+    """
+    matched = matched or {}
+    captured = captured or {}
+    checklist = research_checklist(sport)[['Source', 'Integration']]
+    aliases = NBA_FORECAST_PROVIDERS if sport == 'NBA' else {}
+    metrics = {}
+    for (provider, metric), count in matched.items():
+        if count > 0:
+            metrics.setdefault(aliases.get(provider, provider), []).append(f'{metric} ({count})')
+    checklist['Matched forecast rows by metric'] = checklist.Source.map(
+        lambda source: ', '.join(sorted(metrics.get(source, ()))))
+    checklist['Forecast rows awaiting outcomes'] = checklist.Source.map(captured).fillna(0).astype(int)
+    return checklist.assign(Evidence=checklist.apply(
+        lambda row: 'Matched outcomes' if row['Matched forecast rows by metric'] else
+        'Captured forecasts' if row['Forecast rows awaiting outcomes'] else 'No comparable rows in this archive',
+        axis=1))
