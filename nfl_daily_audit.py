@@ -83,7 +83,15 @@ def read_daily(raw):
             layout, candidate = "dst_unlabeled", number(row[11])
         elif len(row) == 17 and row[-2:] == ["", ""] and all(number(x) is not None for x in row[5:15]):
             layout, candidate = "kicker_unlabeled", number(row[14])
+        components = {}
+        if layout == "offense_header":
+            completions, attempts = (number(x) for x in row[5].split("/"))
+            components = dict(zip(("passing_yards","passing_td","interceptions","rushing_attempts",
+                                  "rushing_yards","rushing_td","receptions","targets",
+                                  "receiving_yards","receiving_td"), (number(x) for x in row[6:16])))
+            components.update(completions=completions,pass_attempts=attempts)
         out.append({"row": i, "name": name, "team": t, "game": g,
+                    "offensive_components": components,
                     "salary": number(sal), "layout": layout, "projection_fd": points,
                     "unlabeled_fd_candidate": candidate,
                     "rushing_attempts": number(row[9]) if layout == "offense_header" else None,
@@ -141,6 +149,7 @@ def audit_nfl_daily(contest_raw, daily_raw, *, contest_id, single_game=False):
                        "unlabeled_fd_candidate": d["unlabeled_fd_candidate"] if d and "position_layout_mismatch" not in issues else None,
                        "rushing_attempts": d["rushing_attempts"] if d else None,
                        "targets": d["targets"] if d else None,
+                       "offensive_components": d["offensive_components"] if d and "position_layout_mismatch" not in issues else {},
                        "issues": issues})
     active = [p for p in output if p["status"] != "out"]
     return {"contest_id": str(contest_id), "single_game": single_game,
