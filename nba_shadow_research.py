@@ -186,3 +186,77 @@ def compare_frozen_opportunity(replay):
             'MAE improvement vs reviewed':(baseline-error).mean(),
             'Shadow bias':(predicted[mask]-actual[mask]).mean()})
     return pd.DataFrame(rows)
+
+
+HISTORY_RATE_POLICY = 'Role-aware sample-weighted historical rate'
+
+
+def historical_rate_shadow(frame):
+    """Exploratory prior: select one supported historical rate, not overlapping samples.
+
+    Prefer the same confirmed role when supported; otherwise use recent complete
+    games. At least 3 games/60 minutes, shrink toward the current forecast with
+    a fixed 240-minute prior and 40% cap. No live scores are modified.
+    """
+    columns = ['fanduel_id', 'history_rate_fd', 'history_rate_weight', 'history_rate_basis']
+    needed = {'fanduel_id', 'eligible', 'adjusted_fd_points', 'adjusted_minutes',
+              'prelock_starter', 'prelock_status', 'injury_flag', 'shadow_rate_sources'}
+    needed |= {f'shadow_{p}_{v}' for p in ('recent', 'role') for v in ('fppm', 'games', 'minutes')}
+    if not needed <= set(frame):
+        return pd.DataFrame(columns=columns)
+    if frame.fanduel_id.isna().any() or not frame.fanduel_id.is_unique:
+        raise ValueError('Historical rate comparison requires unique player IDs.')
+    result = frame[['fanduel_id']].copy()
+    num = lambda name: pd.to_numeric(frame[name], errors='coerce').replace([np.inf,-np.inf], np.nan)
+    base, mins = num('adjusted_fd_points'), num('adjusted_minutes')
+    available = (frame.eligible.astype(str).str.lower().eq('true')
+                 & ~frame.injury_flag.fillna('').astype(str).str.upper().isin(['O','OUT','Q','D','GTD'])
+                 & ~frame.prelock_status.fillna('').astype(str).str.lower().isin(
+                     ['out','inactive','suspended','questionable','doubtful'])
+                 & frame.shadow_rate_sources.fillna('').astype(str).str.strip().ne('')
+                 & base.gt(0) & mins.between(10,48))
+    supported = {}
+    for prefix in ('recent','role'):
+        rate, games, observed = (num(f'shadow_{prefix}_{v}') for v in ('fppm','games','minutes'))
+        ok = rate.between(0,5) & games.ge(3) & observed.ge(60) & observed.le(games*60)
+        supported[prefix] = (rate, observed, ok)
+    recent_rate, recent_mins, recent_ok = supported['recent']
+    role_rate, role_mins, role_ok = supported['role']
+    role_ok &= frame.prelock_starter.isin(['starter','bench'])
+    rate = recent_rate.where(~role_ok, role_rate)
+    evidence = recent_mins.where(~role_ok, role_mins)
+    use = available & (role_ok | recent_ok)
+    weight = (evidence/(evidence+240)).clip(upper=.4).where(use)
+    result['history_rate_fd'] = ((1-weight)*base+weight*mins*rate).where(use)
+    result['history_rate_weight'] = weight
+    result['history_rate_basis'] = np.where(use, np.where(role_ok, 'Confirmed role', 'Recent complete games'), 'Unsupported')
+    return result[columns]
+
+
+def compare_frozen_history_rate(frame):
+    """Evaluate the fixed historical policy on verified played outcomes only."""
+    report = {'Policy': HISTORY_RATE_POLICY, 'Paired players': 0}
+    needed = {'fanduel_id','eligible','verified_outcome','nba_source','actual_points',
+              'actual_minutes','daily_points','adjusted_fd_points'}
+    if not needed <= set(frame):
+        return pd.DataFrame([report])
+    shadow = historical_rate_shadow(frame)
+    if shadow.empty:
+        return pd.DataFrame([report])
+    data = frame.merge(shadow,on='fanduel_id',validate='one_to_one')
+    cols = ['daily_points','adjusted_fd_points','history_rate_fd','actual_points','actual_minutes']
+    data[cols] = data[cols].apply(pd.to_numeric,errors='coerce')
+    baseline = (data.eligible.astype(str).str.lower().eq('true') & data.verified_outcome.eq('played')
+                & data.nba_source.fillna('').ne('') & data.actual_minutes.between(10,60)
+                & np.isfinite(data[['daily_points','adjusted_fd_points','actual_points']]).all(axis=1))
+    report['Eligible played with baseline'] = int(baseline.sum())
+    matched = data.loc[baseline & np.isfinite(data.history_rate_fd)]
+    if matched.empty:
+        return pd.DataFrame([report])
+    errors = matched[cols[:3]].sub(matched.actual_points,axis=0)
+    mae = errors.abs().mean()
+    report.update({'Paired players':len(matched),'DAILY MAE':mae.daily_points,
+                   'Reviewed MAE':mae.adjusted_fd_points,'Shadow MAE':mae.history_rate_fd,
+                   'MAE improvement vs reviewed':mae.adjusted_fd_points-mae.history_rate_fd,
+                   'Shadow bias':errors.history_rate_fd.mean()})
+    return pd.DataFrame([report])

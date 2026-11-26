@@ -434,6 +434,8 @@ def render_slate(history_slot):
             st.download_button('Download team opportunity review', team_review.to_csv(index=False),
                                file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
     matchup = matchup_context(scored, rotation_rows, slate)
+    # Retain the same historical evidence in manual exports and archive packets.
+    reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
@@ -638,7 +640,8 @@ def render_slate(history_slot):
             'independent_fd_points':'Independent FD', 'blended_fd_points':'Weighted blend FD', 'recent_mpg':'Recent minutes',
             'prelock_status':'Official status', 'prelock_starter':'Starter',
         }), hide_index=True)
-        st.download_button('Download reviewed pool', scored.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
+        st.caption('Manual export includes historical rate, role and matchup evidence. It is not a certified pre-tip archive receipt.')
+        st.download_button('Download reviewed pool', reviewed_export.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
 
     st.header('3. Challenge and optimize')
     objective = 'adjusted_fd_points'
@@ -1143,8 +1146,7 @@ def render_slate(history_slot):
             except (ValueError, TypeError, KeyError) as exc:
                 st.warning(f'Ownership comparison unavailable: {exc}')
     hashes = (sha256(contest_bytes).hexdigest(), sha256(daily_bytes).hexdigest())
-    archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
-    archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
+    archive_pool = archive_ownership(reviewed_export, *archived_ownership) if archived_ownership else reviewed_export
     if archived_matchwiz is not None:
         from matchwiz_reference import freeze_matchwiz_reference
         archive_pool = freeze_matchwiz_reference(archive_pool, archived_matchwiz, slate, datetime.now(ET))
