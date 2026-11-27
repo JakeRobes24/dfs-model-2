@@ -90,7 +90,8 @@ def compare_split_workload_baselines(history, *, player_ids, team, target_day):
                 status="Retrospective complete grid; no selection or scoring promotion")
 
 
-def compare_receiving_baselines(history, *, player_ids, team, target_day):
+def compare_receiving_baselines(history, *, player_ids, team, target_day,
+                                share_blend_challenge=False):
     """Test whether team target volume and player shares beat direct target counts.
 
     Use the same four earlier games and the same held-out rows for each policy.
@@ -114,6 +115,8 @@ def compare_receiving_baselines(history, *, player_ids, team, target_day):
             raise ValueError('Explicit target counts and verified team total required.')
         games.append((day, volume, values))
     policies = ('last game', 'four-game targets', 'four-game volume + recent shares')
+    if share_blend_challenge:
+        policies += ('blended direct targets and recent shares',)
     rows = []
     for i in range(4, len(games)):
         day, actual_volume, actual = games[i]
@@ -126,7 +129,11 @@ def compare_receiving_baselines(history, *, player_ids, team, target_day):
         recent_volume = sum(n*w for (_, n, _), w in zip(prior, weights))
         recent_share = [sum(values[j]*w for (_, _, values), w in zip(prior, weights))/recent_volume
                         for j in range(2)]
-        for policy, estimate in zip(policies, (prior[-1][2], equal, [volume*s for s in recent_share])):
+        share_estimate = [volume*s for s in recent_share]
+        estimates = (prior[-1][2], equal, share_estimate)
+        if share_blend_challenge:
+            estimates += ([(a+b)/2 for a,b in zip(equal, share_estimate)],)
+        for policy, estimate in zip(policies, estimates):
             errors = [p-a for p,a in zip(estimate, actual)]
             rows.append(dict(date=day.isoformat(), policy=policy,
                              training_dates=[d.isoformat() for d, _, _ in prior],

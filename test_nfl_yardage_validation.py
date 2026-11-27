@@ -37,6 +37,25 @@ def test_real_yardage_replay_preserves_training_order_and_simulation_marginals()
     assert rams_rushing['simulation_summary'][1]['crps'] == pytest.approx(40.2484375)
 
 
+def test_receiving_share_blend_on_archived_cohorts():
+    from nfl_history_baseline_review import compare_receiving_baselines
+    for cohort, expected_count, expected_mae in zip(
+            json.loads(EVIDENCE.read_text())['cohorts'], (5,10,2),
+            (2.270230394390309,1.7029984440291852,1.200435222672065)):
+        args = {key: cohort[key] for key in ('player_ids','team','target_day')}
+        result = compare_receiving_baselines(cohort['history'], **args, share_blend_challenge=True)
+        assert {row['dates'] for row in result['summary']} == {expected_count}
+        assert result['summary'][-1]['mae'] == pytest.approx(expected_mae)
+        from collections import defaultdict
+        by_date = defaultdict(dict)
+        for row in result['rows']:
+            by_date[row['date']][row['policy']] = row['estimated_targets']
+            assert max(row['training_dates']) < row['date']
+        for p in by_date.values():
+            assert p['blended direct targets and recent shares'] == pytest.approx([
+                (a+b)/2 for a,b in zip(p['four-game targets'],p['four-game volume + recent shares'])])
+
+
 def test_missing_receiving_workload_cannot_skip_back_to_older_games():
     rams = json.loads(EVIDENCE.read_text())['cohorts'][0]
     history = rams['history']
