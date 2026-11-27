@@ -7,6 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from nba_history_windows import compare_history_windows
+from nba_rate_distribution import compare_rate_distributions, calibrate_rate_ranges
 
 ARCHIVE_SHA256 = "2063db41a4a8332b0fb98bd2460449744ae07203e4f9cd2caac3e5d41cea74f9"
 MEMBER = "official_played_observations.json"
@@ -29,7 +30,10 @@ def replay(payload, *, cutoff_day="2026-11-26"):
     result = compare_history_windows(records, cutoff_day=cutoff_day,
                                      short_long_challenge=True, rate_challenge=True,
                                      component_challenge=True)
+    distribution = compare_rate_distributions(records, cutoff_day=cutoff_day)
     return {"archive_sha256": ARCHIVE_SHA256, "input_rows": len(records),
+            "rate_distribution": distribution["summary"],
+            "rate_calibration": calibrate_rate_ranges(distribution["rows"]),
             "cutoff_day": cutoff_day, "summary": result["summary"],
             "rejected": result["rejected"], "certified": False}
 
