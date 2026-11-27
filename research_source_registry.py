@@ -9,7 +9,7 @@ import pandas as pd
 SOURCES = (
     ('Official NBA reports / NBA Stats','Automatic','Not applicable','Availability, official box scores, recent rotations and results'),
     ('Official NFL reports / statistics','Not applicable','Manual required','Availability, active/inactive, workload and verified results'),
-    ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
+    ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news. Public NFL recaps provide dated historical snaps and route counts. Verify against final schedules and box counts'),
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates; separately verified historical logs for potential assists on a selected played cohort. Historical tracking needs exact box-score matching'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
