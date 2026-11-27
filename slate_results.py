@@ -145,3 +145,29 @@ def compare_results(pool, day, boxes, prior_scores):
     result['fd_projection_error'] = (result.nba_fd_points - result.adjusted_fd_points).round(2)
     result['minutes_projection_error'] = (result.nba_actual_minutes - result.adjusted_minutes).round(2)
     return result, finals
+
+
+def lineup_review(lineups, results):
+    if lineups is None or not {'lineup', 'fanduel_id'} <= set(lineups):
+        return pd.DataFrame()
+    joined = lineups[['lineup', 'fanduel_id']].merge(results, on='fanduel_id', how='left', validate='many_to_one')
+    joined['result_for_total'] = joined.nba_fd_points.where(joined.outcome.eq('Played')).mask(
+        joined.outcome.eq('Did not play'), 0)
+    scores = []
+    for label, players in joined.groupby('lineup', sort=False):
+        if len(players) != 9 or players.fanduel_id.nunique() != 9:
+            continue
+        daily = players.projected_fd_points.sum(min_count=9)
+        adjusted = players.adjusted_fd_points.sum(min_count=9)
+        actual = players.result_for_total.sum(min_count=9)
+        paired = pd.notna(daily) and pd.notna(adjusted) and pd.notna(actual)
+        scores.append({
+            'Lineup': label,
+            'DAILY projection': daily,
+            'Pre-lock projection': adjusted,
+            'NBA box-score FD': actual,
+            'DAILY absolute error': abs(daily - actual) if paired else None,
+            'Pre-lock absolute error': abs(adjusted - actual) if paired else None,
+            'Players still unresolved': int(players.result_for_total.isna().sum()),
+        })
+    return pd.DataFrame(scores)
