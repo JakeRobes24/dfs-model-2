@@ -73,10 +73,13 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                     freshness=('Publication unknown' if published is None else
                                'Dated within six hours' if cutoff-pd.Timedelta(hours=6)<=published
                                else 'Dated but stale')
-                    matched_by_player[pid].append(dict(provider=name,source=RESEARCH_LINKS[name],
+                    entry=dict(provider=name,source=RESEARCH_LINKS[name],
                         observed_at=observed.isoformat(),published_at=published.isoformat() if published is not None else None,
                         slate_date=slate.isoformat(),freshness=freshness,fd_points=fp,minutes=minutes,
-                        scoring_accepted=False))
+                        scoring_accepted=False)
+                    if name == 'Edgehalla':
+                        entry.update(conditional_on_playing=True, fd_points_basis='FanDuel from projected box components')
+                    matched_by_player[pid].append(entry)
                     row['matched_players']+=1
                     row['fresh_dated_players']+=int(freshness=='Dated within six hours')
                     row['publication_unknown_players']+=int(freshness=='Publication unknown')

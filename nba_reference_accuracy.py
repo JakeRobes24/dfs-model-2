@@ -16,6 +16,11 @@ DETAIL_FIELDS=('slate_date','fanduel_id','provider','metric','published_at','obs
                'forecast','actual','daily','reviewed','source_error','daily_error','reviewed_error')
 NEWS={'out','inactive','suspended','available','probable','questionable','doubtful'}
 
+def _rate(points, minutes):
+    points = bounded(points, -150, 300)
+    minutes = bounded(minutes, 10, 60)
+    return bounded(points / minutes, -1, 5) if points is not None and minutes is not None else None
+
 def _records(value):
     try:
         rows=json.loads(value)
@@ -122,11 +127,18 @@ def review_reference_dates(frame,target_day):
                     count['outcome_not_played_or_unverified']+=1
                     continue
                 contributed=False
+                source_points = bounded(e.get('fd_points'),0,150)
+                source_minutes = bounded(e.get('minutes'),0,48)
+                daily_points = bounded(r.daily_points,0,150)
+                daily_minutes = bounded(r.daily_minutes,0,48)
+                model_points = bounded(r.adjusted_fd_points,0,150)
+                model_minutes = bounded(r.adjusted_minutes,0,48)
                 for metric,forecast,actual,daily,reviewed in (
-                    ('FD points',bounded(e.get('fd_points'),0,150),bounded(r.actual_points,-150,300),
-                     bounded(r.daily_points,0,150),bounded(r.adjusted_fd_points,0,150)),
-                    ('Minutes',bounded(e.get('minutes'),0,48),bounded(r.actual_minutes,1/60,60),
-                     bounded(r.daily_minutes,0,48),bounded(r.adjusted_minutes,0,48))):
+                    ('FD points',source_points,bounded(r.actual_points,-150,300),daily_points,model_points),
+                    ('Minutes',source_minutes,bounded(r.actual_minutes,1/60,60),daily_minutes,model_minutes),
+                    ('FD points per minute',_rate(source_points,source_minutes),
+                     _rate(r.actual_points,r.actual_minutes),_rate(daily_points,daily_minutes),
+                     _rate(model_points,model_minutes))):
                     if None in (forecast,actual,daily,reviewed):
                         continue
                     contributed=True

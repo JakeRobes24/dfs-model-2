@@ -40,6 +40,8 @@ def test_snap_challengers_share_target_sample_and_do_not_fill_missing_team_game(
     ])
     report, summary = review_snap_workload(history)
     assert summary.player_games.eq(2).all()
+    assert len(summary.loc[summary.metric.eq('receiving_yards CRPS')]) == 3
+    assert len(summary.loc[summary.metric.eq('rushing_yards CRPS')]) == 3
     assert (report.actual != report.forecast).any()
     prior = report.loc[report.date.eq('2026-09-05')]
     changed = history.copy()

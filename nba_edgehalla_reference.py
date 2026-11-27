@@ -4,11 +4,18 @@ import re
 from bs4 import BeautifulSoup
 
 from nba_distribution_review import bounded, timestamp
+from opportunity_evidence import FD_WEIGHTS
 from slate_import import player_key, team_code
 
 URL = 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes'
 METRICS = {'MIN': 'minutes', 'PTS': 'points', 'REB': 'rebounds', 'AST': 'assists',
            'STL': 'steals', 'BLK': 'blocks', 'TO': 'turnovers'}
+
+
+def conditional_fd_points(row):
+    """Translate the reference's published box components into FanDuel points."""
+    return round(sum(weight * row['rebounds' if field == 'reboundsTotal' else field]
+                     for field, weight in FD_WEIGHTS.items()), 2)
 
 
 def edgehalla_reference(raw, slate, observed_at, schedule):

@@ -35,7 +35,7 @@ if contest and daily and contest_id:
 
         render_nfl_weather(report)
 
-        with st.expander("4for4 public FanDuel reference"):
+        with st.expander("Public NFL FanDuel references"):
             st.caption("Checks public weekly projections against exact contest identities. These values are advisory.")
             season = st.number_input("NFL season", min_value=2000, max_value=2100, value=None)
             week = st.number_input("Regular-season week", min_value=1, max_value=18, value=None)
@@ -61,6 +61,37 @@ if contest and daily and contest_id:
                 captured = {'4for4': len(reference['rows'])}
             else:
                 captured = {}
+            if mode == "Classic":
+                st.caption("PropSims covers Sunday afternoon games and reports a median and 85th percentile.")
+                slate = st.date_input("PropSims Sunday slate date (ET)", value=None)
+                scope = (report["contest_sha256"], report["daily_sha256"], season, week, slate, reference_cutoff)
+                if st.button("Check PropSims", disabled=not (season and week and slate and reference_cutoff)):
+                    from nfl_public_projection_reference import collect_propsims_reference
+                    st.session_state.pop("nfl_propsims_reference", None)
+                    try:
+                        propsims = collect_propsims_reference(report, season=season, week=week,
+                                                             slate=slate, cutoff_utc=reference_cutoff)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_propsims_reference"] = scope, propsims
+                saved = st.session_state.get("nfl_propsims_reference")
+                if saved is not None and saved[0] == scope:
+                    reference = saved[1]
+                    coverage = reference["coverage"]
+                    st.caption(f"Observed {reference['observed_at']}. Refresh near lock for the latest estimates.")
+                    st.write(f"{coverage['contest_matched_rows']} contest players matched from "
+                             f"{coverage['fresh_rows']} rows published within 24 hours of observation.")
+                    if reference["rows"]:
+                        columns = {"player": "Player", "game": "Game", "daily_fd": "DAILY FD",
+                                   "median_fd": "Median FD", "p85_fd": "85th percentile FD"}
+                        st.dataframe(pd.DataFrame(reference["rows"])[list(columns)].rename(columns=columns),
+                                     hide_index=True)
+                    else:
+                        st.info("No fresh PropSims rows matched this contest.")
+                    st.download_button("Download PropSims comparison", json.dumps(reference, indent=2),
+                                       file_name=f"{report['contest_id']}-propsims.json", mime="application/json")
+                    captured["PropSims"] = len(reference["rows"])
         with st.expander('Predictive evidence across saved NFL sources'):
             st.caption('Forecasts are counted here after exact contest matching. Accuracy requires final results for those same players.')
             st.dataframe(predictive_coverage('NFL', captured=captured), hide_index=True)

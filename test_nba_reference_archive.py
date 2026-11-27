@@ -57,21 +57,25 @@ def test_lineupexperts_archive_preserves_the_explicit_fanduel_value():
 
 
 def test_edgehalla_reference_archives_actual_observation_without_certifying_publication():
-    from slate_research import reference_review_queue
+    from slate_research import compare_keelstats, reference_review_queue
 
     pool = fixture()
-    record = dict(le(), reference_minutes=31, retrieved_at='2026-11-27T16:55:00Z',
+    record = dict(le(), reference_minutes=31, reference_points=30, retrieved_at='2026-11-27T16:55:00Z',
                   slate_date=DAY.isoformat(), conditional_on_playing=True)
     board = {'Edgehalla': ([record], None)}
     out, coverage = freeze_reference_boards(pool, board, {}, DAY, NOW)
     evidence = json.loads(out[FIELDS[0]].iloc[0])[0]
-    assert evidence['minutes'] == 31 and evidence['fd_points'] is None
+    assert evidence['minutes'] == 31 and evidence['fd_points'] == 30 and evidence['conditional_on_playing']
     assert evidence['observed_at'] == '2026-11-27T16:55:00+00:00'
     assert evidence['published_at'] is None and evidence['scoring_accepted'] is False
     assert coverage.set_index('provider').loc['Edgehalla','publication_unknown_players'] == 1
     queue = reference_review_queue(pool, board, NOW)
     assert list(queue['Minutes gap']) == [7]
+    assert list(queue['FD gap']) == [8]
     assert list(queue['Published UTC']) == ['Unverified']
+    comparison = compare_keelstats(pool, [record]).iloc[0]
+    assert comparison.minutes_effect_fd + comparison.rate_effect_fd == 8
+    assert pd.isna(compare_keelstats(pool, [dict(record, reference_minutes=2)]).iloc[0].rate_effect_fd)
     assert reference_review_queue(pool, board, '2026-11-27T23:00:00Z').empty
     record['retrieved_at'] = '2026-11-27T17:01:00Z'
     rejected, _ = freeze_reference_boards(pool, board, {}, DAY, NOW)

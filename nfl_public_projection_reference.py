@@ -9,7 +9,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from nfl_daily_audit import ALIASES, game, norm, number, team
+from nfl_daily_audit import ALIASES, TEAMS, game, norm, number, team
 from nfl_projection_review import stamp
 
 POSITIONS = ('QB', 'RB', 'WR', 'TE')
@@ -71,6 +71,20 @@ def parse_4for4_page(html, *, season, week, position):
     return published, rows
 
 
+def _contest_keys(audit):
+    keys = defaultdict(list)
+    for player in audit['players']:
+        player_id = player['player_id']
+        name, club = norm(player['player']), team(player['team'])
+        names = {'dst'} if player['positions'] == ['DEF'] else {name}
+        alias = ALIASES.get(player_id.rsplit('-', 1)[-1])
+        if alias and (name, club) == (alias[0], alias[2]):
+            names.add(alias[1])
+        for name_key in names:
+            keys[name_key, club, game(player['game'])].append(player)
+    return keys
+
+
 def collect_4for4_reference(audit, *, season, week, cutoff_utc, now=None):
     """Collect the publicly visible rows at a known time. Never backdate observation."""
     if type(season) is not int or not 2000 <= season <= 2100 or type(week) is not int or not 1 <= week <= 18:
@@ -95,16 +109,7 @@ def collect_4for4_reference(audit, *, season, week, cutoff_utc, now=None):
             return position, url, published, observed, rows, 'Outside decision window'
         return position, url, published, observed, rows, 'Public reference read'
 
-    keys = defaultdict(list)
-    for player in audit['players']:
-        player_id = player['player_id']
-        name, club = norm(player['player']), team(player['team'])
-        names = {name}
-        alias = ALIASES.get(player_id.rsplit('-', 1)[-1])
-        if alias and (name, club) == (alias[0], alias[2]):
-            names.add(alias[1])
-        for name_key in names:
-            keys[name_key, club, game(player['game'])].append(player)
+    keys = _contest_keys(audit)
 
     coverage, matches = [], defaultdict(list)
     with ThreadPoolExecutor(max_workers=len(POSITIONS)) as pool:
@@ -194,3 +199,80 @@ def parse_propsims_fanduel(html, *, week, observed_at, games):
             median_fd=median, p85_fd=ceiling, published_at=published.isoformat(),
             observed_at=cutoff.isoformat(), kickoff=kickoff_stamp.isoformat(), source=PROPSIMS_FD))
     return [rows[0] for rows in matches.values() if len(rows) == 1]
+
+
+def match_propsims_contest(audit, rows):
+    """Match a schedule-verified public board to exact uploaded contest IDs."""
+    keys = _contest_keys(audit)
+    matches = defaultdict(list)
+    for row in rows:
+        club = row['team']
+        position = 'DEF' if row['position'] in {'DEF', 'DST'} else row['position']
+        name = norm(row['player'])
+        if position == 'DEF':
+            tokens = {norm(TEAMS[club]), norm(TEAMS[club].split()[-1]), norm(club)}
+            if name.removesuffix('dst').removesuffix('def') not in tokens:
+                continue
+            name = 'dst'
+        hit = keys[name, club, row['game']]
+        if len(hit) != 1 or position not in hit[0]['positions']:
+            continue
+        player, = hit
+        if player['status'] in {'out', 'inactive', 'ir', 'suspended'}:
+            continue
+        matches[player['player_id']].append(dict(row, player_id=player['player_id'],
+                                              daily_fd=player['projection_fd']))
+    return ([records[0] for records in matches.values() if len(records) == 1],
+            sorted(pid for pid, records in matches.items() if len(records) != 1))
+
+
+def collect_propsims_reference(audit, *, season, week, slate, cutoff_utc, now=None):
+    """Collect a Sunday FanDuel reference with full contest schedule verification."""
+    from nfl_weather import SCOREBOARD, ET, fetch_json, match_schedule
+
+    if audit['single_game'] or slate.weekday() != 6 or not 1 <= week <= 18:
+        raise ValueError('PropSims covers Sunday main-slate Classic games.')
+    cutoff = stamp(cutoff_utc)
+    clock = now if now is not None else lambda: datetime.now(timezone.utc)
+    matchups = {game(player['game']) for player in audit['players']}
+    schedule_url = f'{SCOREBOARD}?dates={slate:%Y%m%d}'
+    try:
+        schedule = fetch_json(schedule_url)
+        week_events = [event for event in schedule['events']
+                       if event.get('season', {}).get('year') == season
+                       and event.get('season', {}).get('type') == 2
+                       and event.get('week', {}).get('number') == week]
+        competitions = match_schedule({'events': week_events}, slate, matchups)
+        games = {matchup: item['date'] for matchup, item in competitions.items()
+                 if item.get('status', {}).get('type', {}).get('state') == 'pre'
+                 and 13 <= stamp(item['date']).astimezone(ET).hour < 19}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError('Sunday schedule unavailable or incomplete.') from exc
+    if not games or matchups != games.keys():
+        raise ValueError('Contest games do not match the selected regular-season Sunday schedule.')
+    first_kickoff = min(stamp(kickoff) for kickoff in games.values())
+    deadline = min(cutoff, first_kickoff)
+    try:
+        with urlopen(Request(PROPSIMS_FD, headers={'User-Agent': 'DFSModelReference/2.0'}),
+                     timeout=8) as response:
+            if response.geturl() != PROPSIMS_FD:
+                raise ValueError('Unexpected reference page redirect.')
+            page = response.read(MAX_HTML + 1)
+        observed = clock()
+        if len(page) > MAX_HTML:
+            raise ValueError('Public page exceeds size limit.')
+    except OSError as exc:
+        raise ValueError('PropSims public reference is unavailable.') from exc
+    if observed > cutoff or observed >= first_kickoff:
+        raise ValueError('Reference observation missed the decision window.')
+    rows = parse_propsims_fanduel(page, week=week, observed_at=observed.isoformat(), games=games)
+    fresh = [row for row in rows if observed - timedelta(hours=24) <= stamp(row['published_at'])]
+    matched, ambiguous = match_propsims_contest(audit, fresh)
+    return dict(contest_id=audit['contest_id'], contest_sha256=audit['contest_sha256'],
+                daily_sha256=audit['daily_sha256'], season=season, week=week, slate_date=slate.isoformat(),
+                cutoff_utc=cutoff_utc, decision_deadline=deadline.isoformat(), observed_at=observed.isoformat(),
+                schedule_source=schedule_url, source=PROPSIMS_FD,
+                coverage=dict(eligible_games=len(games), schedule_matched_rows=len(rows),
+                              fresh_rows=len(fresh), contest_matched_rows=len(matched)),
+                rows=matched, ambiguous_ids=ambiguous,
+                purpose='Market-informed median and 85th percentile for research only.')

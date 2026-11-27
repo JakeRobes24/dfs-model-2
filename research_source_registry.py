@@ -13,8 +13,8 @@ SOURCES = (
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
-    ('PropSims','Automatic','Public weekly reference','NBA paired points and minutes. NFL market-informed FanDuel median and ceiling with exact schedule checks'),
-    ('Edgehalla','Public minutes reference','Not applicable','Conditional minutes and box-score estimates derived from historical season and recent player logs. Publication time unverified'),
+    ('PropSims','Automatic','Public weekly reference','NBA paired points and minutes. NFL Sunday afternoon market-informed FanDuel median and 85th percentile with exact contest and schedule checks'),
+    ('Edgehalla','Public minutes and rate reference','Not applicable','Conditional minutes and box-score estimates derived from historical season and recent player logs. Publication time unverified'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections; public board does not expose projected minutes'),
     ('LineupExperts','Reference + verified upload','Manual required','Public projected stat lines; verified timestamp required for numerical use; licensed API documented'),
     ('Fantasy Team Advisors','Reference + optional archive','Manual research','Points, minutes, ownership, ceiling and teammate-absence splits; limited public preview'),
@@ -32,6 +32,7 @@ SOURCES = (
     ('4for4','Not applicable','Public weekly reference','Visible FanDuel by-position points and component previews; full DFS coverage requires authorized subscription access'),
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
+    ('FF Today','Not applicable','Public research candidate','Weekly offensive stat projections. Verify publication time and FanDuel scoring before exact slate comparison'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -54,6 +55,8 @@ RESEARCH_LINKS = {
     'Courtside': 'https://courtside.higgsfield.app/projections',
     '4for4': 'https://www.4for4.com/dfs-legacy-generators',
     'Edgehalla': 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes',
+    'PropSims': 'https://propsims.com/nba/dfs/',
+    'FF Today': 'https://www.fftoday.com/rankings/',
 }
 NBA_MINUTES_REFERENCE_BOARDS = ('MatchWiz', 'KeelStats', 'Edgehalla')
 NBA_REFERENCE_BOARDS = ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors',
@@ -97,8 +100,9 @@ def research_checklist(sport, source_status=()):
             current = 'Identity not verified'
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
+        link = 'https://propsims.com/dfs/fanduel/' if (sport, name) == ('NFL', 'PropSims') else RESEARCH_LINKS.get(name, '')
         rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,
-                     'Verified access link': RESEARCH_LINKS.get(name, ''),
+                     'Verified access link': link,
                      'Historical reference link': HISTORICAL_RESEARCH_LINKS.get(name, '')})
     return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link','Historical reference link'])
 

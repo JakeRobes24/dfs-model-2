@@ -538,7 +538,9 @@ def render_slate(history_slot):
                             archived_matchwiz = rows
                             caveat = 'Publication time unverified; partial stats and projected roles only.'
                         elif name == 'Edgehalla':
-                            caveat = 'Minutes are conditional on playing and publication time is unverified.'
+                            caveat = ('Minutes and FanDuel points assume the player plays. Points are calculated '
+                                      'from projected box stats. Minutes and rate effects explain the gap '
+                                      'from model points. Publication time is unverified.')
                         else:
                             caveat = 'Returning-player impact omitted from redistribution; historical L10 and starts are not projections.'
                         st.caption(f'{name}: {caveat}')

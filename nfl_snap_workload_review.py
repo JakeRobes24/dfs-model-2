@@ -11,6 +11,20 @@ def _unique(frame, columns):
     return frame.dropna(subset=columns).drop_duplicates(columns, keep=False)
 
 
+def _yardage_draws(yards, volume, snaps, efficiency):
+    """Compare yardage ranges from the same four completed player-games."""
+    workload = np.multiply.outer(snaps, volume / snaps).ravel()
+    # Ten opportunities anchor game-level efficiency, including zero-volume
+    # games. A zero workload draw still produces zero yards.
+    game_efficiency = (yards + 10 * efficiency) / (volume + 10)
+    game_efficiency += efficiency - game_efficiency.mean()
+    return {
+        'Past yardage ranges': yards,
+        'Snap/workload × fixed efficiency': workload * efficiency,
+        'Snap/workload × variable efficiency': np.multiply.outer(workload, game_efficiency).ravel(),
+    }
+
+
 def reconcile_final_workload(schedule, snaps, stats, players, *, season, cutoff_day):
     """Join GSIS and PFR IDs, preserving only exact final game/team/opponent rows."""
     games = schedule.loc[
@@ -76,6 +90,8 @@ def review_snap_workload(rows, *, minimum_volume=4):
                 if volume.sum() < minimum_volume or priors[measure] <= 0:
                     continue
                 volume_by_snap = expected_snaps * volume.sum() / snaps.sum()
+                shrunk_efficiency = ((yards.sum() + 10 * priors[yardage] / priors[measure])
+                                     / (volume.sum() + 10))
                 rows_for_measure = {
                     measure: {'Last game': volume[-1], 'Four game mean': volume.mean(),
                               'Recent weighted': np.average(volume, weights=WEIGHTS['recent']),
@@ -83,8 +99,7 @@ def review_snap_workload(rows, *, minimum_volume=4):
                     yardage: {'Last game': yards[-1], 'Four game mean': yards.mean(),
                               'Recent weighted': np.average(yards, weights=WEIGHTS['recent']),
                               'Snap workload × pooled yards': volume_by_snap * yards.sum()/volume.sum(),
-                              'Snap workload × shrunk yards': volume_by_snap * (
-                                  yards.sum()+10*priors[yardage]/priors[measure])/(volume.sum()+10)},
+                              'Snap workload × shrunk yards': volume_by_snap * shrunk_efficiency},
                 }
                 for metric, estimates in rows_for_measure.items():
                     for policy, estimate in estimates.items():
@@ -100,6 +115,11 @@ def review_snap_workload(rows, *, minimum_volume=4):
                     comparisons.append((day, current['week'], pos, measure + ' CRPS', policy,
                                         current['gsis_id'], float(np.mean(draws)), current[measure],
                                         empirical_crps(draws, current[measure])))
+                for policy, draws in _yardage_draws(yards, volume, snaps, shrunk_efficiency).items():
+                    comparisons.append((day, current['week'], pos, yardage + ' CRPS', policy,
+                                        current['gsis_id'],
+                                        float(np.mean(draws)), current[yardage],
+                                        empirical_crps(draws, current[yardage])))
     details = pd.DataFrame(comparisons, columns=[
         'date', 'week', 'position', 'metric', 'policy', 'gsis_id', 'forecast', 'actual', 'error'])
     if details.empty:

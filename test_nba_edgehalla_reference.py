@@ -1,6 +1,6 @@
 from datetime import date
 
-from nba_edgehalla_reference import edgehalla_reference
+from nba_edgehalla_reference import conditional_fd_points, edgehalla_reference
 
 
 def test_edgehalla_requires_exact_oriented_game_and_keeps_unknown_publication():
@@ -23,3 +23,4 @@ def test_edgehalla_requires_exact_oriented_game_and_keeps_unknown_publication():
     assert rows[0]['points'] == 14.3
     assert rows[0]['minutes'] == 21 and rows[0]['as_of'] is None
     assert rows[0]['conditional_on_playing']
+    assert conditional_fd_points(rows[0]) == 26.2

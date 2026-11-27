@@ -26,12 +26,18 @@ def run(f):
 
 def test_dated_reference_accuracy_and_unknown_separate():
     d,days,s,c=run(replay())
-    assert len(d)==len(days)==len(s)==2
+    assert len(d)==len(days)==len(s)==3
     p=s.set_index('metric')
     assert p.loc['FD points','equal_date_source_mae']==3
     assert p.loc['FD points','equal_date_daily_mae']==8
     assert p.loc['Minutes','equal_date_source_mae']==2
+    assert p.loc['FD points per minute','equal_date_source_mae']==pytest.approx(abs(25/30-28/32))
     assert c.set_index('provider').loc['LineupExperts','publication_unknown']==1
+
+
+def test_short_play_keeps_points_and_minutes_but_excludes_rate():
+    summary = run(replay().assign(actual_minutes=5))[2]
+    assert set(summary.metric) == {'FD points', 'Minutes'}
 
 def test_team_news_invalidates_earlier_reference():
     f=replay()

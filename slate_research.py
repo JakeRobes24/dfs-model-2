@@ -789,7 +789,9 @@ def reference_review_queue(scored, boards, as_of):
             compared = compare_keelstats(scored, records)
             if compared.empty:
                 continue
-            compared = compared.merge(scored[['fanduel_id','salary','projected_fd_points','adjusted_fd_points']],
+            model_columns = ['salary', 'projected_fd_points', 'adjusted_fd_points']
+            missing = [column for column in model_columns if column not in compared]
+            compared = compared.merge(scored[['fanduel_id', *missing]],
                                       on='fanduel_id', validate='one_to_one')
         else:
             compared = compare_reference(scored, records)
@@ -891,12 +893,26 @@ def compare_keelstats(scored, records):
     compared = scored.loc[scored.eligible, ['fanduel_id','fanduel_name','adjusted_minutes']].merge(
         matches.drop_duplicates('fanduel_id',keep=False), on='fanduel_id', validate='one_to_one')
     compared['minutes_gap'] = (compared.reference_minutes - compared.adjusted_minutes).round(2)
+    if 'reference_points' in compared:
+        compared = compared.merge(scored[['fanduel_id', 'adjusted_fd_points']],
+                                  on='fanduel_id', validate='one_to_one')
+        model_minutes = compared.adjusted_minutes.where(compared.adjusted_minutes.between(10, 48))
+        source_minutes = compared.reference_minutes.where(compared.reference_minutes.between(10, 48))
+        model_points = compared.adjusted_fd_points.where(compared.adjusted_fd_points.gt(0))
+        source_points = compared.reference_points.where(compared.reference_points.gt(0))
+        model_rate = model_points / model_minutes
+        source_rate = source_points / source_minutes
+        # Split the interaction evenly so the two effects sum to the points gap.
+        compared['model_fd_per_min'] = model_rate.round(3)
+        compared['reference_fd_per_min'] = source_rate.round(3)
+        compared['minutes_effect_fd'] = ((source_minutes-model_minutes)*(model_rate+source_rate)/2).round(2)
+        compared['rate_effect_fd'] = ((source_rate-model_rate)*(model_minutes+source_minutes)/2).round(2)
     return compared.sort_values('minutes_gap',key=lambda col:col.abs(),ascending=False)
 
 
 def edgehalla_slate_reference(slate, contest_games):
     """Capture conditional minutes for the upcoming games on this contest."""
-    from nba_edgehalla_reference import URL, edgehalla_reference
+    from nba_edgehalla_reference import URL, conditional_fd_points, edgehalla_reference
 
     scope = {matchup_key(game) for game in contest_games}
     schedule = [game for game in games_for_date(slate) if matchup_key(
@@ -908,7 +924,8 @@ def edgehalla_slate_reference(slate, contest_games):
         raise ValueError('Edgehalla reference observation date does not match the contest')
     forecasts = edgehalla_reference(raw, slate, observed_at, schedule)
     return ([dict(player=row['player'], team=row['team'], game=row['game'],
-                  reference_minutes=row['minutes'], retrieved_at=row['observed_at'],
+                  reference_minutes=row['minutes'], reference_points=conditional_fd_points(row),
+                  retrieved_at=row['observed_at'],
                   slate_date=slate.isoformat(), conditional_on_playing=True)
              for row in forecasts], None)
 
