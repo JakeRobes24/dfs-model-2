@@ -130,3 +130,67 @@ def collect_4for4_reference(audit, *, season, week, cutoff_utc, now=None):
                 coverage=coverage, rows=[v[0] for v in matches.values() if len(v) == 1],
                 ambiguous_ids=sorted(k for k, v in matches.items() if len(v) != 1),
                 purpose='Public weekly comparison. No consensus vote or projection replacement.')
+
+
+PROPSIMS_FD = 'https://propsims.com/dfs/fanduel/'
+
+
+def parse_propsims_fanduel(html, *, week, observed_at, games):
+    """Return dated Sunday main-slate reference rows matched to scheduled games.
+
+    Games map oriented matchups to timezone-aware kickoff strings. This
+    captures a market-informed provider, without any scoring or contest claims.
+    """
+    cutoff = stamp(observed_at)
+    soup = BeautifulSoup(html, 'html.parser')
+    heading = soup.find('h1')
+    times = soup.select('time[datetime]')
+    table = soup.select_one('table#dfstable')
+    if (heading is None or heading.get_text(' ', strip=True) != f'FanDuel projections: Week {week} main slate'
+            or len(times) != 1 or table is None):
+        raise ValueError('Wrong week, scoring format, or source timestamp')
+    published = stamp(times[0]['datetime'])
+    if not published <= cutoff:
+        raise ValueError('Future publication timestamp')
+    columns = [c.get_text(' ', strip=True) for c in table.select('thead th')]
+    if columns != ['Player', 'Salary', 'Median', 'Ceiling', 'Value']:
+        raise ValueError('Unrecognized FanDuel reference columns')
+    matches = defaultdict(list)
+    for tr in table.select('tbody tr'):
+        cells = tr.find_all('td', recursive=False)
+        if len(cells) != len(columns):
+            continue
+        name = cells[0].select_one('.pn')
+        info = cells[0].select_one('.psub')
+        if name is None or info is None:
+            continue
+        matchup = re.fullmatch(r'(QB|RB|WR|TE|K|DST|DEF) · ([A-Z]{2,3}) (vs|@) ([A-Z]{2,3})',
+                               info.get_text(' ', strip=True))
+        if not matchup:
+            continue
+        position, own, direction, opponent = matchup.groups()
+        own, opponent = team(own), team(opponent)
+        away_key, home_key = game(f'{own}@{opponent}'), game(f'{opponent}@{own}')
+        # The board labels both sides “vs”. When no away marker is supplied,
+        # require a unique scheduled match and take its official orientation.
+        options = [key for key in (away_key, home_key) if key and key in games]
+        if len(options) != 1 or (direction == '@' and options[0] != away_key):
+            continue
+        game_key = options[0]
+        kickoff = games.get(game_key)
+        if not kickoff or not cutoff < stamp(kickoff):
+            continue
+        kickoff_stamp = stamp(kickoff).astimezone(ZoneInfo('America/New_York'))
+        if kickoff_stamp.weekday() != 6 or not 13 <= kickoff_stamp.hour < 19:
+            continue
+        player = name.get_text(' ', strip=True)
+        link = name.select_one('a[href^="/players/"]')
+        provider_id = link['href'] if link is not None else None
+        median, ceiling = (number(cell.get_text(strip=True)) for cell in cells[2:4])
+        if not norm(player) or median is None or ceiling is None or not -10 <= median <= ceiling <= 120:
+            continue
+        matches[norm(player), own, game_key].append(dict(
+            player=player, team=own, game=game_key, position=position, provider_player=provider_id,
+            median_fd=median, p85_fd=ceiling, published_at=published.isoformat(),
+            observed_at=cutoff.isoformat(), kickoff=kickoff_stamp.isoformat(), source=PROPSIMS_FD))
+    return [rows[0] for rows in matches.values() if len(rows) == 1]

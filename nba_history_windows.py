@@ -11,7 +11,7 @@ COHORTS=(8,12)
 METRICS=('fd_abs_error','minutes_abs_error','opportunity_abs_error',
          'efficiency_abs_error','peripheral_abs_error')
 
-def compare_history_windows(records,*,cutoff_day):
+def compare_history_windows(records, *, cutoff_day, short_long_challenge=False):
     cutoff=_day(cutoff_day)
     groups=defaultdict(list)
     rejected=Counter()
@@ -57,6 +57,14 @@ def compare_history_windows(records,*,cutoff_day):
                     if k>4:
                         predictions[f'minutes4_rate{k}']=dict(samples[k],minutes=samples[4]['minutes'])
                         predictions[f'minutes{k}_rate4']=dict(samples[4],minutes=samples[k]['minutes'])
+                if short_long_challenge:
+                    # Keep the longer production rate fixed to isolate whether
+                    # recent workload adds information on the same outcomes.
+                    recent_minutes = mean(row['minutes'] for row in prior[-3:])
+                    long_minutes = samples[n]['minutes']
+                    predictions['minutes3_long_rate'] = dict(samples[n], minutes=recent_minutes)
+                    predictions['minutes3_long_blend'] = dict(
+                        samples[n], minutes=(recent_minutes + long_minutes) / 2)
                 actual_fd=_score(actual)
                 for policy,c in predictions.items():
                     pred=_score(c)

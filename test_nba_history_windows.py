@@ -51,3 +51,15 @@ def test_no_cross_team_or_duplicate_date_history():
 def test_future_records_never_enter_prior():
     f=sample()
     assert run(f)['rows']==run(f+[dict(f[-1],game_date='2026-11-26')])['rows']
+
+
+def test_short_long_challenge_changes_minutes_only_on_identical_rows():
+    result = compare_history_windows(sample(), cutoff_day='2026-11-26', short_long_challenge=True)
+    distinct = {row['policy']: row for row in result['rows']
+                if row['cohort'] == 8 and row['date'] == '2026-11-09'}
+    long = distinct['equal_8']
+    short = distinct['minutes3_long_rate']
+    blend = distinct['minutes3_long_blend']
+    assert short['efficiency_abs_error'] == blend['efficiency_abs_error'] == long['efficiency_abs_error']
+    assert short['minutes_abs_error'] < blend['minutes_abs_error'] < long['minutes_abs_error']
+    assert blend['predicted_fd'] == pytest.approx((long['predicted_fd'] + short['predicted_fd']) / 2)

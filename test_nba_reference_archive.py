@@ -48,3 +48,9 @@ def test_dated_board_exact_salary_and_match():
     row['reference_salary']=5100
     out,_=freeze_reference_boards(p,{'Fantasy Team Advisors':([row],'2026-11-27T16:00:00Z')},{},DAY,NOW)
     assert json.loads(out[FIELDS[0]].iloc[0])==[]
+
+
+def test_lineupexperts_archive_preserves_the_explicit_fanduel_value():
+    row = dict(le(), reference_points=4)
+    out, _ = freeze_reference_boards(fixture(), {'LineupExperts': ([row], None)}, {}, DAY, NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])[0]['fd_points'] == 30

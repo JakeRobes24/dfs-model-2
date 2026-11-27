@@ -13,7 +13,8 @@ SOURCES = (
     ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
-    ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
+    ('PropSims','Automatic','Public weekly reference','NBA paired points and minutes. NFL market-informed FanDuel median and ceiling with exact schedule checks'),
+    ('Edgehalla','Public minutes reference','Not applicable','Conditional minutes and box-score estimates derived from historical season and recent player logs. Publication time unverified'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections; public board does not expose projected minutes'),
     ('LineupExperts','Reference + verified upload','Manual required','Public projected stat lines; verified timestamp required for numerical use; licensed API documented'),
     ('Fantasy Team Advisors','Reference + optional archive','Manual research','Points, minutes, ownership, ceiling and teammate-absence splits; limited public preview'),
@@ -52,6 +53,7 @@ RESEARCH_LINKS = {
     'WalterPicks': 'https://www.walterpicks.com/',
     'Courtside': 'https://courtside.higgsfield.app/projections',
     '4for4': 'https://www.4for4.com/dfs-legacy-generators',
+    'Edgehalla': 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes',
 }
 AUTOMATIC_NBA = {
     'Official NBA reports / NBA Stats': ('NBA injury report','NBA recent box scores'),

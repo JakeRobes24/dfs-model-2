@@ -14,7 +14,7 @@ def test_saved_sources_remain_visible_with_incomplete_automatic_refresh():
     for source in ('The Fantasy Footballers','Fantasy Points','FantasySharks','Upper Hand Fantasy',
                    'RotoQL / stat-api','Linemate','WalterPicks','LineupExperts','Daily Fantasy Fuel'):
         assert source in nfl.index
-    assert 'PropSims' not in nfl.index
+    assert nfl.loc['PropSims','Integration'] == 'Public weekly reference'
     assert nfl.loc['The Fantasy Footballers','Integration'] == 'Manual required'
 
 

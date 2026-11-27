@@ -48,7 +48,8 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
             if name=='LineupExperts':
                 compared=pd.DataFrame(match_public(pool,records))
                 if not compared.empty:
-                    compared=compared.drop_duplicates('fanduel_id',keep=False).rename(columns={'reference_fd':'reference_points'})
+                    compared=compared.drop_duplicates('fanduel_id',keep=False).assign(
+                        reference_points=lambda rows: rows['reference_fd'])
             elif name in ('MatchWiz','KeelStats'):
                 compared=compare_keelstats(pool,records)
             else:

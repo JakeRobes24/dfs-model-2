@@ -42,3 +42,22 @@ def test_exact_contest_and_unbackdated_reference():
         audit['players'] = [dict(player, game='BUF@KC')]
         assert not collect_4for4_reference(audit, season=2026, week=12,
                                           cutoff_utc='2026-11-26T17:30:00Z', now=lambda: OBS)['rows']
+
+
+def test_propsims_exact_sunday_schedule_and_timestamp():
+    from nfl_public_projection_reference import parse_propsims_fanduel
+
+    html = '''<h1>FanDuel projections: Week 12 main slate</h1>
+    <time datetime="2026-11-27T01:00:00Z"></time>
+    <table id="dfstable"><thead><tr><th>Player</th><th>Salary</th><th>Median</th>
+    <th>Ceiling</th><th>Value</th></tr></thead><tbody>
+    <tr><td><span class="pn"><a href="/players/sample/">Sample Player</a></span>
+    <span class="psub">RB · SF vs SEA</span></td><td>$6000</td>
+    <td>12</td><td>19</td><td>2</td></tr></tbody></table>'''
+    args = dict(week=12, observed_at='2026-11-27T03:00:00Z')
+    rows = parse_propsims_fanduel(html, **args, games={'SEA@SF':'2026-11-29T21:25:00Z'})
+    assert len(rows) == 1 and (rows[0]['median_fd'], rows[0]['p85_fd']) == (12, 19)
+    wrong_orientation = html.replace('SF vs SEA', 'SF @ SEA')
+    assert parse_propsims_fanduel(wrong_orientation, **args, games={'SEA@SF':'2026-11-29T21:25:00Z'}) == []
+    assert parse_propsims_fanduel(html, **args, games={}) == []
+    assert parse_propsims_fanduel(html, **args, games={'SEA@SF':'2026-11-26T21:25:00Z'}) == []
