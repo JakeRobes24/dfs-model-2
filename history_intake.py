@@ -141,7 +141,7 @@ def list_slate_packets(token, slate_date, contest):
     return commit, folder, sorted(versions)
 
 
-def load_slate_packet(token, commit, folder, filename):
+def read_slate_packet(token, commit, folder, filename):
     """Verify the bytes using the archive's content-addressed filename."""
     from history_snapshot import _request
 
@@ -153,10 +153,14 @@ def load_slate_packet(token, commit, folder, filename):
         data = response.read(MAX_PACKET + 1)
     if len(data) > MAX_PACKET or hashlib.sha256(data).hexdigest() != filename[:-5]:
         raise ValueError('Saved slate checksum mismatch.')
-    record = json.loads(data)
-    _, slate, contest = folder.split('/')
-    if record.get('version') != 1 or record.get('slate_date') != slate or record.get('contest_id') != contest:
+    if recovery_packet_path(data) != f'{folder}/{filename}':
         raise ValueError('Saved slate metadata mismatch.')
+    return data
+
+
+def load_slate_packet(token, commit, folder, filename):
+    record = json.loads(read_slate_packet(token, commit, folder, filename))
+    contest = folder.rsplit('/', 1)[-1]
     pool = _csv(record['research_csv'])
     required = {'fanduel_id', 'fanduel_name', 'game', 'team', 'adjusted_fd_points'}
     if (pool.empty or not required <= set(pool) or pool.fanduel_id.duplicated().any()

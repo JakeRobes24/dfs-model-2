@@ -162,6 +162,44 @@ def test_owner_can_retry_downloaded_packet_in_a_new_session():
         assert not app.exception and 'Exact archive packet verified' in app.success[0].value
 
 
+def test_owner_recovers_exact_remote_packet_without_original_upload():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    environment = dict(DFS_HISTORY_OWNER_EMAIL='owner@example.org', DFS_HISTORY_SNAPSHOT_TOKEN='read-only')
+    owner = dict(email='owner@example.org', email_verified=True, is_logged_in=True)
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    folder, filename = path.rsplit('/', 1)
+    commit = 'a'*40
+    script = 'from history_intake_ui import render_archive_receipt_check\nrender_archive_receipt_check()'
+    with patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner), patch(
+            'history_intake_ui.list_slate_packets', return_value=(commit, folder, [filename])) as listing, patch(
+            'history_snapshot._request', return_value=BytesIO(raw)) as read:
+        app = AppTest.from_string(script).run()
+        app.date_input(key='history_recover_day').set_value(SLATE)
+        app.text_input(key='history_recover_contest').set_value(folder.split('/')[-1]).run()
+        app.button(key='history_recover_find').click().run()
+        listing.assert_called_once_with('read-only', SLATE, folder.split('/')[-1])
+        app.button(key='history_recover_read').click().run()
+        assert not app.exception and app.session_state['history_recover_data'][1] == raw
+        assert read.call_args.args[0].endswith(path + '?ref=' + commit)
+        assert app.get('download_button')
+        app.text_input(key='history_recover_contest').set_value('999999').run()
+        assert not app.get('download_button')
+
+
+def test_recovered_remote_bytes_require_matching_digest_and_contest():
+    from history_intake import read_slate_packet
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    folder, filename = path.rsplit('/', 1)
+    with patch('history_snapshot._request', return_value=BytesIO(raw+b' ')):
+        with pytest.raises(ValueError, match='checksum'):
+            read_slate_packet('fixture', 'a'*40, folder, filename)
+    with patch('history_snapshot._request', return_value=BytesIO(raw)):
+        with pytest.raises(ValueError, match='metadata'):
+            read_slate_packet('fixture', 'a'*40, f'incoming-app/{SLATE}/999999', filename)
+
+
 def test_prepare_packet_does_not_submit_and_save_reuses_exact_bytes():
     import streamlit as st
     from streamlit.testing.v1 import AppTest

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from history_intake import (MAX_PACKET, check_recovery_receipt, make_submission,
+from history_intake import (MAX_PACKET, check_recovery_receipt, list_slate_packets, make_submission, read_slate_packet,
                             recovery_packet_path, retry_recovery_packet, submit_reviewed_slate)
 from history_panel import NOV20_BACKFILL, NOV20_ORIGINAL, owner_can_view_history
 from slate_replay_capture import capture_pool
@@ -160,6 +160,41 @@ def render_archive_receipt_check():
     token = os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN','').strip() or intake_token
     if not token:
         return
+    with st.expander('Recover a saved archive packet by contest'):
+        st.caption('Find verified remote copies when the original download is unavailable.')
+        day = st.date_input('Saved slate date (ET)', value=None, key='history_recover_day')
+        contest = st.text_input('Saved FanDuel contest ID', key='history_recover_contest').strip()
+        scope = day, contest
+        if st.button('Find saved packets', key='history_recover_find', disabled=not (day and contest)):
+            st.session_state.pop('history_recover_listing', None)
+            st.session_state.pop('history_recover_data', None)
+            try:
+                listing = list_slate_packets(token, day, contest)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                st.warning('The saved contest could not be checked. Verify the date and contest ID.')
+            else:
+                st.session_state['history_recover_listing'] = scope, listing
+        saved = st.session_state.get('history_recover_listing')
+        if saved is not None and saved[0] == scope:
+            commit, folder, versions = saved[1]
+            if versions:
+                filename = st.selectbox('Saved packet', versions, key='history_recover_version')
+                selection = commit, folder, filename
+                if st.button('Verify saved packet', key='history_recover_read'):
+                    st.session_state.pop('history_recover_data', None)
+                    try:
+                        raw = read_slate_packet(token, *selection)
+                    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                        st.warning('The exact saved bytes could not be verified.')
+                    else:
+                        st.session_state['history_recover_data'] = selection, raw
+                verified = st.session_state.get('history_recover_data')
+                if verified is not None and verified[0] == selection:
+                    st.success(f'Exact packet verified at {commit[:12]}.')
+                    st.download_button('Download verified saved packet', verified[1], file_name=filename,
+                                       mime='application/json', key='history_recover_download', on_click='ignore')
+            else:
+                st.info('No packet found for this contest at the checked revision.')
     with st.expander('Check a saved archive receipt'):
         st.caption('Use the exact archive packet downloaded before the reset. Backup publication is checked separately.')
         file=st.file_uploader('Previously downloaded archive packet',type='json',key='history_receipt_packet',

@@ -78,8 +78,7 @@ def official_possession_rows(schedule_game, advanced, traditional):
     return rows
 
 
-def compare_possession_forecasts(rows, schedule):
-    """Use identical played holdouts and four consecutive earlier team games."""
+def _scheduled_player_rows(rows, schedule):
     games = pd.DataFrame(schedule, columns=['date', 'game_id', 'away', 'home'])
     if not games.game_id.is_unique:
         raise ValueError('Require unique scheduled games.')
@@ -87,7 +86,12 @@ def compare_possession_forecasts(rows, schedule):
                        for side in ('away', 'home')], ignore_index=True)
     sides['team'] = sides.team.map(team_code)
     sides['sequence'] = sides.sort_values(['date', 'game_id']).groupby('team').cumcount()
-    rows = rows.merge(sides, on=['game_id', 'team', 'date'], validate='many_to_one')
+    return rows.merge(sides, on=['game_id', 'team', 'date'], validate='many_to_one')
+
+
+def compare_possession_forecasts(rows, schedule):
+    """Use identical played holdouts and four consecutive earlier team games."""
+    rows = _scheduled_player_rows(rows, schedule)
     if rows.duplicated(['game_id', 'nba_id'], keep=False).any():
         raise ValueError('Ambiguous duplicate NBA player-game observations.')
     detail = []
