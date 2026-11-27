@@ -123,6 +123,45 @@ def test_read_only_recovery_receipt_checks_exact_bytes_at_pinned_commit():
             recovery_packet_path(bad)
 
 
+def test_recovery_retries_exact_bytes_only_after_absent_receipt():
+    from history_intake import retry_recovery_packet
+
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    with patch('history_intake.check_recovery_receipt', return_value={'status': 'not_found'}) as read, patch(
+            'history_intake.submit_reviewed_slate', return_value='abcdef0') as submit:
+        assert retry_recovery_packet('test-only', raw) == dict(path=path, commit='abcdef0', status='verified')
+        read.assert_called_once_with('test-only', raw)
+        submit.assert_called_once_with('test-only', path, raw)
+        submit.reset_mock()
+        read.return_value = receipt = dict(path=path, commit='a'*40, status='verified')
+        assert retry_recovery_packet('test-only', raw) == receipt
+        altered = dict(json.loads(raw), contest_id='999999')
+        with pytest.raises(ValueError, match='contest ID'):
+            retry_recovery_packet('test-only', json.dumps(altered).encode())
+        submit.assert_not_called()
+
+
+def test_owner_can_retry_downloaded_packet_in_a_new_session():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    key = 'history_receipt_packet'
+    environment = dict(DFS_HISTORY_OWNER_EMAIL='owner@example.org', DFS_HISTORY_INTAKE_TOKEN='test-only')
+    owner = dict(email='owner@example.org', email_verified=True, is_logged_in=True)
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    script = 'from history_intake_ui import render_archive_receipt_check\nrender_archive_receipt_check()'
+    with patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner), patch(
+            'history_intake_ui.retry_recovery_packet',
+            return_value=dict(path=path, commit=None, status='verified')) as retry:
+        app = AppTest.from_string(script).run()
+        app.file_uploader(key=key).upload(path.split('/')[-1], raw, 'application/json').run()
+        assert app.button(key='history_receipt_retry').proto.disabled
+        app.checkbox(key='history_receipt_reviewed').check().run()
+        app.button(key='history_receipt_retry').click().run()
+        retry.assert_called_once_with('test-only', raw)
+        assert not app.exception and 'Exact archive packet verified' in app.success[0].value
+
+
 def test_prepare_packet_does_not_submit_and_save_reuses_exact_bytes():
     import streamlit as st
     from streamlit.testing.v1 import AppTest

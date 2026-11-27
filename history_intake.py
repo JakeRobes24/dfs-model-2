@@ -202,3 +202,28 @@ def check_recovery_receipt(token, raw):
     if saved!=raw:
         raise ValueError('Remote archive bytes do not match the local packet.')
     return dict(path=path,commit=commit,status='verified')
+
+
+def retry_recovery_packet(token, raw):
+    """Validate a recovered packet and submit its original bytes if absent."""
+    path = recovery_packet_path(raw)
+    record = json.loads(raw)
+    if set(record) - {'version', 'slate_date', 'contest_id', 'research_csv',
+                      'actuals_csv', 'lineups_csv'}:
+        raise ValueError('Unrecognized archive packet fields.')
+    optional = {}
+    for name in ('actuals', 'lineups'):
+        key = f'{name}_csv'
+        if key in record:
+            if not isinstance(record[key], str):
+                raise ValueError('Invalid archive packet CSV.')
+            optional[name] = record[key]
+    pool = _csv(record['research_csv'])
+    validated_path, _ = make_submission(pool, date.fromisoformat(record['slate_date']), **optional)
+    if validated_path.rsplit('/', 1)[0] != path.rsplit('/', 1)[0]:
+        raise ValueError('Archive packet contest ID does not match its reviewed pool.')
+    receipt = check_recovery_receipt(token, raw)
+    if receipt['status'] == 'verified':
+        return receipt
+    commit = submit_reviewed_slate(token, path, raw)
+    return dict(path=path, commit=commit, status='verified')

@@ -25,6 +25,12 @@ def _yardage_draws(yards, volume, snaps, efficiency):
     }
 
 
+def _range_result(draws, actual):
+    low, high = np.quantile(draws, [.10, .90])
+    return (float(low), float(high), float(low <= actual <= high),
+            float(high-low), float(actual < low), float(actual > high))
+
+
 def reconcile_final_workload(schedule, snaps, stats, players, *, season, cutoff_day):
     """Join GSIS and PFR IDs, preserving only exact final game/team/opponent rows."""
     games = schedule.loc[
@@ -70,7 +76,7 @@ def review_snap_workload(rows, *, minimum_volume=4):
     if rate_frame.empty:
         return pd.DataFrame(), pd.DataFrame()
     earlier = rate_frame.groupby(level=0).cumsum() - rate_frame
-    comparisons = []
+    comparisons, ranges = [], []
     for (_, _), player in rows.groupby(['gsis_id', 'team']):
         player = player.sort_values('team_game_number')
         games = player.to_dict('records')
@@ -116,6 +122,8 @@ def review_snap_workload(rows, *, minimum_volume=4):
                                         current['gsis_id'], float(np.mean(draws)), current[measure],
                                         empirical_crps(draws, current[measure])))
                 for policy, draws in _yardage_draws(yards, volume, snaps, shrunk_efficiency).items():
+                    ranges.append((day, current['week'], yardage, policy, current['gsis_id'], current[yardage],
+                                   *_range_result(draws, current[yardage])))
                     comparisons.append((day, current['week'], pos, yardage + ' CRPS', policy,
                                         current['gsis_id'],
                                         float(np.mean(draws)), current[yardage],
@@ -126,5 +134,33 @@ def review_snap_workload(rows, *, minimum_volume=4):
         return details, pd.DataFrame()
     weekly = details.groupby(['metric', 'policy', 'week'], as_index=False).agg(
         error=('error', 'mean'), player_games=('error', 'size'))
+    details.attrs['yardage_ranges'] = ranges
     return details, weekly.groupby(['metric', 'policy'], as_index=False).agg(
         equal_week_error=('error', 'mean'), weeks=('week', 'size'), player_games=('player_games', 'sum'))
+
+
+def yardage_ranges(details):
+    return pd.DataFrame(details.attrs.get('yardage_ranges', ()), columns=[
+        'date', 'week', 'yardage', 'policy', 'gsis_id', 'actual', 'p10', 'p90',
+        'coverage', 'width', 'below_p10', 'above_p90'])
+
+
+def review_range_calibration(ranges, *, minimum_prior_rows=50):
+    """Expand the central intervals using errors from strictly earlier NFL weeks."""
+    result = []
+    for (yardage, policy), cohort in ranges.groupby(['yardage', 'policy']):
+        prior_excess = []
+        for week, batch in cohort.groupby('week', sort=True):
+            lo, hi, actual = (batch[field].to_numpy() for field in ('p10', 'p90', 'actual'))
+            excess = np.maximum(lo-actual, actual-hi)
+            if len(prior_excess) >= minimum_prior_rows:
+                index = min(len(prior_excess)-1, int(np.ceil(.8*(len(prior_excess)+1)))-1)
+                padding = max(0., np.partition(prior_excess, index)[index])
+                for label, added in [('Original interval', 0.), ('Earlier-week calibration', padding)]:
+                    width = hi-lo+2*added
+                    result.append(dict(yardage=yardage, policy=policy, week=week, interval=label,
+                                       players=len(batch), yards_added_to_each_tail=added,
+                                       coverage=np.mean(excess <= added), width=np.mean(width),
+                                       interval_score=np.mean(width+10*np.maximum(excess-added, 0))))
+            prior_excess.extend(excess)
+    return pd.DataFrame(result)

@@ -46,6 +46,7 @@ def test_owner_auto_capture_retries_exact_bytes_and_deduplicates():
         send.assert_not_called()
         app.checkbox(key='history_auto_capture').check().run()
         assert not app.exception and send.call_count==1
+        assert app.session_state['history_prepared_packet'] == send.call_args.args[1:]
         app.run()
         assert not app.exception and send.call_count==2
         assert send.call_args_list[0].args==send.call_args_list[1].args

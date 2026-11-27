@@ -33,6 +33,9 @@ SOURCES = (
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
     ('FF Today','Not applicable','Public research candidate','Weekly offensive stat projections. Verify publication time and FanDuel scoring before exact slate comparison'),
+    ('DailyFantasy.tips','Not applicable','Public research candidate','Platform-specific points, salary and provider IDs. Blends two unnamed sources. Require timezone and exact contest verification'),
+    ('FTN via nflverse','Not applicable','Historical research','Play charting. Primary-read field failed the 2026 exact-target audit; validate coding before using first-read rates'),
+    ('PBP Stats','Historical research','Not applicable','Possession and usage data with partial historical game coverage. Verify official schedule and complete prior team games'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -57,6 +60,9 @@ RESEARCH_LINKS = {
     'Edgehalla': 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes',
     'PropSims': 'https://propsims.com/nba/dfs/',
     'FF Today': 'https://www.fftoday.com/rankings/',
+    'DailyFantasy.tips': 'https://dailyfantasy.tips/nfl/',
+    'FTN via nflverse': 'https://nflreadr.nflverse.com/reference/load_ftn_charting.html',
+    'PBP Stats': 'https://api.pbpstats.com/docs',
 }
 NBA_MINUTES_REFERENCE_BOARDS = ('MatchWiz', 'KeelStats', 'Edgehalla')
 NBA_REFERENCE_BOARDS = ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors',

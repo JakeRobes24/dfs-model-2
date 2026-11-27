@@ -18,6 +18,10 @@ def test_staging_prop_sims_result_is_bound_to_uploaded_inputs_and_selected_week(
                                median_fd=21, p85_fd=29)])
 
     monkeypatch.setattr('nfl_public_projection_reference.collect_propsims_reference', reference)
+    monkeypatch.setattr('nfl_public_projection_reference.collect_daily_tips',
+                        lambda audit: dict(observed_at='2026-11-27T03:00:00Z',
+                                           rows=[dict(player='Dak Prescott', game='DAL@NYG',
+                                                      daily_fd=20.8, reference_fd=21)]))
     app = AppTest.from_file(str(Path(__file__).with_name('app_nfl_staging.py'))).run()
     app.text_input[0].set_value('136799')
     app.file_uploader[0].upload('contest.csv', contest.encode(), 'text/csv')
@@ -36,3 +40,7 @@ def test_staging_prop_sims_result_is_bound_to_uploaded_inputs_and_selected_week(
     assert not app.exception
     assert not any('85th percentile FD' in table.value for table in app.dataframe)
     assert len(calls) == 1
+    app.button(key='nfl_daily_tips').click().run()
+    assert not app.exception and any('Reference FD' in table.value for table in app.dataframe)
+    app.file_uploader[1].upload('new-daily.csv', export(OFF).replace('20.8', '21.8').encode(), 'text/csv').run()
+    assert not any('Reference FD' in table.value for table in app.dataframe)

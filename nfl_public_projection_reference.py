@@ -138,6 +138,70 @@ def collect_4for4_reference(audit, *, season, week, cutoff_utc, now=None):
 
 
 PROPSIMS_FD = 'https://propsims.com/dfs/fanduel/'
+DAILY_TIPS = 'https://dailyfantasy.tips/nfl/'
+
+
+def compare_daily_tips(html, audit):
+    """Compare exact FanDuel contest IDs on the public FanDuel-specific table."""
+    if audit['single_game']:
+        raise ValueError('Use the Classic FanDuel projection reference for a Classic contest.')
+    soup = BeautifulSoup(html, 'html.parser')
+    headers = ['Player', 'Pos', 'Team', 'Opp', 'Salary', 'Proj', 'Value', 'FD ID']
+    tables = [table for table in soup.select('table')
+              if [c.get_text(' ', strip=True) for c in table.select('thead th')] == headers]
+    if len(tables) != 1:
+        raise ValueError('Expected one platform-specific FanDuel board.')
+    providers = defaultdict(list)
+    for row in tables[0].select('tbody tr'):
+        cells = [cell.get_text(' ', strip=True) for cell in row.find_all('td', recursive=False)]
+        if len(cells) == len(headers) and re.fullmatch(r'[0-9]+-[0-9]+', cells[-1]):
+            providers[cells[-1]].append(cells)
+    contest = audit['contest_id']
+    if not providers or {pid.split('-')[0] for pid in providers} != {contest}:
+        raise ValueError('The FanDuel reference is for a different contest.')
+    counts = defaultdict(int)
+    rows = []
+    for player in audit['players']:
+        pid = player['player_id']
+        options = providers.get(pid, ())
+        if len(options) != 1:
+            counts['missing_or_duplicate'] += 1
+            continue
+        name, position, club, opponent, salary, points, _, _ = options[0]
+        club, opponent = team(club), team(opponent)
+        contest_club, matchup = team(player['team']), game(player['game']).split('@')
+        projection = number(points)
+        position = 'DEF' if position in {'DST', 'D/ST'} else position
+        if (club != contest_club or opponent == club or opponent not in matchup
+                or position not in player['positions'] or number(salary) != player['salary']
+                or projection is None or not -30 <= projection <= 150):
+            counts['details_disagree'] += 1
+            continue
+        if player['status'] in {'out', 'inactive', 'ir', 'suspended'}:
+            counts['contest_unavailable'] += 1
+            continue
+        rows.append(dict(player_id=pid, player=player['player'], provider_name=name, team=club,
+                         game=player['game'], position=position,
+                         reference_fd=projection, daily_fd=player['projection_fd']))
+    return dict(source=DAILY_TIPS, contest_id=contest, contest_sha256=audit['contest_sha256'],
+                daily_sha256=audit['daily_sha256'], published_at=None, provider_ids=len(providers),
+                coverage=dict(counts, eligible_matches=len(rows)), rows=rows)
+
+
+def collect_daily_tips(audit):
+    """Read the public comparison board and retain an actual observation time."""
+    try:
+        with urlopen(Request(DAILY_TIPS, headers={'User-Agent': 'DFSModelReference/2.0'}),
+                     timeout=8) as response:
+            if response.geturl() != DAILY_TIPS:
+                raise ValueError('Unexpected reference page redirect.')
+            body = response.read(MAX_HTML + 1)
+    except OSError as exc:
+        raise ValueError('DailyFantasy.tips public board is unavailable.') from exc
+    observed = datetime.now(timezone.utc).isoformat()
+    if len(body) > MAX_HTML:
+        raise ValueError('Public page exceeds size limit.')
+    return dict(compare_daily_tips(body, audit), observed_at=observed)
 
 
 def parse_propsims_fanduel(html, *, week, observed_at, games):

@@ -92,6 +92,29 @@ if contest and daily and contest_id:
                     st.download_button("Download PropSims comparison", json.dumps(reference, indent=2),
                                        file_name=f"{report['contest_id']}-propsims.json", mime="application/json")
                     captured["PropSims"] = len(reference["rows"])
+                st.caption("DailyFantasy.tips compares exact FanDuel player IDs. Publication timezone and upstream sources are unverified.")
+                tips_scope = (report["contest_sha256"], report["daily_sha256"])
+                if st.button("Check DailyFantasy.tips", key="nfl_daily_tips"):
+                    from nfl_public_projection_reference import collect_daily_tips
+                    st.session_state.pop("nfl_daily_tips_reference", None)
+                    try:
+                        tips = collect_daily_tips(report)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_daily_tips_reference"] = tips_scope, tips
+                saved_tips = st.session_state.get("nfl_daily_tips_reference")
+                if saved_tips is not None and saved_tips[0] == tips_scope:
+                    tips = saved_tips[1]
+                    st.caption(f"Observed {tips['observed_at']}. {len(tips['rows'])} eligible matches.")
+                    if tips["rows"]:
+                        columns = {"player": "Player", "game": "Game", "daily_fd": "DAILY FD",
+                                   "reference_fd": "Reference FD"}
+                        st.dataframe(pd.DataFrame(tips["rows"])[list(columns)].rename(columns=columns),
+                                     hide_index=True)
+                    st.download_button("Download DailyFantasy.tips comparison", json.dumps(tips, indent=2),
+                                       file_name=f"{report['contest_id']}-daily-tips.json", mime="application/json")
+                    captured["DailyFantasy.tips"] = len(tips["rows"])
         with st.expander('Predictive evidence across saved NFL sources'):
             st.caption('Forecasts are counted here after exact contest matching. Accuracy requires final results for those same players.')
             st.dataframe(predictive_coverage('NFL', captured=captured), hide_index=True)

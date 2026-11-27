@@ -1,6 +1,7 @@
 import pandas as pd
 
 from nfl_snap_workload_review import reconcile_final_workload, review_snap_workload
+from nfl_snap_workload_review import review_range_calibration, yardage_ranges
 
 
 def test_join_uses_both_provider_ids_and_the_final_game_identity():
@@ -42,6 +43,7 @@ def test_snap_challengers_share_target_sample_and_do_not_fill_missing_team_game(
     assert summary.player_games.eq(2).all()
     assert len(summary.loc[summary.metric.eq('receiving_yards CRPS')]) == 3
     assert len(summary.loc[summary.metric.eq('rushing_yards CRPS')]) == 3
+    assert len(yardage_ranges(report)) == 12
     assert (report.actual != report.forecast).any()
     prior = report.loc[report.date.eq('2026-09-05')]
     changed = history.copy()
@@ -49,3 +51,14 @@ def test_snap_challengers_share_target_sample_and_do_not_fill_missing_team_game(
     repeated = review_snap_workload(changed)[0]
     pd.testing.assert_frame_equal(prior, repeated.loc[repeated.date.eq('2026-09-05')])
     assert review_snap_workload(history.drop(2))[0].empty
+
+
+def test_yardage_calibration_never_sees_the_current_week():
+    ranges = pd.DataFrame(dict(week=[5, 5, 6, 6], yardage='rushing_yards',
+                               policy='sample', p10=10., p90=20., actual=[24., 8., 15., 100.]))
+    compared = review_range_calibration(ranges, minimum_prior_rows=2)
+    assert compared.week.tolist() == [6, 6]
+    assert compared.yards_added_to_each_tail.tolist() == [0, 4]
+    assert compared.width.tolist() == [10, 18]
+    changed = ranges.assign(actual=[24., 8., 200., 100.])
+    assert review_range_calibration(changed, minimum_prior_rows=2).yards_added_to_each_tail.tolist() == [0, 4]
