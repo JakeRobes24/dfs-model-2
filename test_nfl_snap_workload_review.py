@@ -66,3 +66,19 @@ def test_yardage_calibration_never_sees_the_current_week():
     assert compared.width.tolist() == [10, 18]
     changed = ranges.assign(actual=[24., 8., 200., 100.])
     assert review_range_calibration(changed, minimum_prior_rows=2).yards_added_to_each_tail.tolist() == [0, 4]
+
+
+def test_asymmetric_calibration_uses_earlier_weeks_and_reports_tail_misses():
+    ranges = pd.DataFrame(dict(week=[5]*10+[6]*2, yardage='receiving_yards',
+                               policy='sample', p10=10., p90=20., actual=[15.]*8+[8.,40.,6.,45.]))
+    result = review_range_calibration(ranges, minimum_prior_rows=10, asymmetric_challenge=True)
+    row = result.loc[result.interval.eq('Earlier-week asymmetric calibration')].iloc[0]
+    assert row.lower_padding == 2 and row.upper_padding == 20
+    assert row.width == 32 and row.coverage == 0
+    assert row.below_p10 == .5 and row.above_p90 == .5
+    assert row.interval_score == 67
+    changed = ranges.copy()
+    changed.loc[changed.week.eq(6), 'actual'] = 15.
+    again = review_range_calibration(changed, minimum_prior_rows=10, asymmetric_challenge=True).iloc[-1]
+    assert again.lower_padding == row.lower_padding and again.upper_padding == row.upper_padding
+    assert again.coverage == 1

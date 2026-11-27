@@ -9,9 +9,11 @@ from nba_component_history import FIELDS,_day,_number,_components,_score
 
 COHORTS=(8,12)
 METRICS=('fd_abs_error','minutes_abs_error','opportunity_abs_error',
-         'efficiency_abs_error','peripheral_abs_error')
+         'efficiency_abs_error','peripheral_abs_error','fppm_abs_error',
+         'fppm_bias','minutes_bias','fd_bias','minutes_effect','rate_effect')
 
-def compare_history_windows(records, *, cutoff_day, short_long_challenge=False):
+def compare_history_windows(records, *, cutoff_day, short_long_challenge=False,
+                            rate_challenge=False):
     cutoff=_day(cutoff_day)
     groups=defaultdict(list)
     rejected=Counter()
@@ -65,14 +67,36 @@ def compare_history_windows(records, *, cutoff_day, short_long_challenge=False):
                     predictions['minutes3_long_rate'] = dict(samples[n], minutes=recent_minutes)
                     predictions['minutes3_long_blend'] = dict(
                         samples[n], minutes=(recent_minutes + long_minutes) / 2)
+                if rate_challenge:
+                    # Same long minutes, independent production-rate challenger.
+                    # Blend final FD rates, not their interacting components.
+                    long, short = samples[n], samples[4]
+                    # Instead of a nonlinear product of averaged components,
+                    # use blended opportunity with opportunity-weighted efficiency.
+                    opportunity = (long['opportunity'] + short['opportunity']) / 2
+                    efficiency = (long['opportunity']*long['efficiency'] +
+                                  short['opportunity']*short['efficiency']) / (2*opportunity)
+                    predictions['long_minutes_blended_rate'] = dict(
+                        long, opportunity=opportunity, efficiency=efficiency,
+                        peripherals=(long['peripherals']+short['peripherals'])/2)
                 actual_fd=_score(actual)
+                actual_rate=actual_fd/actual['minutes']
                 for policy,c in predictions.items():
                     pred=_score(c)
+                    rate=pred/c['minutes']
+                    # Symmetric decomposition: exactly reconciles point bias.
+                    minutes_effect=(c['minutes']-actual['minutes'])*(rate+actual_rate)/2
+                    rate_effect=(rate-actual_rate)*(c['minutes']+actual['minutes'])/2
                     output.append(dict(cohort=n,nba_id=pid,team=team,
                         date=target['game_date'].isoformat(),source=target['source'],
                         training_dates=[r['game_date'].isoformat() for r in prior],
                         policy=policy,predicted_fd=pred,actual_fd=actual_fd,
-                        fd_abs_error=abs(pred-actual_fd),
+                        fd_abs_error=abs(pred-actual_fd),fd_bias=pred-actual_fd,
+                        predicted_minutes=c['minutes'],actual_minutes=actual['minutes'],
+                        predicted_fppm=rate,actual_fppm=actual_rate,
+                        fppm_abs_error=abs(rate-actual_rate),fppm_bias=rate-actual_rate,
+                        minutes_bias=c['minutes']-actual['minutes'],
+                        minutes_effect=minutes_effect,rate_effect=rate_effect,
                         minutes_abs_error=abs(c['minutes']-actual['minutes']),
                         opportunity_abs_error=abs(c['opportunity']-actual['opportunity']),
                         efficiency_abs_error=abs(c['efficiency']-actual['efficiency']),

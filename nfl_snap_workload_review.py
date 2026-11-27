@@ -148,22 +148,38 @@ def yardage_ranges(details):
         'coverage', 'width', 'below_p10', 'above_p90'])
 
 
-def review_range_calibration(ranges, *, minimum_prior_rows=50):
+def review_range_calibration(ranges, *, minimum_prior_rows=50, asymmetric_challenge=False):
     """Expand the central intervals using errors from strictly earlier NFL weeks."""
     result = []
+    if type(minimum_prior_rows) is not int or minimum_prior_rows < 1:
+        raise ValueError('Minimum prior calibration rows must be a positive integer.')
     for (yardage, policy), cohort in ranges.groupby(['yardage', 'policy']):
-        prior_excess = []
+        prior_excess, prior_lower, prior_upper = [], [], []
         for week, batch in cohort.groupby('week', sort=True):
             lo, hi, actual = (batch[field].to_numpy() for field in ('p10', 'p90', 'actual'))
             excess = np.maximum(lo-actual, actual-hi)
             if len(prior_excess) >= minimum_prior_rows:
                 index = min(len(prior_excess)-1, int(np.ceil(.8*(len(prior_excess)+1)))-1)
                 padding = max(0., np.partition(prior_excess, index)[index])
-                for label, added in [('Original interval', 0.), ('Earlier-week calibration', padding)]:
-                    width = hi-lo+2*added
+                methods = [('Original interval', 0., 0.), ('Earlier-week calibration', padding, padding)]
+                if asymmetric_challenge:
+                    # Each tail has a separate nominal 10% miss budget. Use
+                    # only completed earlier weeks, with no interval narrowing.
+                    tail_index = min(len(prior_excess)-1, int(np.ceil(.9*(len(prior_excess)+1)))-1)
+                    lower = max(0., np.partition(prior_lower, tail_index)[tail_index])
+                    upper = max(0., np.partition(prior_upper, tail_index)[tail_index])
+                    methods.append(('Earlier-week asymmetric calibration', lower, upper))
+                for label, lower, upper in methods:
+                    width = hi-lo+lower+upper
+                    low_miss = lo-lower-actual
+                    high_miss = actual-hi-upper
                     result.append(dict(yardage=yardage, policy=policy, week=week, interval=label,
-                                       players=len(batch), yards_added_to_each_tail=added,
-                                       coverage=np.mean(excess <= added), width=np.mean(width),
-                                       interval_score=np.mean(width+10*np.maximum(excess-added, 0))))
+                                       players=len(batch), yards_added_to_each_tail=lower if lower==upper else np.nan,
+                                       lower_padding=lower, upper_padding=upper,
+                                       below_p10=np.mean(low_miss>0), above_p90=np.mean(high_miss>0),
+                                       coverage=np.mean((low_miss<=0)&(high_miss<=0)), width=np.mean(width),
+                                       interval_score=np.mean(width+10*(np.maximum(low_miss,0)+np.maximum(high_miss,0)))))
             prior_excess.extend(excess)
+            prior_lower.extend(lo-actual)
+            prior_upper.extend(actual-hi)
     return pd.DataFrame(result)

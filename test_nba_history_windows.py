@@ -63,3 +63,23 @@ def test_short_long_challenge_changes_minutes_only_on_identical_rows():
     assert short['efficiency_abs_error'] == blend['efficiency_abs_error'] == long['efficiency_abs_error']
     assert short['minutes_abs_error'] < blend['minutes_abs_error'] < long['minutes_abs_error']
     assert blend['predicted_fd'] == pytest.approx((long['predicted_fd'] + short['predicted_fd']) / 2)
+
+
+def test_rate_challenge_preserves_minutes_and_decomposes_point_error():
+    result = compare_history_windows(sample(), cutoff_day='2026-11-26', rate_challenge=True)
+    rows = result['rows']
+    for row in rows:
+        assert row['minutes_effect'] + row['rate_effect'] == pytest.approx(row['fd_bias'])
+        assert row['predicted_fppm'] * row['predicted_minutes'] == pytest.approx(row['predicted_fd'])
+    for cohort in (8, 12):
+        chosen = {r['policy']: r for r in rows if r['cohort']==cohort and r['date']=='2026-11-14'}
+        blend = chosen['long_minutes_blended_rate']
+        long = chosen[f'equal_{cohort}']
+        short = chosen['equal_4']
+        assert blend['predicted_minutes'] == long['predicted_minutes']
+        assert blend['predicted_fppm'] == pytest.approx((long['predicted_fppm']+short['predicted_fppm'])/2)
+        assert blend['fppm_abs_error'] == pytest.approx(abs(blend['fppm_bias']))
+    changed = sample()
+    changed[-1]['points'] = 100
+    replay = compare_history_windows(changed, cutoff_day='2026-11-26', rate_challenge=True)
+    assert [r['predicted_fd'] for r in rows] == [r['predicted_fd'] for r in replay['rows']]
