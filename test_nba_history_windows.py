@@ -65,6 +65,25 @@ def test_short_long_challenge_changes_minutes_only_on_identical_rows():
     assert blend['predicted_fd'] == pytest.approx((long['predicted_fd'] + short['predicted_fd']) / 2)
 
 
+def test_component_challengers_change_one_rate_and_preserve_support():
+    rows = compare_history_windows(sample(), cutoff_day='2026-11-26', component_challenge=True)['rows']
+    selected = {r['policy']: r for r in rows if r['cohort']==8 and r['date']=='2026-11-14'}
+    baseline = selected['equal_8']
+    for field, metric in [('opportunity','opportunity_abs_error'), ('efficiency','efficiency_abs_error'), ('peripherals','peripheral_abs_error')]:
+        for prefix in ('blend','recent'):
+            challenger = selected[f'{prefix}_{field}']
+            assert challenger['predicted_minutes'] == baseline['predicted_minutes']
+            for other in ('opportunity_abs_error','efficiency_abs_error','peripheral_abs_error'):
+                if other != metric:
+                    assert challenger[other] == baseline[other]
+    from collections import Counter
+    assert set(Counter(r['policy'] for r in rows if r['cohort']==8).values()) == {6}
+    changed = sample()
+    changed[-1]['points'] = 100
+    replay = compare_history_windows(changed, cutoff_day='2026-11-26', component_challenge=True)['rows']
+    assert [r['predicted_fd'] for r in rows] == [r['predicted_fd'] for r in replay]
+
+
 def test_rate_challenge_preserves_minutes_and_decomposes_point_error():
     result = compare_history_windows(sample(), cutoff_day='2026-11-26', rate_challenge=True)
     rows = result['rows']

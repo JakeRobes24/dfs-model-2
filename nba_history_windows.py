@@ -13,7 +13,7 @@ METRICS=('fd_abs_error','minutes_abs_error','opportunity_abs_error',
          'fppm_bias','minutes_bias','fd_bias','minutes_effect','rate_effect')
 
 def compare_history_windows(records, *, cutoff_day, short_long_challenge=False,
-                            rate_challenge=False):
+                            rate_challenge=False, component_challenge=False):
     cutoff=_day(cutoff_day)
     groups=defaultdict(list)
     rejected=Counter()
@@ -79,6 +79,13 @@ def compare_history_windows(records, *, cutoff_day, short_long_challenge=False,
                     predictions['long_minutes_blended_rate'] = dict(
                         long, opportunity=opportunity, efficiency=efficiency,
                         peripherals=(long['peripherals']+short['peripherals'])/2)
+                if component_challenge:
+                    # Hold all other components and long-window minutes fixed.
+                    long, short = samples[n], samples[4]
+                    for field in ('opportunity','efficiency','peripherals'):
+                        predictions[f'blend_{field}'] = dict(long, **{
+                            field: (long[field]+short[field])/2})
+                        predictions[f'recent_{field}'] = dict(long, **{field: short[field]})
                 actual_fd=_score(actual)
                 actual_rate=actual_fd/actual['minutes']
                 for policy,c in predictions.items():

@@ -27,7 +27,8 @@ def verified_observations(payload, *, archive_sha256=ARCHIVE_SHA256):
 def replay(payload, *, cutoff_day="2026-11-26"):
     records = verified_observations(payload)
     result = compare_history_windows(records, cutoff_day=cutoff_day,
-                                     short_long_challenge=True, rate_challenge=True)
+                                     short_long_challenge=True, rate_challenge=True,
+                                     component_challenge=True)
     return {"archive_sha256": ARCHIVE_SHA256, "input_rows": len(records),
             "cutoff_day": cutoff_day, "summary": result["summary"],
             "rejected": result["rejected"], "certified": False}
