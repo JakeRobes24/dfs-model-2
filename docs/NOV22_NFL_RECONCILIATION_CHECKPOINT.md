@@ -1,5 +1,7 @@
 # DFS Model 2.0 — November 22 NFL historical reconciliation checkpoint
 
+The [November 27 recovery update](validation/nov27-nfl-full-roster-recovery.md) supersedes the contest-file and saved-candidate outcome gaps below. The original player-level pre-lock export remains outstanding.
+
 **Status:** Evidence reconciliation complete for accessible records; full-slate historical replay **BLOCKED** by missing original contest and prelock data. This is a safe pause point, not a certified retrospective optimizer result.
 
 ## Sources actually inspected

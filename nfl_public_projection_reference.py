@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from nfl_daily_audit import ALIASES, TEAMS, game, norm, number, team
 from nfl_projection_review import stamp
 
-POSITIONS = ('QB', 'RB', 'WR', 'TE')
+POSITIONS = ('QB', 'RB', 'WR', 'TE', 'DEF')
 PAGES = 'https://www.4for4.com/fantasy-football-projections/fanduel'
 FIELDS = {
     'ffpts': 'projection_fd', 'ruatt': 'rushing_attempts', 'ruydsrushing': 'rushing_yards',
@@ -20,6 +20,11 @@ FIELDS = {
     'rectd': 'receiving_td', 'att': 'pass_attempts', 'payds': 'passing_yards',
     'patdpassing': 'passing_td', 'int': 'interceptions',
 }
+DEFENSE_FIELDS = {
+    'ffpts': 'projection_fd', 'pointsallowed': 'points_allowed', 'ydsallowed': 'yards_allowed',
+    'sacks': 'sacks', 'forcedturnovers': 'forced_turnovers',
+}
+DEFENSE_NAMES = {norm(name.split()[-1]): code for code, name in TEAMS.items()}
 MAX_HTML = 2 * 1024 * 1024
 
 
@@ -44,7 +49,9 @@ def parse_4for4_page(html, *, season, week, position):
         raise ValueError('Public projection table unavailable.')
     table = tables[0]
     columns = [norm(c.get_text(' ', strip=True)) for c in table.select('thead th')]
-    if len(set(columns)) != len(columns) or not {'player', 'team', 'opp', 'ffpts'} <= set(columns):
+    is_defense = position == 'DEF'
+    required = {'teamdefense', 'vs', *DEFENSE_FIELDS} if is_defense else {'player', 'team', 'opp', 'ffpts'}
+    if len(set(columns)) != len(columns) or not required <= set(columns):
         raise ValueError('Public projection table schema changed.')
     rows = []
     for row in table.select('tbody tr'):
@@ -52,19 +59,29 @@ def parse_4for4_page(html, *, season, week, position):
         if len(cells) != len(columns):
             continue
         by_field = dict(zip(columns, cells))
-        link = by_field['player'].select_one('a[href^="/player/"]')
+        if is_defense:
+            link = by_field['teamdefense'].select_one('a[href^="/news/team/"]')
+        else:
+            link = by_field['player'].select_one('a[href^="/player/"]')
         if link is None:
             continue
         values = {key: cell.get_text(' ', strip=True) for key, cell in by_field.items()}
-        own = team(values['team'])
-        opp_raw = values['opp']
+        player_name = link.get_text(' ', strip=True)
+        if is_defense:
+            own = team(player_name) or DEFENSE_NAMES.get(norm(player_name), '')
+            if not own or link['href'].rstrip('/').rsplit('/', 1)[-1] != TEAMS[own].lower().replace(' ', '-'):
+                continue
+        else:
+            own = team(values['team'])
+        opp_raw = values['vs' if is_defense else 'opp']
         opp = team(opp_raw.removeprefix('@').strip())
         matchup = game(f'{opp}@{own}' if not opp_raw.startswith('@') else f'{own}@{opp}')
-        components = {target: number(values.get(header)) for header, target in FIELDS.items()}
+        fields = DEFENSE_FIELDS if is_defense else FIELDS
+        components = {target: number(values.get(header)) for header, target in fields.items()}
         points = components.pop('projection_fd')
         if not matchup or points is None or not -30 <= points <= 150:
             continue
-        rows.append(dict(player=link.get_text(' ', strip=True), team=own, game=matchup,
+        rows.append(dict(player=TEAMS[own] if is_defense else player_name, team=own, game=matchup,
                          position=position, projection_fd=points,
                          components={k: v for k, v in components.items() if v is not None and v >= 0},
                          provider_player=link['href']))
@@ -116,7 +133,8 @@ def collect_4for4_reference(audit, *, season, week, cutoff_utc, now=None):
         for position, url, published, observed, rows, status in pool.map(read, POSITIONS):
             matched = 0
             for row in rows if status == 'Public reference read' else ():
-                hit = keys[norm(row['player']), row['team'], row['game']]
+                name = 'dst' if position == 'DEF' else norm(row['player'])
+                hit = keys[name, row['team'], row['game']]
                 if len(hit) == 1 and position in hit[0]['positions']:
                     player = hit[0]
                     if player['status'] in {'out', 'inactive', 'ir', 'suspended'}:

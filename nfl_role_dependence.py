@@ -88,27 +88,34 @@ def _pairs(forecasts):
     return pairs
 
 
-def compare_frozen_role_dependence(training, evaluation, *, minimum_games=40):
-    """Train only earlier-season residual scales and correlations on matched pairs."""
+def fit_role_dependence(training, *, minimum_games=40):
+    """Fit residual scales and shrunk correlations for the tracked position pairs."""
     if minimum_games < 1:
         raise ValueError('At least one earlier training game is required.')
-    if training.empty or evaluation.empty:
-        return pd.DataFrame()
-    if (training.gameday.isna().any() or evaluation.gameday.isna().any()
-            or training.gameday.max() >= evaluation.gameday.min()):
-        raise ValueError('Dependence training must end before evaluation.')
-    trained = _pairs(training)
-    eval_pairs = _pairs(evaluation)
-    rows = []
-    for label, pairs in trained.items():
+    trained = {}
+    for label, pairs in _pairs(training).items():
         games = len({game for game, _, _ in pairs})
         if games < minimum_games:
             continue
         left, right = ([pair[part]['residual'] for pair in pairs] for part in (1, 2))
         scale = np.asarray([np.std(left), np.std(right)])
-        if (scale <= 0).any():
+        if not np.isfinite(scale).all() or (scale <= 0).any():
             continue
         rho = float(np.clip(np.corrcoef(left, right)[0, 1]*games/(games+75), -.5, .5))
+        trained[label] = scale, rho, games
+    return trained
+
+
+def compare_frozen_role_dependence(training, evaluation, *, minimum_games=40):
+    """Train only earlier-season residual scales and correlations on matched pairs."""
+    if training.empty or evaluation.empty:
+        return pd.DataFrame()
+    if (training.gameday.isna().any() or evaluation.gameday.isna().any()
+            or training.gameday.max() >= evaluation.gameday.min()):
+        raise ValueError('Dependence training must end before evaluation.')
+    eval_pairs = _pairs(evaluation)
+    rows = []
+    for label, (scale, rho, games) in fit_role_dependence(training, minimum_games=minimum_games).items():
         for game_id, a, b in eval_pairs.get(label, ()):
             center = a['forecast'] + b['forecast']
             actual = a['actual'] + b['actual']

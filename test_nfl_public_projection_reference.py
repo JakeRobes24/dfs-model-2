@@ -13,6 +13,14 @@ PAGE = '''<h1>2026 Fantasy Football Projections - FanDuel - RB - Week 12</h1>
 <tr><td><a href="/player/james-cook">James Cook</a><small>Injury popup</small></td>
 <td>BUF</td><td>KC</td><td>16.3</td><td>18.2</td></tr></tbody></table>'''
 OBS = datetime(2026, 11, 26, 10, tzinfo=timezone.utc)
+DST_PAGE = '''<h1>2026 Fantasy Football Projections - FanDuel - DEF - Week 12</h1>
+<p>Projections as of Thursday, November 26, 2026 at 7:12 PM EST</p>
+<table class="table_4for4"><thead><tr><th>#</th><th>Team Defense</th><th>VS</th><th>M/U</th>
+<th>Game Outcome</th><th>FF Pts</th><th>Points Allowed</th><th>Yds Allowed</th>
+<th>Sacks</th><th>Forced Turnovers</th></tr></thead><tbody>
+<tr><td>6</td><td><a href="/news/team/denver-broncos">Broncos</a></td>
+<td>@PIT</td><td>16</td><td>win</td><td>6.7</td><td>16.5</td><td>298.3</td><td>2.2</td><td>1.4</td></tr>
+</tbody></table>'''
 PROPSIMS = '''<h1>FanDuel projections: Week 12 main slate</h1>
 <time datetime="2026-11-27T01:00:00Z"></time>
 <table id="dfstable"><thead><tr><th>Player</th><th>Salary</th><th>Median</th>
@@ -50,6 +58,34 @@ def test_exact_contest_and_unbackdated_reference():
         audit['players'] = [dict(player, game='BUF@KC')]
         assert not collect_4for4_reference(audit, season=2026, week=12,
                                           cutoff_utc='2026-11-26T17:30:00Z', now=lambda: OBS)['rows']
+
+
+def test_public_defenses_require_verified_team_link_matchup_and_cutoff(monkeypatch):
+    published, rows = parse_4for4_page(DST_PAGE, season=2026, week=12, position='DEF')
+    assert published.isoformat() == '2026-11-26T19:12:00-05:00'
+    assert (rows[0]['player'], rows[0]['game'], rows[0]['projection_fd']) == ('Denver Broncos', 'DEN@PIT', 6.7)
+    assert rows[0]['components'] == {'points_allowed': 16.5, 'yards_allowed': 298.3,
+                                     'sacks': 2.2, 'forced_turnovers': 1.4}
+    wrong = DST_PAGE.replace('denver-broncos', 'las-vegas-raiders')
+    assert not parse_4for4_page(wrong, season=2026, week=12, position='DEF')[1]
+
+    def response(request, **kwargs):
+        out = BytesIO(DST_PAGE.encode())
+        out.geturl = lambda: request.full_url
+        return out
+
+    monkeypatch.setattr('nfl_public_projection_reference.urlopen', response)
+    observed = datetime(2026, 11, 27, 8, tzinfo=timezone.utc)
+    player = dict(player_id='123-1', player='Broncos Defense', team='DEN', game='DEN@PIT',
+                  positions=['DEF'], status='unknown', projection_fd=None)
+    audit = dict(players=[player], contest_id='123', contest_sha256='cont', daily_sha256='daily')
+    args = dict(season=2026, week=12, cutoff_utc='2026-11-27T20:00:00Z', now=lambda: observed)
+    report = collect_4for4_reference(audit, **args)
+    assert report['rows'][0]['player_id'] == player['player_id']
+    assert report['rows'][0]['daily_fd'] is None
+    assert not collect_4for4_reference(audit, **dict(args, cutoff_utc='2026-11-27T07:00:00Z'))['rows']
+    audit['players'] = [dict(player, game='PIT@DEN')]
+    assert not collect_4for4_reference(audit, **args)['rows']
 
 
 def test_propsims_exact_sunday_schedule_and_timestamp():
