@@ -30,6 +30,10 @@ def test_join_uses_both_provider_ids_and_the_final_game_identity():
     assert reconcile_final_workload(schedule, snaps, wrong_opponent, players, **args).empty
     ambiguous = pd.concat([players, pd.DataFrame({'pfr_id': ['pfr1'], 'gsis_id': ['gsis3']})])
     assert reconcile_final_workload(schedule, snaps, stats, ambiguous, **args).empty
+    # A discarded ambiguous PFR ID must not hide a shared GSIS ID.
+    indirect_ambiguity = pd.concat([players, pd.DataFrame({
+        'pfr_id': ['pfr3', 'pfr3'], 'gsis_id': ['gsis1', 'gsis3']})])
+    assert reconcile_final_workload(schedule, snaps, stats, indirect_ambiguity, **args).empty
 
 
 def test_snap_challengers_share_target_sample_and_do_not_fill_missing_team_game():

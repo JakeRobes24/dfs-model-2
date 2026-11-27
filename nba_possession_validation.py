@@ -88,6 +88,8 @@ def compare_possession_forecasts(rows, schedule):
     sides['team'] = sides.team.map(team_code)
     sides['sequence'] = sides.sort_values(['date', 'game_id']).groupby('team').cumcount()
     rows = rows.merge(sides, on=['game_id', 'team', 'date'], validate='many_to_one')
+    if rows.duplicated(['game_id', 'nba_id'], keep=False).any():
+        raise ValueError('Ambiguous duplicate NBA player-game observations.')
     detail = []
     for _, group in rows.groupby(['nba_id', 'team']):
         ordered = group.sort_values('sequence').to_dict('records')

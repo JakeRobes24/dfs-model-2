@@ -49,6 +49,13 @@ def test_nba_missing_prior_scheduled_team_game_breaks_the_window():
     assert len(reviewed) == 2
     assert reviewed.baseline_fd_error.equals(reviewed.possession_fd_error)
     assert compare_possession_forecasts(rows.drop(1), schedule).empty
+    duplicate = pd.concat([rows, rows.iloc[[4]]], ignore_index=True)
+    with pytest.raises(ValueError, match='duplicate NBA player-game'):
+        compare_possession_forecasts(duplicate, schedule)
+    conflicting = duplicate.copy()
+    conflicting.loc[len(conflicting)-1, 'fd'] = 99.
+    with pytest.raises(ValueError, match='duplicate NBA player-game'):
+        compare_possession_forecasts(conflicting, schedule)
 
 
 def test_daily_tips_requires_exact_contest_id_and_matching_details():

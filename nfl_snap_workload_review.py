@@ -44,7 +44,10 @@ def reconcile_final_workload(schedule, snaps, stats, players, *, season, cutoff_
     clubs['team_game_number'] = clubs.sort_values(['gameday', 'game_id']).groupby('team').cumcount()
     keys = ['game_id', 'week', 'team', 'opponent']
     crosswalk = players[['pfr_id', 'gsis_id']].dropna().drop_duplicates()
-    crosswalk = _unique(_unique(crosswalk, ['pfr_id']), ['gsis_id'])
+    # Determine ambiguity on the original crosswalk, before discarding either side.
+    # Sequential filtering can hide a shared GSIS ID and retain a false match.
+    crosswalk = crosswalk.loc[~crosswalk.pfr_id.duplicated(keep=False)
+                              & ~crosswalk.gsis_id.duplicated(keep=False)]
     snap_rows = snaps.loc[snaps.season.eq(season) & snaps.game_type.eq('REG')].rename(
         columns={'pfr_player_id': 'pfr_id'})
     snap_rows = _unique(snap_rows, ['pfr_id', *keys]).merge(
