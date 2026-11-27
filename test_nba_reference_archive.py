@@ -54,3 +54,25 @@ def test_lineupexperts_archive_preserves_the_explicit_fanduel_value():
     row = dict(le(), reference_points=4)
     out, _ = freeze_reference_boards(fixture(), {'LineupExperts': ([row], None)}, {}, DAY, NOW)
     assert json.loads(out[FIELDS[0]].iloc[0])[0]['fd_points'] == 30
+
+
+def test_edgehalla_reference_archives_actual_observation_without_certifying_publication():
+    from slate_research import reference_review_queue
+
+    pool = fixture()
+    record = dict(le(), reference_minutes=31, retrieved_at='2026-11-27T16:55:00Z',
+                  slate_date=DAY.isoformat(), conditional_on_playing=True)
+    board = {'Edgehalla': ([record], None)}
+    out, coverage = freeze_reference_boards(pool, board, {}, DAY, NOW)
+    evidence = json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert evidence['minutes'] == 31 and evidence['fd_points'] is None
+    assert evidence['observed_at'] == '2026-11-27T16:55:00+00:00'
+    assert evidence['published_at'] is None and evidence['scoring_accepted'] is False
+    assert coverage.set_index('provider').loc['Edgehalla','publication_unknown_players'] == 1
+    queue = reference_review_queue(pool, board, NOW)
+    assert list(queue['Minutes gap']) == [7]
+    assert list(queue['Published UTC']) == ['Unverified']
+    assert reference_review_queue(pool, board, '2026-11-27T23:00:00Z').empty
+    record['retrieved_at'] = '2026-11-27T17:01:00Z'
+    rejected, _ = freeze_reference_boards(pool, board, {}, DAY, NOW)
+    assert json.loads(rejected[FIELDS[0]].iloc[0]) == []

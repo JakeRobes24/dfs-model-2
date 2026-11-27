@@ -19,7 +19,8 @@ def edgehalla_reference(raw, slate, observed_at, schedule):
     games = set()
     for row in schedule:
         tip = timestamp(row.get('gameTimeUtc'))
-        if tip is None or tip <= stamp or tip.tz_convert('America/New_York').date() != slate:
+        if (row.get('gameStatus') not in (None, 1, '1') or tip is None or tip <= stamp
+                or tip.tz_convert('America/New_York').date() != slate):
             continue
         away, home = (team_code(row[side]['teamTricode']) for side in ('awayTeam', 'homeTeam'))
         if away and home and away != home:

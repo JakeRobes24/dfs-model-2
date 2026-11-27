@@ -505,7 +505,7 @@ def render_slate(history_slot):
     reference_observed_at = checked_at
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
-            st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
+            st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz, KeelStats and Edgehalla together. Reference estimates are not extra independent scoring votes.')
             now = datetime.now(ET)
             saved_reference = st.session_state.get('slate_reference_snapshot')
             if saved_reference is not None and saved_reference[0] == reference_key:
@@ -531,17 +531,19 @@ def render_slate(history_slot):
                         else:
                             matched_count = 0
                         reference_status[name] += f'; {matched_count} eligible matches; publication time unverified'
-                    elif name in ('MatchWiz', 'KeelStats'):
+                    elif name in ('MatchWiz', 'KeelStats', 'Edgehalla'):
                         from slate_research import compare_keelstats
                         compared = compare_keelstats(scored, rows)
                         if name == 'MatchWiz':
                             archived_matchwiz = rows
                             caveat = 'Publication time unverified; partial stats and projected roles only.'
+                        elif name == 'Edgehalla':
+                            caveat = 'Minutes are conditional on playing and publication time is unverified.'
                         else:
                             caveat = 'Returning-player impact omitted from redistribution; historical L10 and starts are not projections.'
                         st.caption(f'{name}: {caveat}')
                         reference_status[name] += f'; {len(compared)} eligible matches'
-                        if name == 'MatchWiz':
+                        if name in ('MatchWiz', 'Edgehalla'):
                             reference_status[name] += '; publication time unverified'
                         if not compared.empty:
                             st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)

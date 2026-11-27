@@ -745,6 +745,8 @@ def reference_review_queue(scored, boards, as_of):
     Each row is one provider/player match. Unknown publication time is explicit.
     Old dated boards are excluded from the actionable queue. Scores are untouched.
     """
+    from research_source_registry import NBA_REFERENCE_BOARDS, NBA_MINUTES_REFERENCE_BOARDS
+
     columns = ['fanduel_id', 'Player', 'Salary', 'Provider', 'Published UTC',
                'DAILY FD', 'Model FD', 'Reference FD', 'FD gap',
                'Model minutes', 'Reference minutes', 'Minutes gap', 'Review']
@@ -754,13 +756,13 @@ def reference_review_queue(scored, boards, as_of):
     if not scored.fanduel_id.is_unique:
         raise ValueError('Reference review requires unique contest IDs')
     rows = []
-    for name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats'):
+    for name in NBA_REFERENCE_BOARDS:
         if name not in boards:
             continue
         records, stamp = boards[name][:2]
         published = None if stamp is None else pd.Timestamp(stamp)
         if published is None:
-            if name not in ('LineupExperts', 'MatchWiz'):
+            if name not in ('LineupExperts', 'MatchWiz', 'Edgehalla'):
                 continue
         elif (pd.isna(published) or published.tzinfo is None
               or not cutoff - pd.Timedelta(hours=6) <= published <= cutoff):
@@ -772,8 +774,8 @@ def reference_review_queue(scored, boards, as_of):
             compared = scored.loc[scored.eligible].merge(
                 matched.drop_duplicates('fanduel_id', keep=False)[['fanduel_id', 'reference_fd']],
                 on='fanduel_id', validate='one_to_one').rename(columns={'reference_fd':'reference_points'})
-        elif name in ('MatchWiz', 'KeelStats'):
-            if name == 'MatchWiz':
+        elif name in NBA_MINUTES_REFERENCE_BOARDS:
+            if name in ('MatchWiz', 'Edgehalla'):
                 # Retrieval timestamps are not publication timestamps.
                 def recent(record):
                     try:
@@ -892,18 +894,40 @@ def compare_keelstats(scored, records):
     return compared.sort_values('minutes_gap',key=lambda col:col.abs(),ascending=False)
 
 
+def edgehalla_slate_reference(slate, contest_games):
+    """Capture conditional minutes for the upcoming games on this contest."""
+    from nba_edgehalla_reference import URL, edgehalla_reference
+
+    scope = {matchup_key(game) for game in contest_games}
+    schedule = [game for game in games_for_date(slate) if matchup_key(
+        f"{game['awayTeam']['teamTricode']}@{game['homeTeam']['teamTricode']}"
+    ) in scope]
+    raw = fetch(URL)
+    observed_at = datetime.now(ET)
+    if observed_at.date() != slate:
+        raise ValueError('Edgehalla reference observation date does not match the contest')
+    forecasts = edgehalla_reference(raw, slate, observed_at, schedule)
+    return ([dict(player=row['player'], team=row['team'], game=row['game'],
+                  reference_minutes=row['minutes'], retrieved_at=row['observed_at'],
+                  slate_date=slate.isoformat(), conditional_on_playing=True)
+             for row in forecasts], None)
+
+
 def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
     from matchwiz_reference import matchwiz_reference
+    from research_source_registry import NBA_REFERENCE_BOARDS
+
     if slate != as_of.astimezone(ET).date():
         return {}, {name: 'Historical slate: current reference not checked' for name in
-                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats')}
+                    NBA_REFERENCE_BOARDS}
     jobs = (
         ('LineupExperts', lambda: (lineupexperts_reference(slate, slate), None)),
         ('FantasySportsEdge', lambda: fantasysportsedge_reference(slate, as_of)),
         ('Fantasy Team Advisors', lambda: fta_nba_reference(slate, as_of, contest_games)),
         ('MatchWiz', lambda: (matchwiz_reference(slate, as_of), None)),
         ('KeelStats', lambda: keelstats_reference(slate, as_of)),
+        ('Edgehalla', lambda: edgehalla_slate_reference(slate, contest_games)),
     )
     boards, status = {}, {}
     with ThreadPoolExecutor(max_workers=len(jobs)) as workers:

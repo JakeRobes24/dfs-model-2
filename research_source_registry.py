@@ -55,6 +55,10 @@ RESEARCH_LINKS = {
     '4for4': 'https://www.4for4.com/dfs-legacy-generators',
     'Edgehalla': 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes',
 }
+NBA_MINUTES_REFERENCE_BOARDS = ('MatchWiz', 'KeelStats', 'Edgehalla')
+NBA_REFERENCE_BOARDS = ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors',
+                        *NBA_MINUTES_REFERENCE_BOARDS)
+
 AUTOMATIC_NBA = {
     'Official NBA reports / NBA Stats': ('NBA injury report','NBA recent box scores'),
     'RotoWire': ('RotoWire starters and minutes',),
@@ -87,7 +91,7 @@ def research_checklist(sport, source_status=()):
         labels = AUTOMATIC_NBA.get(name,()) if sport == 'NBA' else ()
         if labels:
             current = ' | '.join(f'{label}: {status.get(label,"Not checked this refresh")}' for label in labels)
-        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'KeelStats', 'MatchWiz') and name in status:
+        elif sport == 'NBA' and name in NBA_REFERENCE_BOARDS and name in status:
             current = status[name]
         elif mode == 'Identity unresolved':
             current = 'Identity not verified'

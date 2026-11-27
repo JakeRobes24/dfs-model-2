@@ -9,10 +9,10 @@ from datetime import date
 from collections import defaultdict
 import pandas as pd
 from nba_distribution_review import bounded,timestamp
-from research_source_registry import RESEARCH_LINKS
+from research_source_registry import NBA_REFERENCE_BOARDS, NBA_MINUTES_REFERENCE_BOARDS, RESEARCH_LINKS
 from slate_research import match_public,compare_reference,compare_keelstats
 
-PROVIDERS=('LineupExperts','FantasySportsEdge','Fantasy Team Advisors','MatchWiz','KeelStats')
+PROVIDERS=NBA_REFERENCE_BOARDS
 FIELDS=('replay_reference_forecasts_json','replay_reference_coverage_json')
 
 def freeze_reference_boards(pool,boards,status,slate,observed_at):
@@ -50,7 +50,7 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                 if not compared.empty:
                     compared=compared.drop_duplicates('fanduel_id',keep=False).assign(
                         reference_points=lambda rows: rows['reference_fd'])
-            elif name in ('MatchWiz','KeelStats'):
+            elif name in NBA_MINUTES_REFERENCE_BOARDS:
                 compared=compare_keelstats(pool,records)
             else:
                 compared=compare_reference(pool,records)
@@ -63,11 +63,18 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                     minutes=bounded(item.get('reference_minutes'),0,48)
                     if fp is None and minutes is None:
                         continue
+                    observed = cutoff
+                    if name == 'Edgehalla':
+                        observed = timestamp(item.get('retrieved_at'))
+                        if (observed is None or observed > cutoff
+                                or observed.tz_convert('America/New_York').date() != slate
+                                or item.get('slate_date') != slate.isoformat()):
+                            continue
                     freshness=('Publication unknown' if published is None else
                                'Dated within six hours' if cutoff-pd.Timedelta(hours=6)<=published
                                else 'Dated but stale')
                     matched_by_player[pid].append(dict(provider=name,source=RESEARCH_LINKS[name],
-                        observed_at=cutoff.isoformat(),published_at=published.isoformat() if published is not None else None,
+                        observed_at=observed.isoformat(),published_at=published.isoformat() if published is not None else None,
                         slate_date=slate.isoformat(),freshness=freshness,fd_points=fp,minutes=minutes,
                         scoring_accepted=False))
                     row['matched_players']+=1

@@ -98,17 +98,19 @@ def test_reference_refresh_isolated_from_failures_and_scoring():
          patch('slate_research.fantasysportsedge_reference', side_effect=OSError('unavailable')), \
          patch('slate_research.fta_nba_reference', return_value=(fta_rows, now, 'Main', 10)) as fta, \
          patch('matchwiz_reference.matchwiz_reference', return_value=line_rows), \
-         patch('slate_research.keelstats_reference', side_effect=OSError('403')):
+         patch('slate_research.keelstats_reference', side_effect=OSError('403')), \
+         patch('slate_research.edgehalla_slate_reference', return_value=(line_rows, None)) as edge:
         boards, status = get_reference_research(slate, now, ('BOS@NYK',))
-        assert set(boards) == {'LineupExperts', 'Fantasy Team Advisors', 'MatchWiz'}
+        assert set(boards) == {'LineupExperts', 'Fantasy Team Advisors', 'MatchWiz', 'Edgehalla'}
         assert 'unavailable' in status['KeelStats'].lower()
         assert 'unavailable' in status['FantasySportsEdge'].lower()
         assert 'not scoring evidence' in status['LineupExperts']
         assert boards['LineupExperts'] == (line_rows, None)
         fta.assert_called_once_with(slate, now, ('BOS@NYK',))
+        edge.assert_called_once_with(slate, ('BOS@NYK',))
     with patch('slate_research.lineupexperts_reference') as line:
         boards, status = get_reference_research(date(2026, 11, 24), now, ('BOS@NYK',))
-        assert not boards and len(status) == 5
+        assert not boards and len(status) == 6
         line.assert_not_called()
     checklist = research_checklist('NBA', [('LineupExperts', 'Reference checked: 1 eligible match'),
                                           ('FantasySportsEdge', 'Reference unavailable'),
