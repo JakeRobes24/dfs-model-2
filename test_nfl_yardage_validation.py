@@ -67,3 +67,15 @@ def test_missing_receiving_workload_cannot_skip_back_to_older_games():
     new = evaluate_yardage(altered, **args, metric='receiving')
     assert new['comparison_dates'] < old['comparison_dates']
     assert all(row['date'] != holdout['date'] for row in new['predictions'])
+
+
+def test_mixed_dependence_on_archived_backfields():
+    results=review_cohorts(json.loads(EVIDENCE.read_text())['cohorts'],mixed_dependence=True)
+    expected=(42.004296875,18.36015625,40.31700721153846,24.36875,43.62979403409091,8.634765625)
+    for result,score in zip(results,expected):
+        assert result['simulation_summary'][-1]['policy']=='Half paired half independent'
+        assert result['simulation_summary'][-1]['crps']==pytest.approx(score)
+        for i in range(0,len(result['simulations']),3):
+            group=result['simulations'][i:i+3]
+            assert len({r['date'] for r in group})==1
+            assert [r['expected_pair_yards'] for r in group]==pytest.approx([group[0]['expected_pair_yards']]*3)

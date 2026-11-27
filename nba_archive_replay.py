@@ -8,6 +8,8 @@ from zipfile import ZipFile
 
 from nba_history_windows import compare_history_windows
 from nba_rate_distribution import compare_rate_distributions, calibrate_rate_ranges
+from nba_group_dependence import compare_groups
+from nba_history_ranges import historical_forecasts
 
 ARCHIVE_SHA256 = "2063db41a4a8332b0fb98bd2460449744ae07203e4f9cd2caac3e5d41cea74f9"
 MEMBER = "official_played_observations.json"
@@ -32,6 +34,7 @@ def replay(payload, *, cutoff_day="2026-11-26"):
                                      component_challenge=True)
     distribution = compare_rate_distributions(records, cutoff_day=cutoff_day)
     return {"archive_sha256": ARCHIVE_SHA256, "input_rows": len(records),
+            "group_dependence": compare_groups(historical_forecasts(records, cutoff_day=cutoff_day))["summary"],
             "rate_distribution": distribution["summary"],
             "rate_calibration": calibrate_rate_ranges(distribution["rows"]),
             "cutoff_day": cutoff_day, "summary": result["summary"],

@@ -51,7 +51,7 @@ def empirical_crps(draws, actual):
     return float(max(0., score))
 
 
-def evaluate_yardage(history, *, player_ids, team, target_day, metric):
+def evaluate_yardage(history, *, player_ids, team, target_day, metric, mixed_dependence=False):
     """Hold out every later complete match using four earlier complete rows.
 
     Volume and efficiency changes are exploratory. The two distributions keep
@@ -85,8 +85,13 @@ def evaluate_yardage(history, *, player_ids, team, target_day, metric):
             predictions.append(dict(**base, policy=policy, actual_yards=actual_yards.tolist(),
                                     predicted_yards=forecast.tolist(),
                                     mae=float(np.abs(errors).mean()), bias=float(errors.mean())))
-        for policy, draws in [('Same-game resampling', yards.sum(axis=1)),
-                              ('Independent teammate resampling', [a+b for a,b in product(*yards.T)])]:
+        paired = yards.sum(axis=1)
+        independent = np.asarray([a+b for a,b in product(*yards.T)])
+        policies = [('Same-game resampling', paired), ('Independent teammate resampling', independent)]
+        if mixed_dependence:
+            # Four paired draws vs sixteen Cartesian draws: equal probability mass.
+            policies.append(('Half paired half independent', np.concatenate((np.tile(paired,4),independent))))
+        for policy, draws in policies:
             lo, hi = np.quantile(draws, [.1,.9])
             total = int(actual_yards.sum())
             simulations.append(dict(**base, policy=policy, actual_pair_yards=total,
@@ -106,11 +111,11 @@ def evaluate_yardage(history, *, player_ids, team, target_day, metric):
                 simulation_summary=summarize(simulations, ('crps','interval_width','inside_interval')))
 
 
-def review_cohorts(cohorts):
+def review_cohorts(cohorts, *, mixed_dependence=False):
     """Reproduce the matched forecast and simulation comparisons by team."""
     return [dict(team=cohort['team'], **evaluate_yardage(
                 cohort['history'], player_ids=cohort['player_ids'], team=cohort['team'],
-                target_day=cohort['target_day'], metric=metric))
+                target_day=cohort['target_day'], metric=metric, mixed_dependence=mixed_dependence))
             for cohort in cohorts for metric in ('rushing', 'receiving')]
 
 
