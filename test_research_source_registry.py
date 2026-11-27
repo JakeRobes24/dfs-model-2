@@ -1,5 +1,21 @@
 from research_source_registry import research_checklist
 
+def test_new_research_candidates_remain_visible_without_claiming_numerical_coverage():
+    from research_source_registry import predictive_coverage
+    nba = research_checklist('NBA').set_index('Source')
+    nfl = research_checklist('NFL').set_index('Source')
+    assert 'potential assists' in nba.loc['NBA House','Research purpose']
+    for name in ('Fantasy Life Utilization', 'ffopportunity / ffverse', 'PFF Usage and Production', 'Fantasy Six Pack'):
+        assert name in nfl.index and name not in nba.index
+    for sport in ('NBA','NFL'):
+        coverage = predictive_coverage(sport).set_index('Source')
+        for name in ('SportsDataIO','SpreadModel','FantasyPros'):
+            assert coverage.loc[name,'Evidence'] == 'No comparable rows in this archive'
+    assert 'not an independent vote' in nfl.loc['Fantasy Six Pack','Research purpose']
+    assert not nfl.loc['SpreadModel','Verified access link']
+    assert nfl.loc['ffopportunity / ffverse','Verified access link'].startswith('https://')
+
+
 def test_saved_sources_remain_visible_with_incomplete_automatic_refresh():
     nba = research_checklist('NBA',[('PropSims','36 estimates')]).set_index('Source')
     for source in ('LineupExperts','RotoGrinders','FantasyProjections','NBA House',

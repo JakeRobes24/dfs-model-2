@@ -10,7 +10,7 @@ SOURCES = (
     ('Official NBA reports / NBA Stats','Automatic','Not applicable','Availability, official box scores, recent rotations and results'),
     ('Official NFL reports / statistics','Not applicable','Manual required','Availability, active/inactive, workload and verified results'),
     ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
-    ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
+    ('NBA House','Automatic','Not applicable','Minutes and rotation estimates; separate historical tracking tables for potential assists, rebound chances and touches; validate dated player-game coverage before modeling'),
     ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
     ('PropSims','Automatic','Public weekly reference','NBA paired points and minutes. NFL Sunday afternoon market-informed FanDuel median and 85th percentile with exact contest and schedule checks'),
@@ -36,6 +36,13 @@ SOURCES = (
     ('DailyFantasy.tips','Not applicable','Public research candidate','Platform-specific points, salary and provider IDs. Blends two unnamed sources. Require timezone and exact contest verification'),
     ('FTN via nflverse','Not applicable','Historical research','Play charting. Primary-read field failed the 2026 exact-target audit; validate coding before using first-read rates'),
     ('PBP Stats','Historical research','Not applicable','Possession and usage data with partial historical game coverage. Verify official schedule and complete prior team games'),
+    ('Fantasy Life Utilization','Not applicable','Manual research candidate','Historical snaps, routes, targets and red-zone opportunities. Game log subscription gate; verify authorized dated exports before use'),
+    ('ffopportunity / ffverse','Not applicable','Historical research candidate','Expected fantasy points conditioned on observed play opportunities; not pregame projections. Verify season files, scoring components, game keys and publication lag; nflverse-derived'),
+    ('SportsDataIO','API access unverified','API access unverified','Documented player projection feeds; NBA minutes and platform scoring. No authorized numerical coverage established'),
+    ('SpreadModel','Access unverified','Access unverified','Advertised player stat-line and platform projections; direct documentation returned 502. Require verified data and timestamp'),
+    ('PFF Usage and Production','Not applicable','Manual research candidate','Documented snap, route, target and situational usage fields; player-level access and dated export not established'),
+    ('Fantasy Six Pack','Not applicable','Access unverified','Advertised usage table; direct access returned 403. Route statistics attributed to Fantasy Life, not an independent vote'),
+    ('FantasyPros','API access unverified','API access unverified','Documented projection endpoints require API key; verify scoring, dates and underlying expert overlap before comparisons'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -63,6 +70,11 @@ RESEARCH_LINKS = {
     'DailyFantasy.tips': 'https://dailyfantasy.tips/nfl/',
     'FTN via nflverse': 'https://nflreadr.nflverse.com/reference/load_ftn_charting.html',
     'PBP Stats': 'https://api.pbpstats.com/docs',
+    'Fantasy Life Utilization': 'https://www.fantasylife.com/nfl/utilization-report/game-log',
+    'ffopportunity / ffverse': 'https://ffopportunity.ffverse.com/',
+    'SportsDataIO': 'https://sportsdata.io/developers/workflow-guide/nba',
+    'PFF Usage and Production': 'https://www.pff.com/news/fantasy-football-usage-production-report',
+    'FantasyPros': 'https://api.fantasypros.com/public/v2/docs',
 }
 NBA_MINUTES_REFERENCE_BOARDS = ('MatchWiz', 'KeelStats', 'Edgehalla')
 NBA_REFERENCE_BOARDS = ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors',

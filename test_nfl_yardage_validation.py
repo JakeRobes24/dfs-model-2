@@ -3,7 +3,21 @@ from pathlib import Path
 
 import pytest
 
-from nfl_yardage_validation import evaluate_yardage, review_cohorts
+from nfl_yardage_validation import evaluate_yardage, review_cohorts, empirical_crps
+
+
+def test_sorted_crps_matches_pairwise_formula_and_scales_to_large_draws():
+    import numpy as np
+    rng = np.random.default_rng(2026)
+    for draws in ([0.], [0., 0., 3., -1.], rng.normal(size=256)):
+        x = np.asarray(draws)
+        for actual in (-2., 0., 5.):
+            old = np.abs(x-actual).mean() - .5*np.abs(x[:,None]-x).mean()
+            assert empirical_crps(x, actual) == pytest.approx(old, abs=1e-12)
+    assert empirical_crps(np.zeros(100_000), 5.) == pytest.approx(5.)
+    for bad in ([], [float('nan')], [[1.,2.]]):
+        with pytest.raises(ValueError):
+            empirical_crps(bad, 1.)
 
 
 EVIDENCE = Path(__file__).parent / 'docs/validation/nfl-yardage-evidence.json'

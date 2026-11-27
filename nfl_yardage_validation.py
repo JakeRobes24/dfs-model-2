@@ -34,9 +34,21 @@ def _game_components(history, player_ids, team, target_day, metric):
 
 
 def empirical_crps(draws, actual):
-    """Proper distribution score without Monte Carlo sampling noise."""
+    """Exact empirical CRPS in O(n log n) time and O(n) memory.
+
+    For sorted draws, the sum of pairwise absolute differences equals
+    twice the weighted sum with coefficients 2*i-n+1 (zero-based i).
+    Center at the actual to avoid unnecessary loss of numerical precision.
+    """
     values = np.asarray(draws, dtype=float)
-    return float(np.abs(values-actual).mean() - .5*np.abs(values[:, None]-values).mean())
+    if (values.ndim != 1 or not values.size or not np.isfinite(values).all()
+            or not np.isscalar(actual) or not np.isfinite(actual)):
+        raise ValueError('CRPS requires a nonempty finite vector and finite actual.')
+    values = np.sort(values-float(actual))
+    n = values.size
+    weights = (2*np.arange(n, dtype=float)-n+1)/n
+    score = np.abs(values).mean()-np.mean(weights*values)
+    return float(max(0., score))
 
 
 def evaluate_yardage(history, *, player_ids, team, target_day, metric):
