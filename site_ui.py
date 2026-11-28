@@ -509,6 +509,8 @@ def render_slate(history_slot):
     reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
     from nba_window_shadow import attach_window_inputs
     reviewed_export = attach_window_inputs(reviewed_export, rotation_rows, slate)
+    from nba_pooled_history_shadow import attach_pooled_history
+    reviewed_export = attach_pooled_history(reviewed_export, rotation_rows, slate)
     window_supported = int(reviewed_export.shadow_hw_history_json.ne('[]').sum())
     st.caption(f'{window_supported} players with eight matched historical observations for experimental window review. '
                'Completeness, availability and pre-tip checks still apply. The longer window defaults on when the verified schedule permits an early request.')
