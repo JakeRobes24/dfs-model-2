@@ -447,3 +447,28 @@ def test_nov28_new_sources_stay_reference_only():
             assert 'claimed forecast' not in rows.loc[name, 'Refresh evidence']
             assert coverage.loc[name, 'Evidence'] == 'No comparable rows in this archive'
         assert rows.loc['Dimers', 'Verified access link'].endswith('/'+sport.lower()+'/player-projections')
+
+
+def test_complete_inventory_is_distinct_from_accepted_live_inputs():
+    from research_source_registry import source_inventory, source_inventory_counts, SOURCES
+    from slate_research import POINT_SOURCE_GROUPS
+    from research_source_registry import NBA_FORECAST_PROVIDERS
+    inventory = source_inventory().set_index('Source')
+    assert len(inventory) == len(SOURCES) == 47
+    assert inventory.index.is_unique
+    assert source_inventory_counts() == {
+        'Direct or conditional model support': 8,
+        'Integrated advisory reference': 7,
+        'Manual or historical research': 14,
+        'Candidate / further verification': 18,
+    }
+    accepted = set(inventory.index[inventory['NBA eligible point family']])
+    assert accepted == {NBA_FORECAST_PROVIDERS[k] for k in POINT_SOURCE_GROUPS.values()}
+    assert set(inventory.index[inventory['NBA eligible automatic minutes provider']]) == {
+        'RotoWire', 'NBA House', 'PropSims', 'RotoGrinders'}
+    assert not inventory['NFL automatic point consensus'].any()
+    assert 'conditional verified' in inventory.loc['LineupExperts','Model contribution']
+    for name in ('Vektor Labs', 'Parlae', 'Volt Fantasy', 'Malter Analytics', 'Dimers'):
+        assert inventory.loc[name,'Highest established use'] == 'Candidate / further verification'
+        assert not inventory.loc[name,'NBA eligible point family']
+        assert not inventory.loc[name,'NBA eligible automatic minutes provider']
