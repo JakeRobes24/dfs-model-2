@@ -65,3 +65,29 @@ def test_multislate_prospective_roundtrip():
     assert len(rows)==4 and rows['Paired players'].eq(1).all()
     assert rows.Period.eq('Prospective').all()
     assert rows['Review status'].eq('Insufficient prospective evidence').all()
+
+
+def test_candidate_window_sensitivity_keeps_unsupported_players_at_reviewed_scores():
+    from nba_window_shadow import candidate_window_sensitivity
+    from model import SLOTS
+    base=pool()
+    rows=[dict(base.iloc[0],fanduel_id=f'137200-{i}',fanduel_name=f'Player {i}',
+               team=['BOS','NYK','ORL'][i%3],salary=6000,
+               roster_eligibility='PG/SG/SF/PF/C/G/F/F/C/UTIL')
+          for i in range(1,11)]
+    rows[0].update(fanduel_name='Player A',team='BOS')
+    frame=attach_window_inputs(pd.DataFrame(rows),logs(),DAY)
+    candidates=pd.DataFrame([dict(lineup=j,slot=slot,fanduel_id=pid)
+         for j,ids in [(1,list(frame.fanduel_id.iloc[:9])),(2,list(frame.fanduel_id.iloc[1:]))]
+         for slot,pid in zip(SLOTS,ids)])
+    original=frame.copy(deep=True)
+    result=candidate_window_sensitivity(frame,candidates,DAY).set_index('Lineup')
+    assert result['Reviewed FD'].tolist()==[270,270]
+    assert result['Supported players'].tolist()==[1,0]
+    assert result['Unchanged fallback players'].tolist()==[8,9]
+    for name in POLICIES:
+        assert result.loc[2,name+' delta']==0
+    assert result.loc[1,'8-game historical minutes and rate (20%) FD']==pytest.approx(240+30.4*(.8+.2*33/32))
+    pd.testing.assert_frame_equal(frame,original)
+    with pytest.raises(ValueError,match='no longer eligible'):
+        candidate_window_sensitivity(frame.assign(eligible=~frame.fanduel_id.eq('137200-1')),candidates,DAY)
