@@ -24,6 +24,8 @@ The [candidate-range follow-up](validation/nov28-reconstructed-candidate-ranges.
 
 The [multi-slate roster calibration replay](validation/nov28-multislate-roster-calibration.md) compares the same legal candidates and forecast centers on three dated pre-tip checkpoints. Miss direction and the primary minutes or production-rate error changed across dates. Keep the paired uncertainty model in shadow evaluation and preserve availability cases outside its played-only scope.
 
+The [forecast stability review](validation/nov28-forecast-stability.md), [47-source numerical review](validation/nov28-public-source-numerical-review.md), and [late revision audit](validation/nov28-forecast-revision-audit.md) extend this same priority. In the Nov27 played sample, late minutes improved while the production rate remained unchanged; prioritize independently supported late rate estimates and keep minutes/rate/availability predictions separately frozen. Evaluate forecast errors and rank discrimination on identical rows, without treating same-game order as lineup profitability. The expanded 47-source registry is reference research, not automatic scoring consensus. Preserve exact source publication and observation times, explicit missing components, and prospective paired outcomes; do not substitute recovered historical tables for certified pre-lock captures.
+
 ## November 24 checkpoint (NBA contest 137128)
 
 - Hosted archive submission and backup publication observed. Four pre-tip candidates and 105 contest rows preserved; manifest reports 668 historical research rows.
