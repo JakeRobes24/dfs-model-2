@@ -1,0 +1,30 @@
+# November 28 NBA-first historical uncertainty transfer to reviewed forecasts
+
+Predecessor 2482cd311b5ef33a6abfb0aaf91e446a34502691 passed NBA 46148824535, NFL 46148824590 and full 46148824537. Keep NBA immediate focus, all 48 research sources, NFL development paused and MLB deferred.
+
+## Player-level comparison
+Use recovered DFS_Model_2_NBA_Rotation_Replay.zip, 2026-11-18.json SHA-256 8ec493160d935b4b4faed6efb144077f8c52fb5e2529d0b9023de1846a474e12, 1011 valid four-game history-only residual rows from prior minutes replay through Nov17, 14 target dates. Each residual = actual FD minus four-game mean FD (mean prior minutes multiplied by pooled prior FD/min). Prior short positive appearances retained, explicit missing/ambiguous history excluded. Incomplete original schedule coverage. Freeze these earlier residuals before the three evaluation dates; no target-day training or fitting. Compare three fixed shapes around the exact same archived reviewed point forecasts: unscaled pooled errors, standardized errors divided by sqrt(historical forecast minutes) then multiplied by sqrt(reviewed minutes), and separate raw errors in historical forecast-minute bands below 20, 20 to under 30, and 30 or more (356/370/285 training rows). Use 128 deterministic midpoint empirical quantiles per shape, subtract their mean, no clipping of negative FD, no center shift. All bands supported. Prior training from history-only forecasts may not transfer to reviewed models; no independence claim.
+
+Verify SHA-256 manifest of DFS_Model_2_Live_Performance_Audit_Nov28.zip; live_audit_normalized.csv SHA-256 d5245080294a36fbccef8d1a6004b105121e4caa3de4e02c4928211ff3e43a6b. Unique date/contest IDs; eligible and played, archived actual minutes 10–60, reviewed minutes 10–48, positive reviewed FD <=150, rate <=5, finite actual/DAILY. Nov24 and Nov25 archived morning forecasts; Nov27 final 18:40 reviewed forecast. 50/95/119 matched rows. This is played-only retrospective support, not a pre-tip eligibility filter: older full-pool status fields absent from normalized archive, no exclusion using subsequent news, Nov25 original timestamp unverified. No DNP forecast or inferred unknown outcomes. All calculations executed locally. Equal-date scores across three dates:
+
+| Shape | CRPS | P10–P90 coverage | Width | Interval score |
+|---|---:|---:|---:|---:|
+| Raw pool |5.740852|82.5030%|27.075879|36.617435|
+| Sqrt minutes pool |5.765911|80.7130%|27.350134|35.986353|
+| Minute band pool |5.742589|82.1878%|26.667326|35.840150|
+
+Minute band intervals have better proper interval score than raw on all three dates, but virtually identical CRPS. Sqrt method has slightly worse CRPS. Under-25 reviewed minutes 142 rows: raw/sqrt/band coverage 88.5731/80.6257/83.7895%, CRPS 5.274385/5.293695/5.285406. 25+ minutes 122: coverage 75.6774/80.9094/79.9570%, CRPS 6.232126/6.279772/6.225909. Exposure-positive 46: CRPS 6.080576/6.078809/6.084726; coverage 80.6256/82.8478/82.8478%. All equal-date center bias -1.337316 overall, +1.587691 selected. Neither shape universally dominates. These are reused evaluation slates but all residual training ends before Nov18; not a prospective result.
+
+## Exact archived candidate simulation
+Recover NBA_137257_1840_checkpoint.zip SHA-256 0545c34e12387efa4094ee359d54b272f8c3725f115c17152b2a6e0a82b1418f; pool_final.csv and report_final.json. Verify unique 28 roster sets, nine unique IDs, original slot eligibility (normalize composite G/F and F/C as atomic), salary cap, max four per team and at least three teams. Exact saved individual salary/FD, total score, reviewed points and minutes against normalized live audit. Four KAT-out candidate sets excluded because a player falls outside 10-minute reviewed scope. Remaining 24 exact rosters, 27 distinct players, all played eligible with 10–60 actual minutes. Conditional retrospective roster mask, not a pregame filter. Use same three frozen residual shapes, 30,000 draws, shared uniform empirical index across policies and shared player outcomes across overlapping lineups, RNG seed 281137257. Players independently drawn; no same-team correlation/availability modeled. Same expected center by construction (finite-sample means vary slightly), no optimization/portfolio reselection. Compare against same archived realized FD.
+
+| Shape | Roster CRPS | Coverage | Width | Interval score | Pair order Brier |
+|---|---:|---:|---:|---:|---:|
+| Raw |27.495413|12/24|81.243254|167.996222|.266872|
+| Sqrt minutes |25.912214|15/24|103.535306|144.723950|.263228|
+| Minute band |27.200740|13/24|87.046021|158.857276|.265534|
+
+275 non-tied pair comparisons per method; overlapping rosters not independent. All misses below lower bound, center overprojection approximately 39 FD; raw and band narrower, sqrt coverage higher but still well below nominal 80%. All order Brier worse than neutral .25. Single slate, prior separately studied archive; no demonstrated improvement over existing deployed simulation or contest win probabilities. Prior multi-slate range replay used eight-game residuals and different training cutoff; do not treat these separate training schemes as matched policy comparison.
+
+## Implementation and decision
+Added nba_residual_shape_transfer.py and three synthetic regression tests, strict training/evaluation cutoff, finite common support, unique IDs, missing-band fallback. Actual archive replay performed locally (player and roster shape tests); reusable module implements player transfer only, not a new roster simulator or new live score. Working evidence live_distribution_transfer.csv and roster_shape_transfer.csv retained locally. No production settings changed. Do not select a universal distribution scale on these samples. Prioritize real prospective outcome capture at unchanged centers and availability/correlation research. Latest regression pending; no hosted deployment.
