@@ -86,7 +86,8 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, mar
     from nba_consensus_history import freeze_consensus_history
     from nba_window_shadow import freeze_history_windows
     from nba_shadow_research import freeze_component_rate
-    return freeze_component_rate(freeze_history_windows(freeze_consensus_history(archived)))
+    from nba_pooled_history_shadow import freeze_pooled_history
+    return freeze_pooled_history(freeze_component_rate(freeze_history_windows(freeze_consensus_history(archived))))
 
 
 def build_replay_rows(pool, results, slate):
@@ -130,7 +131,8 @@ def build_replay_rows(pool, results, slate):
     from nba_window_shadow import FROZEN_FIELDS as HISTORY_WINDOW_FIELDS
     from nba_reference_archive import FIELDS as REFERENCE_ARCHIVE_FIELDS
     from nba_shadow_research import COMPONENT_CAPTURE_FIELDS
-    optional_fields = set(COMPONENT_CAPTURE_FIELDS) | set(REFERENCE_ARCHIVE_FIELDS) | set(HISTORY_WINDOW_FIELDS) | set(CONSENSUS_HISTORY_FIELDS) | set(LARGE_MINUTES_CAPTURE_FIELDS) | set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | set(COMPONENT_FIELDS) | {'daily_box_'+k for k in COMPONENT_STATS} | {
+    from nba_pooled_history_shadow import FROZEN_FIELDS as POOLED_HISTORY_FIELDS
+    optional_fields = set(POOLED_HISTORY_FIELDS) | set(COMPONENT_CAPTURE_FIELDS) | set(REFERENCE_ARCHIVE_FIELDS) | set(HISTORY_WINDOW_FIELDS) | set(CONSENSUS_HISTORY_FIELDS) | set(LARGE_MINUTES_CAPTURE_FIELDS) | set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | set(COMPONENT_FIELDS) | {'daily_box_'+k for k in COMPONENT_STATS} | {
         'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc', 'injury_flag',
         'propsims_distribution_json', 'matchwiz_reference_json', 'replay_source_acquisition_json',
     }
