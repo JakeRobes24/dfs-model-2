@@ -454,13 +454,13 @@ def test_complete_inventory_is_distinct_from_accepted_live_inputs():
     from slate_research import POINT_SOURCE_GROUPS
     from research_source_registry import NBA_FORECAST_PROVIDERS
     inventory = source_inventory().set_index('Source')
-    assert len(inventory) == len(SOURCES) == 48
+    assert len(inventory) == len(SOURCES) == 50
     assert inventory.index.is_unique
     assert source_inventory_counts() == {
         'Direct or conditional model support': 8,
         'Integrated advisory reference': 7,
         'Manual or historical research': 14,
-        'Candidate / further verification': 19,
+        'Candidate / further verification': 21,
     }
     accepted = set(inventory.index[inventory['NBA eligible point family']])
     assert accepted == {NBA_FORECAST_PROVIDERS[k] for k in POINT_SOURCE_GROUPS.values()}
@@ -482,3 +482,17 @@ def test_huffalytics_is_nfl_advisory_only():
     row=source_inventory().set_index('Source').loc['Huffalytics']
     assert not row['NFL automatic point consensus']
     assert 'Candidate' in row['Highest established use']
+
+
+def test_new_nba_depth_sources_do_not_vote_or_imply_complete_fd_rates():
+    from research_source_registry import source_inventory, research_checklist
+    nba=research_checklist('NBA').set_index('Source')
+    nfl=research_checklist('NFL').set_index('Source')
+    inventory=source_inventory().set_index('Source')
+    for name in ('TipoffLab','Statz'):
+        assert name in nba.index and name not in nfl.index
+        assert 'candidate' in nba.loc[name,'Integration']
+        assert not inventory.loc[name,'NBA eligible point family']
+        assert not inventory.loc[name,'NBA eligible automatic minutes provider']
+    assert 'DraftKings scoring' in nba.loc['TipoffLab','Research purpose']
+    assert 'turnovers not exposed' in nba.loc['Statz','Research purpose']
