@@ -1,0 +1,17 @@
+# November 28 source-order invariance audit
+
+Previous checkpoint b31c601cea845f14554747b676b76961896fe716: NBA 46142202436, NFL 46142202224, full 46142202260 all successful. This batch investigates deterministic research evidence handling, not new fitted weights.
+
+## Archived November 24 NBA evidence
+Use private history 8549d752ae253e972d09f160dfa6d5cee08be9a5, incoming-app/2026-11-24/137128/3a6167f57f3de9a02ddf9aa64620ec69236b045546a0e3ef0566259b502ad984.json, blob 97ad8103cee5606f1074cd18bfcdb964e2d592b3. Parsed the 105-row research_csv and exact-ID actuals_csv. Use archived per-player reviewed notes, within six hours of recorded capture and no later than capture, after any latest official player status/starter evidence. Accept recorded known minute-source URLs, unique current family estimates with no same-time conflict, at least two families and spread <=3. In the second computation require explicit source-to-family match. This is a JavaScript reconstruction of qualifying archived evidence, not a byte-exact end-to-end Python replay; archived notes are chronologically sorted rather than necessarily original collection order.
+
+- 39 qualifying players, all eligible; each stored independent_minutes value equals one of the matched provider estimates.
+- 32/39 stored independent_minutes values differ from the deterministic median; all 39 archived adjusted_minutes values equal the median, and all 39 have prelock_independent_consensus method.
+- 36 have positive actual minutes and complete stored/median/final values. Minutes MAE stored independent estimate 3.13963, median 3.02787, final adjusted 3.02787.
+- Reversing or permuting source order in the reconstructed estimates can change the historical-corroboration boundary test (distance from history <=3, distance from baseline 2–6) for 11 players and the independent-versus-DAILY >5 research flag for 4 players. This does not establish actual changed flags or final scores. All 39 rows receive the final median override. Maximum qualifying source spread 3 minutes.
+- No evidence that the final scores were wrong because of this issue. The same-row accuracy comparison is descriptive only and final adjusted forecasts already incorporate the median.
+
+## Development correction
+Replace first-value selection in score_slate's provisional independent_minutes field with the median of the same eligible family values. Preserve <=3 provisional agreement spread, <=4 final consensus spread, single-source handling, recency, official-status and conflict gates, original baseline and all weights. This makes provisional corroboration and research attention independent of source ordering for this group of estimates. It can change preliminary scoring in other circumstances, so retain draft-only status, require regression and prospective evidence, no production deployment approval. This is a deterministic consistency correction, not promotion of a new prediction policy or a claimed accuracy improvement.
+
+Tests call actual score_slate with two- and three-source permutations, single-source input, and between-3-and-4 spread. New tests saved; CI pending at documentation creation. Actual archive calculations executed in JavaScript. No new NFL empirical comparison in this batch; all existing NFL prospective work preserved. The 50 captured NBA/NFL pregame rows still need final official actuals; no new slate-specific inputs presumed. NBA/NFL only, no MLB.
