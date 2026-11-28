@@ -484,7 +484,8 @@ def render_slate(history_slot):
     if used_longer:
         st.session_state['slate_long_rotation_snapshot'] = (research_scope, rotation_rows, coverage)
     recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
-    team_review = team_opportunity_review(scored, audit, now)
+    review_now = datetime.now(ET)
+    team_review = team_opportunity_review(scored, audit, review_now)
     if not team_review.empty:
         st.warning(f'{len(team_review)} eligible players on teams with reviewed OUT or role-change confirmations. Recheck teammate opportunities before lock.')
         with st.expander('Team opportunity refresh review', expanded=True):
@@ -494,7 +495,7 @@ def render_slate(history_slot):
                                file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
     from nba_research_triage import full_pool_rate_review
     try:
-        rate_review=full_pool_rate_review(scored,recent_rates,datetime.now(ET),team_review=team_review)
+        rate_review=full_pool_rate_review(scored,recent_rates,review_now,team_review=team_review)
         with st.expander('Full-pool production-rate review'):
             st.caption('Independent paired FD/minute and observed role history, held at reviewed minutes. Differences are research sensitivities, not automatic score adjustments; later observation does not prove news incorporation.')
             if not rate_review.empty:
@@ -511,9 +512,17 @@ def render_slate(history_slot):
     reviewed_export = attach_window_inputs(reviewed_export, rotation_rows, slate)
     from nba_pooled_history_shadow import attach_pooled_history
     reviewed_export = attach_pooled_history(reviewed_export, rotation_rows, slate)
-    window_supported = int(reviewed_export.shadow_hw_history_json.ne('[]').sum())
-    st.caption(f'{window_supported} players with eight matched historical observations for experimental window review. '
-               'Completeness, availability and pre-tip checks still apply. The longer window defaults on when the verified schedule permits an early request.')
+    from nba_history_readiness import history_readiness
+    readiness = history_readiness(reviewed_export, slate)
+    reviewed_export = reviewed_export.merge(readiness, on='fanduel_id', how='left', validate='one_to_one')
+    attached = int(readiness.history_eight_attached.sum())
+    usable_windows = int(readiness.history_eight_usable.sum())
+    recent_windows = int(readiness.history_eight_recent_usable.sum())
+    pooled_windows = int(readiness.history_pooled_usable.sum())
+    st.caption(f'{len(readiness)} eligible players · Eight-game history: {attached} attached, '
+               f'{usable_windows} usable, {recent_windows} also within seven days · '
+               f'{pooled_windows} usable four-game pooled component forecasts. '
+               'Research only; current scoring unchanged. Final pre-tip capture checks still apply.')
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
