@@ -142,12 +142,18 @@ def build_replay_rows(pool, results, slate):
     rows = pool[sorted(projection_fields | replay_fields | (optional_fields & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
     rows['replay_before_full_slate_tip'] = True
+    from slate_results import SCORE_WEIGHTS
+    actual_components = ['nba_'+k for k in SCORE_WEIGHTS if 'nba_'+k in results]
     official = results[['fanduel_id', 'outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source',
-                        'recorded_fd_points']].copy()
+                        'recorded_fd_points', *actual_components]].copy()
     official['verified_outcome'] = official.outcome.map({'Played': 'played', 'Did not play': 'did_not_play'})
     official['verified_outcome'] = official.verified_outcome.where(official.nba_source.fillna('').ne(''),
                                                                    'needs_review').fillna('needs_review')
     official.loc[official.verified_outcome.eq('needs_review'), ['nba_actual_minutes', 'nba_fd_points']] = None
+    # Only explicitly verified played box counts are usable. A DNP or unknown
+    # never creates an apparent zero counting-stat observation.
+    for col in actual_components:
+        official[col] = pd.to_numeric(official[col],errors='coerce').where(official.verified_outcome.eq('played'))
     rows = rows.merge(official.drop(columns='outcome'), on='fanduel_id', how='left', validate='one_to_one')
     rows['verified_outcome'] = rows.verified_outcome.fillna('needs_review')
     return rows.assign(slate_date=slate.isoformat()).rename(columns={
