@@ -492,6 +492,18 @@ def render_slate(history_slot):
             st.dataframe(team_review.drop(columns='fanduel_id'), hide_index=True)
             st.download_button('Download team opportunity review', team_review.to_csv(index=False),
                                file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
+    from nba_research_triage import full_pool_rate_review
+    try:
+        rate_review=full_pool_rate_review(scored,recent_rates,datetime.now(ET),team_review=team_review)
+        with st.expander('Full-pool production-rate review'):
+            st.caption('Independent paired FD/minute and observed role history, held at reviewed minutes. Differences are research sensitivities, not automatic score adjustments; later observation does not prove news incorporation.')
+            if not rate_review.empty:
+                st.caption(f"{len(rate_review)} eligible players · {(rate_review['Paired rate families']>0).sum()} with fresh usable pairs · {rate_review['Observed FD/min'].notna().sum()} with supported historical rates")
+                st.dataframe(rate_review.drop(columns='fanduel_id').round(3),hide_index=True)
+                st.download_button('Download full-pool production-rate review',rate_review.to_csv(index=False),
+                                   file_name=f'{slate}-{contest_id}-rate-review.csv',mime='text/csv')
+    except (ValueError,TypeError,KeyError,AttributeError) as exc:
+        st.warning(f'Production-rate review unavailable: {exc}')
     matchup = matchup_context(scored, rotation_rows, slate)
     # Retain the same historical evidence in manual exports and archive packets.
     reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
