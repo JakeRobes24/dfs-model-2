@@ -23,7 +23,8 @@ def review_nfl_projections(audit, evidence, *, cutoff_utc, slate_date, max_age_h
     """Require exact IDs, teams, games, dates, FanDuel format and provenance.
 
     Source families are supplied by the reviewer, not inferred to be independent.
-    A family with multiple conflicting values is rejected; multiple records from
+    A family with multiple conflicting current values is rejected; distinct earlier
+    publications from the same source are retained as superseded. Multiple records from
     one family never create consensus. All results remain advisory and retain
     the original DAILY score, even when a gap has corroborating evidence.
     """
@@ -112,20 +113,36 @@ def review_nfl_projections(audit, evidence, *, cutoff_utc, slate_date, max_age_h
         pid=p["player_id"]
         family_values={}
         conflicts=set(blocked[pid])
+        current_records={}
+        superseded_records=[]
         for family,records in groups[pid].items():
-            # Conflicting same-family estimates require explicit review.
-            values={r["projection_fd"] for r in records}
+            # A genuinely newer publication from the same normalized source,
+            # with a distinct record ID, supersedes its earlier valid versions.
+            # Keep simultaneous contradictions and shared-family disagreements
+            # quarantined. Never resolve a conflicting duplicate record ID by age.
+            by_source=defaultdict(list)
+            for record in records:
+                by_source[record["source"].strip().casefold()].append(record)
+            current=[]
+            for source,versions in sorted(by_source.items()):
+                newest=max(stamp(r["asof_utc"]) for r in versions)
+                current.extend(r for r in versions if stamp(r["asof_utc"])==newest)
+                superseded_records.extend(
+                    {k:r[k] for k in ("source","source_family","source_record_id","asof_utc","observed_at","projection_fd")}
+                    for r in versions if stamp(r["asof_utc"])<newest)
+            values={r["projection_fd"] for r in current}
             if len(values)!=1:
                 conflicts.add(family)
             elif family not in conflicts:
                 family_values[family]=next(iter(values))
+                current_records[family]=current
         values=list(family_values.values())
         center=median(values) if values else None
         tolerance=max(2.0,0.20*abs(center)) if center is not None else None
         agreement=len(values)>=2 and not conflicts and max(values)-min(values)<=tolerance
         accepted_records=[
             {k:record[k] for k in ("source","source_family","source_record_id","asof_utc","observed_at","projection_fd")}
-            for family,records in groups[pid].items() if family in family_values
+            for family,records in current_records.items() if family in family_values
             for record in records
         ]
         baseline=p.get("projection_fd")
@@ -148,6 +165,7 @@ def review_nfl_projections(audit, evidence, *, cutoff_utc, slate_date, max_age_h
                      "unlabeled_fd_candidate":unlabeled,"independent_family_count":len(values),
                      "family_scores":family_values,"conflicting_families":sorted(conflicts),
                      "accepted_source_records":accepted_records,
+                     "superseded_source_records":sorted(superseded_records,key=lambda r:(r["source"].strip().casefold(),stamp(r["asof_utc"]),r["source_record_id"])),
                      "review_consensus_fd":center if agreement and not unavailable else None,
                      "decision":decision})
     return {"contest_id":audit["contest_id"],"slate_date":slate_date,"cutoff_utc":cutoff_utc,
