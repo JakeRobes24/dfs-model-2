@@ -400,3 +400,105 @@ def compare_frozen_large_minutes(frame):
                         'Shadow MAE': mae[column], 'MAE improvement vs reviewed': mae.adjusted_fd_points-mae[column],
                         'Shadow bias': errors[column].mean()})
     return pd.DataFrame(rows)
+
+
+def full_pool_rate_review(scored, summaries, as_of, *, team_review=None):
+    """Compare rate assumptions at fixed reviewed minutes for EVERY eligible ID.
+
+    Same-provider paired forecasts are advisory and require fresh observations.
+    Historical rates are observed context, not future forecasts. The 3-game,
+    60-minute support threshold follows the existing historical review. Prefer
+    sufficiently supported current confirmed role context; do not extrapolate
+    or invent missing rates. Never mutate the scoring pool.
+    """
+    from statistics import median
+
+    required={'fanduel_id','fanduel_name','eligible','salary','team','game',
+              'adjusted_minutes','adjusted_fd_points','projection_sources_json'}
+    if not required<=set(scored):
+        raise ValueError('Full reviewed contest pool required')
+    _,_,details=paired_source_coverage(scored,as_of,include_details=True)
+    if not summaries.empty and ('fanduel_id' not in summaries or
+                               summaries.fanduel_id.duplicated().any()):
+        raise ValueError('Unique historical player evidence required')
+    history={} if summaries.empty else summaries.set_index('fanduel_id').to_dict('index')
+    news={}
+    if team_review is not None and not team_review.empty:
+        if team_review.fanduel_id.duplicated().any():
+            raise ValueError('Unique team confirmation review IDs required')
+        news=dict(zip(team_review.fanduel_id,team_review['Latest confirmation UTC']))
+
+    def number(value,low,high):
+        try:
+            n=float(value)
+            return n if math.isfinite(n) and low<=n<=high else None
+        except (TypeError,ValueError,OverflowError):
+            return None
+
+    def supported(h,rate,games,minutes):
+        r=number(h.get(rate),0,5)
+        g=number(h.get(games),3,100)
+        m=number(h.get(minutes),60,6000)
+        return (r,g,m) if r is not None and g is not None and m is not None else (None,None,None)
+
+    rows=[]
+    for p in scored.loc[scored.eligible.astype(str).str.lower().eq('true')].itertuples():
+        m=number(p.adjusted_minutes,10,48)
+        fd=number(p.adjusted_fd_points,0,150)
+        model=fd/m if m is not None and fd is not None and 0<fd/m<=5 else None
+        cutoff=news.get(p.fanduel_id)
+        cutoff=pd.Timestamp(cutoff) if cutoff is not None else None
+        rates=[]
+        stale_news=0
+        for family,observed,points,minutes in details.get(p.fanduel_id,[]):
+            if cutoff is not None and observed<cutoff:
+                stale_news+=1
+                continue
+            if minutes>=10:
+                rates.append((family,points/minutes))
+        source=median([r for _,r in rates]) if rates else None
+        h=history.get(p.fanduel_id,{})
+        role=str(getattr(p,'prelock_starter','')).casefold()
+        hist,ng,nm=(None,None,None)
+        label='Insufficient complete history'
+        if role in ('starter','bench'):
+            rate_key='FD/min as starter' if role=='starter' else 'FD/min off bench'
+            prefix='Starter' if role=='starter' else 'Bench'
+            hist,ng,nm=supported(h,rate_key,prefix+' complete FD games',prefix+' complete FD minutes')
+            if hist is not None:
+                label='Observed confirmed-role history'
+        if hist is None:
+            hist,ng,nm=supported(h,'FD points per minute','Games with complete FD stats','Minutes with complete FD stats')
+            if hist is not None:
+                label='Observed mixed-role history; review role'
+        def impact(rate):
+            return m*rate-fd if model is not None and rate is not None else None
+        source_gap=impact(source)
+        hist_gap=impact(hist)
+        # Keep the individual extremes visible rather than masking disagreement
+        # between source families with a median.
+        individual=[impact(r) for _,r in rates]
+        gaps=[abs(v) for v in [source_gap,hist_gap,*individual] if v is not None]
+        rows.append({'fanduel_id':p.fanduel_id,'Player':p.fanduel_name,
+                     'Team':p.team,'Game':p.game,'Salary':p.salary,
+                     'Reviewed FD':p.adjusted_fd_points,'Reviewed minutes':p.adjusted_minutes,
+                     'Reviewed FD/min':model,'Paired rate families':len(rates),
+                     'Paired rate evidence':' · '.join(f'{f}: {r:.3f}' for f,r in sorted(rates)),
+                     'Pairs before latest team confirmation':stale_news,
+                     'Median paired FD/min':source,
+                     'Source-rate FD gap at reviewed minutes':source_gap,
+                     'Lowest source-rate FD gap':min(individual) if individual and model is not None else None,
+                     'Highest source-rate FD gap':max(individual) if individual and model is not None else None,
+                     'Observed FD/min':hist,'Historical FD gap at reviewed minutes':hist_gap,
+                     'Historical games':ng,'Historical minutes':nm,
+                     'Historical context':label,'Confirmed role':role if role in ('starter','bench') else '',
+                     'Review magnitude FD':max(gaps) if gaps else None,
+                     'Review status':('Missing or unstable reviewed rate' if model is None else
+                                      'No supported paired or historical rate' if not gaps else
+                                      'Compare opportunity and rate assumptions')})
+    out=pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out['_missing']=out['Review status'].eq('Missing or unstable reviewed rate')
+    return out.sort_values(['_missing','Review magnitude FD','fanduel_id'],
+                           ascending=[False,False,True],na_position='last').drop(columns='_missing').reset_index(drop=True)
