@@ -64,9 +64,9 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                     if fp is None and minutes is None:
                         continue
                     observed = cutoff
-                    if name == 'Edgehalla':
+                    if name in ('Edgehalla','MatchWiz'):
                         observed = timestamp(item.get('retrieved_at'))
-                        if (observed is None or observed > cutoff
+                        if (observed is None or not cutoff-pd.Timedelta(hours=6)<=observed<=cutoff
                                 or observed.tz_convert('America/New_York').date() != slate
                                 or item.get('slate_date') != slate.isoformat()):
                             continue
@@ -79,6 +79,21 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                         scoring_accepted=False)
                     if name == 'Edgehalla':
                         entry.update(conditional_on_playing=True, fd_points_basis='FanDuel from projected box components')
+                    # Keep raw reported components; never fill an absent stat with zero.
+                    if name in ('Edgehalla','MatchWiz'):
+                        fields = ({'points':'reference_pts','rebounds':'reference_reb','assists':'reference_ast'}
+                                  if name=='MatchWiz' else {k:'reference_'+k for k in
+                                  ('points','rebounds','assists','steals','blocks','turnovers')})
+                        components={k:bounded(item.get(col),0,150) for k,col in fields.items()}
+                        components={k:v for k,v in components.items() if v is not None}
+                        if components:
+                            entry['components']=components
+                            entry['components_basis']='Projected box-score counts; missing components remain absent'
+                        if name=='MatchWiz':
+                            entry['fd_points']=None
+                            role=item.get('reference_role')
+                            if role in ('starter listing','nonstarter listing'):
+                                entry['reference_role']=role
                     matched_by_player[pid].append(entry)
                     row['matched_players']+=1
                     row['fresh_dated_players']+=int(freshness=='Dated within six hours')
