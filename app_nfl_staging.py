@@ -138,6 +138,34 @@ if contest and daily and contest_id:
                     st.download_button("Download independent review",json.dumps(review,indent=2),
                                        file_name="nfl_projection_review.json",mime="application/json")
 
+        with st.expander("Expected-opportunity history challenger (research only)"):
+            st.caption("Optional reviewer-verified prior four-game history packet. Fixed receiving/rushing component forecasts, not full FanDuel scores. Missing or untimed history remains unsupported.")
+            history_packet=st.file_uploader("Expected-opportunity history JSON",type=["json"],key="nfl_expected_history")
+            if history_packet:
+                from hashlib import sha256
+                from datetime import datetime, timezone
+                from nfl_expected_opportunity_shadow import freeze_expected_opportunity
+                raw=history_packet.getvalue()
+                scope=(report["contest_sha256"],report["daily_sha256"],sha256(raw).hexdigest())
+                if st.button("Freeze expected-opportunity reference",key="nfl_expected_freeze"):
+                    st.session_state.pop("nfl_expected_shadow",None)
+                    try:
+                        packet=json.loads(raw)
+                        result=freeze_expected_opportunity(report,packet,frozen_at=datetime.now(timezone.utc).isoformat())
+                    except (ValueError,TypeError,KeyError,AttributeError,UnicodeError) as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_expected_shadow"]=(scope,result,packet)
+                saved=st.session_state.get("nfl_expected_shadow")
+                if saved is not None and saved[0]==scope:
+                    _,result,packet=saved
+                    st.warning(result["warning"])
+                    st.caption(f"Frozen at {result['frozen_at']}. Retain this exact receipt before games.")
+                    st.dataframe(pd.DataFrame(result["rows"]),hide_index=True)
+                    st.download_button("Download frozen expected-opportunity reference",
+                        json.dumps({"history_packet":packet,"forecast":result},indent=2),
+                        file_name=f"{report['contest_id']}-expected-opportunity-shadow.json",mime="application/json")
+
         with st.expander("Fixed-candidate research comparison"):
             st.caption("Requires the exact DAILY capture receipt, source evidence and timestamped candidate records. No official availability certification or optimization.")
             bundle=st.file_uploader("Reviewed candidate bundle JSON",type=["json"])
