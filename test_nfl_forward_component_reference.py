@@ -57,3 +57,13 @@ def test_single_source_targets_and_efficiency_not_lost():
     assert rates['Volt Fantasy','receiving_yards_per_targets']['mae']==pytest.approx(.75)
     assert ('Malter Analytics','receiving_yards_per_targets') not in rates
     assert not any(r['metric']=='targets' for r in report['comparison'])
+
+
+def test_prospective_workload_attribution():
+    c,a=fixture()
+    a['components']['receiving_yards']=72
+    report=compare_capture(c,[a])
+    r=next(r for r in report['provider_specific_yardage_attribution'] if r['provider']=='Volt Fantasy' and r['metric']=='receiving_yards_per_targets')
+    assert r['total_bias']==-2
+    assert r['volume_bias']+r['rate_bias']==pytest.approx(-2)
+    assert r['volume_bias']<0<r['rate_bias']
