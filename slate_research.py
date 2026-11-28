@@ -928,7 +928,8 @@ def edgehalla_slate_reference(slate, contest_games):
                   reference_minutes=row['minutes'], reference_points=conditional_fd_points(row),
                   retrieved_at=row['observed_at'],
                   slate_date=slate.isoformat(), conditional_on_playing=True,
-                  **{'reference_'+k: row[k] for k in ('points','rebounds','assists','steals','blocks','turnovers')})
+                  reference_pts=row['points'],
+                  **{'reference_'+k: row[k] for k in ('rebounds','assists','steals','blocks','turnovers')})
              for row in forecasts], None)
 
 
