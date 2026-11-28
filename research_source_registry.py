@@ -63,6 +63,11 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'Vektor Labs': 'https://www.vektorlabs.app/nba',
+    'Parlae': 'https://parlae.io/fantasy/nba/projections',
+    'Volt Fantasy': 'https://voltfantasy.com/nfl/projections',
+    'Malter Analytics': 'https://www.malteranalytics.com/fantasy-football',
+    'Dimers': 'https://www.dimers.com/nba/player-projections',
     'BankrollSZN': 'https://bankrollszn.com/nba-assist-luck',
     'Statyx': 'https://statyx.io/nba-props/data-lab',
     'StatRankings': 'https://statrankings.com/nfl/advanced/players/usage/first-read-target-share',
