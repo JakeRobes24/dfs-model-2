@@ -240,7 +240,7 @@ def team_opportunity_review(scored, audit, as_of):
     ).reset_index(drop=True)
 
 
-def paired_source_coverage(scored, as_of):
+def paired_source_coverage(scored, as_of, *, include_details=False):
     """Report actual fresh same-provider points/minutes coverage, not a score.
 
     Counts are an upper bound on shadow-policy support: injury, rate agreement
@@ -256,6 +256,7 @@ def paired_source_coverage(scored, as_of):
     from slate_research import POINT_SOURCE_GROUPS
     providers = {}
     players = []
+    details = {}
     for row in scored.loc[scored.eligible.astype(str).str.lower().eq('true')].itertuples():
         accepted = {}
         try:
@@ -298,10 +299,206 @@ def paired_source_coverage(scored, as_of):
             counts[1] += int(paired)
             if paired:
                 families.append(family)
+                stamp, points, _, minutes = current[0]
+                details.setdefault(row.fanduel_id, []).append((family, stamp, points, float(minutes)))
         players.append({'fanduel_id':row.fanduel_id,'Paired providers':len(families),
                         'Paired source families':' · '.join(sorted(families))})
     provider_rows = [{'Provider':family,'Fresh point players':counts[0],
                       'Fresh paired players':counts[1]}
                      for family,counts in sorted(providers.items())]
-    return (pd.DataFrame(players,columns=['fanduel_id','Paired providers','Paired source families']),
-            pd.DataFrame(provider_rows,columns=['Provider','Fresh point players','Fresh paired players']))
+    coverage = (pd.DataFrame(players,columns=['fanduel_id','Paired providers','Paired source families']),
+                pd.DataFrame(provider_rows,columns=['Provider','Fresh point players','Fresh paired players']))
+    return (*coverage, details) if include_details else coverage
+
+
+def large_minutes_disagreement_shadow(scored, as_of):
+    """Isolate time and scoring-rate hypotheses on the same support.
+
+    One paired provider can corroborate a large rotation discrepancy. Point
+    forecasts and rates are experimental sensitivity cases, never optimizer inputs.
+    """
+    _, _, details = paired_source_coverage(scored, as_of, include_details=True)
+    cutoff = pd.Timestamp(as_of)
+    date = cutoff.tz_convert('America/New_York').date()
+    rows = []
+    columns = ['fanduel_id', 'family', 'observed_at', 'provider_minutes', 'recent_mpg',
+               'reviewed_minutes', 'estimated_minutes', 'reviewed_rate', 'provider_rate',
+               'time_only_fd', 'time_and_rate_fd', 'capped_time_only_fd']
+    for player in scored.itertuples():
+        paired = details.get(player.fanduel_id, [])
+        if (len(paired) != 1 or player.identity_match not in {'exact', 'known_alias'}
+                or player.minutes_method != 'DAILY_only_unverified'
+                or str(player.injury_flag).strip().casefold() not in {'', 'nan'}
+                or str(player.prelock_status).strip().casefold() not in {'', 'nan', 'available'}
+                or str(player.prelock_role).strip().casefold() not in {'', 'nan', 'projected starter', 'projected bench'}
+                or any(x in str(player.prelock_change).casefold() for x in ('limit', 'restrict', 'conflict', 'starter:', 'bench:'))
+                or player.history_source != 'NBA official box scores'):
+            continue
+        family, observed_at, points, source_minutes = paired[0]
+        try:
+            reviewed_minutes, reviewed_points, recent, games = map(
+                float, (player.adjusted_minutes, player.adjusted_fd_points, player.recent_mpg, player.history_games))
+            daily_minutes, daily_points = map(float, (player.projected_minutes, player.projected_fd_points))
+            history_date = pd.Timestamp(player.history_latest).date()
+            if (not all(map(math.isfinite, (reviewed_minutes, reviewed_points, recent, games, daily_minutes, daily_points)))
+                    or not date-pd.Timedelta(days=21) <= history_date < date
+                    or not (0 < daily_minutes <= 48 and 0 < daily_points <= 150
+                            and 0 < reviewed_minutes <= 48 and 0 < reviewed_points <= 150
+                            and 0 < recent <= 48 and games >= 3)):
+                continue
+        except (TypeError, ValueError, OverflowError):
+            continue
+        midpoint = (source_minutes + recent)/2
+        change = midpoint - reviewed_minutes
+        if abs(recent - source_minutes) > 3 or abs(change) < 5:
+            continue
+        reviewed_rate, provider_rate = reviewed_points/reviewed_minutes, points/source_minutes
+        if not 0 < reviewed_rate <= 5:
+            continue
+        time_only = midpoint*reviewed_rate
+        combined = midpoint*(.75*reviewed_rate+.25*provider_rate)
+        capped = (reviewed_minutes+max(-4.,min(4.,change)))*reviewed_rate
+        rows.append((player.fanduel_id, family, observed_at.isoformat(), source_minutes, recent,
+                     reviewed_minutes, midpoint, reviewed_rate, provider_rate, time_only, combined, capped))
+    return pd.DataFrame(rows, columns=columns)
+
+
+LARGE_MINUTES_POLICIES = {
+    'Large minutes discrepancy, time only': 'time_only_fd',
+    'Large minutes discrepancy, time and provider rate': 'time_and_rate_fd',
+    'Large minutes discrepancy, capped time only': 'capped_time_only_fd',
+}
+LARGE_MINUTES_CAPTURE_FIELDS = (
+    'shadow_large_minutes_policy', 'shadow_large_minutes_as_of',
+    *('shadow_large_minutes_' + field for field in LARGE_MINUTES_POLICIES.values()),
+)
+
+
+def compare_frozen_large_minutes(frame):
+    """Score all three frozen forecasts on exactly the same verified played rows."""
+    rows = [{'Policy': label, 'Paired players': 0} for label in LARGE_MINUTES_POLICIES]
+    base = ('daily_points', 'adjusted_fd_points', 'actual_points')
+    required = {*LARGE_MINUTES_CAPTURE_FIELDS, *base, 'replay_captured_at_utc',
+                'eligible', 'verified_outcome', 'nba_source'}
+    if not required <= set(frame):
+        return pd.DataFrame(rows)
+    reviewed = pd.to_datetime(frame.shadow_large_minutes_as_of, format='mixed', utc=True, errors='coerce')
+    captured = pd.to_datetime(frame.replay_captured_at_utc, format='mixed', utc=True, errors='coerce')
+    forecasts = list(LARGE_MINUTES_CAPTURE_FIELDS[2:])
+    values = frame[[*base, *forecasts]].apply(pd.to_numeric, errors='coerce')
+    baseline = (frame.eligible.eq(True) & frame.verified_outcome.eq('played')
+                & frame.nba_source.fillna('').ne('') & values.daily_points.map(math.isfinite))
+    paired = values.loc[baseline & (reviewed <= captured) & frame.shadow_large_minutes_policy.eq('2026-11-26')
+                        & values.apply(lambda col: col.map(math.isfinite)).all(axis=1)]
+    for row, column in zip(rows, forecasts):
+        row['Eligible played with baseline'] = int(baseline.sum())
+        row['Paired players'] = len(paired)
+        if not paired.empty:
+            errors = paired.drop(columns='actual_points').sub(paired.actual_points, axis=0)
+            mae = errors.abs().mean()
+            row.update({'DAILY MAE': mae.daily_points, 'Reviewed MAE': mae.adjusted_fd_points,
+                        'Shadow MAE': mae[column], 'MAE improvement vs reviewed': mae.adjusted_fd_points-mae[column],
+                        'Shadow bias': errors[column].mean()})
+    return pd.DataFrame(rows)
+
+
+def full_pool_rate_review(scored, summaries, as_of, *, team_review=None):
+    """Compare rate assumptions at fixed reviewed minutes for EVERY eligible ID.
+
+    Same-provider paired forecasts are advisory and require fresh observations.
+    Historical rates are observed context, not future forecasts. The 3-game,
+    60-minute support threshold follows the existing historical review. Prefer
+    sufficiently supported current confirmed role context; do not extrapolate
+    or invent missing rates. Never mutate the scoring pool.
+    """
+    from statistics import median
+
+    required={'fanduel_id','fanduel_name','eligible','salary','team','game',
+              'adjusted_minutes','adjusted_fd_points','projection_sources_json'}
+    if not required<=set(scored):
+        raise ValueError('Full reviewed contest pool required')
+    _,_,details=paired_source_coverage(scored,as_of,include_details=True)
+    if not summaries.empty and ('fanduel_id' not in summaries or
+                               summaries.fanduel_id.duplicated().any()):
+        raise ValueError('Unique historical player evidence required')
+    history={} if summaries.empty else summaries.set_index('fanduel_id').to_dict('index')
+    news={}
+    if team_review is not None and not team_review.empty:
+        if team_review.fanduel_id.duplicated().any():
+            raise ValueError('Unique team confirmation review IDs required')
+        news=dict(zip(team_review.fanduel_id,team_review['Latest confirmation UTC']))
+
+    def number(value,low,high):
+        try:
+            n=float(value)
+            return n if math.isfinite(n) and low<=n<=high else None
+        except (TypeError,ValueError,OverflowError):
+            return None
+
+    def supported(h,rate,games,minutes):
+        r=number(h.get(rate),0,5)
+        g=number(h.get(games),3,100)
+        m=number(h.get(minutes),60,6000)
+        return (r,g,m) if r is not None and g is not None and m is not None else (None,None,None)
+
+    rows=[]
+    for p in scored.loc[scored.eligible.astype(str).str.lower().eq('true')].itertuples():
+        m=number(p.adjusted_minutes,10,48)
+        fd=number(p.adjusted_fd_points,0,150)
+        model=fd/m if m is not None and fd is not None and 0<fd/m<=5 else None
+        cutoff=news.get(p.fanduel_id)
+        cutoff=pd.Timestamp(cutoff) if cutoff is not None else None
+        rates=[]
+        stale_news=0
+        for family,observed,points,minutes in details.get(p.fanduel_id,[]):
+            if cutoff is not None and observed<cutoff:
+                stale_news+=1
+                continue
+            if minutes>=10:
+                rates.append((family,points/minutes))
+        source=median([r for _,r in rates]) if rates else None
+        h=history.get(p.fanduel_id,{})
+        role=str(getattr(p,'prelock_starter','')).casefold()
+        hist,ng,nm=(None,None,None)
+        label='Insufficient complete history'
+        if role in ('starter','bench'):
+            rate_key='FD/min as starter' if role=='starter' else 'FD/min off bench'
+            prefix='Starter' if role=='starter' else 'Bench'
+            hist,ng,nm=supported(h,rate_key,prefix+' complete FD games',prefix+' complete FD minutes')
+            if hist is not None:
+                label='Observed confirmed-role history'
+        if hist is None:
+            hist,ng,nm=supported(h,'FD points per minute','Games with complete FD stats','Minutes with complete FD stats')
+            if hist is not None:
+                label='Observed mixed-role history; review role'
+        def impact(rate):
+            return m*rate-fd if model is not None and rate is not None else None
+        source_gap=impact(source)
+        hist_gap=impact(hist)
+        # Keep the individual extremes visible rather than masking disagreement
+        # between source families with a median.
+        individual=[impact(r) for _,r in rates]
+        gaps=[abs(v) for v in [source_gap,hist_gap,*individual] if v is not None]
+        rows.append({'fanduel_id':p.fanduel_id,'Player':p.fanduel_name,
+                     'Team':p.team,'Game':p.game,'Salary':p.salary,
+                     'Reviewed FD':p.adjusted_fd_points,'Reviewed minutes':p.adjusted_minutes,
+                     'Reviewed FD/min':model,'Paired rate families':len(rates),
+                     'Paired rate evidence':' · '.join(f'{f}: {r:.3f}' for f,r in sorted(rates)),
+                     'Pairs before latest team confirmation':stale_news,
+                     'Median paired FD/min':source,
+                     'Source-rate FD gap at reviewed minutes':source_gap,
+                     'Lowest source-rate FD gap':min(individual) if individual and model is not None else None,
+                     'Highest source-rate FD gap':max(individual) if individual and model is not None else None,
+                     'Observed FD/min':hist,'Historical FD gap at reviewed minutes':hist_gap,
+                     'Historical games':ng,'Historical minutes':nm,
+                     'Historical context':label,'Confirmed role':role if role in ('starter','bench') else '',
+                     'Review magnitude FD':max(gaps) if gaps else None,
+                     'Review status':('Missing or unstable reviewed rate' if model is None else
+                                      'No supported paired or historical rate' if not gaps else
+                                      'Compare opportunity and rate assumptions')})
+    out=pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out['_missing']=out['Review status'].eq('Missing or unstable reviewed rate')
+    return out.sort_values(['_missing','Review magnitude FD','fanduel_id'],
+                           ascending=[False,False,True],na_position='last').drop(columns='_missing').reset_index(drop=True)

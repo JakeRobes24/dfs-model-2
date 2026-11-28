@@ -99,3 +99,142 @@ def test_existing_key_is_reused_only_for_main_site_configuration():
                 assert _intake_token() == ''
         with patch('history_intake_ui.st.secrets', {'auth': {'redirect_uri': 'https://preview.example.org/oauth2callback'}}):
             assert _intake_token() == ''
+
+
+def test_read_only_recovery_receipt_checks_exact_bytes_at_pinned_commit():
+    from history_intake import recovery_packet_path,check_recovery_receipt
+    path,raw=make_submission(reviewed_pool(),SLATE)
+    assert recovery_packet_path(raw)==path
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',return_value=BytesIO(raw)) as read:
+        result=check_recovery_receipt('fixture',raw)
+        assert result==dict(path=path,commit='a'*40,status='verified')
+        assert read.call_args.args[0].endswith(path+'?ref='+'a'*40)
+        assert read.call_args.kwargs==dict(raw=True)
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',side_effect=HTTPError('https://example.org',404,'missing',{},None)):
+        assert check_recovery_receipt('fixture',raw)['status']=='not_found'
+    with patch('history_snapshot.history_head',return_value='a'*40), patch(
+            'history_snapshot._request',return_value=BytesIO(raw+b' ')):
+        with pytest.raises(ValueError,match='bytes'):
+            check_recovery_receipt('fixture',raw)
+    for bad in (b'',b'[]',b'{"version":1,"slate_date":"../x"}'):
+        with pytest.raises(ValueError):
+            recovery_packet_path(bad)
+
+
+def test_recovery_retries_exact_bytes_only_after_absent_receipt():
+    from history_intake import retry_recovery_packet
+
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    with patch('history_intake.check_recovery_receipt', return_value={'status': 'not_found'}) as read, patch(
+            'history_intake.submit_reviewed_slate', return_value='abcdef0') as submit:
+        assert retry_recovery_packet('test-only', raw) == dict(path=path, commit='abcdef0', status='verified')
+        read.assert_called_once_with('test-only', raw)
+        submit.assert_called_once_with('test-only', path, raw)
+        submit.reset_mock()
+        read.return_value = receipt = dict(path=path, commit='a'*40, status='verified')
+        assert retry_recovery_packet('test-only', raw) == receipt
+        altered = dict(json.loads(raw), contest_id='999999')
+        with pytest.raises(ValueError, match='contest ID'):
+            retry_recovery_packet('test-only', json.dumps(altered).encode())
+        submit.assert_not_called()
+
+
+def test_owner_can_retry_downloaded_packet_in_a_new_session():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    key = 'history_receipt_packet'
+    environment = dict(DFS_HISTORY_OWNER_EMAIL='owner@example.org', DFS_HISTORY_INTAKE_TOKEN='test-only')
+    owner = dict(email='owner@example.org', email_verified=True, is_logged_in=True)
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    script = 'from history_intake_ui import render_archive_receipt_check\nrender_archive_receipt_check()'
+    with patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner), patch(
+            'history_intake_ui.retry_recovery_packet',
+            return_value=dict(path=path, commit=None, status='verified')) as retry:
+        app = AppTest.from_string(script).run()
+        app.file_uploader(key=key).upload(path.split('/')[-1], raw, 'application/json').run()
+        assert app.button(key='history_receipt_retry').proto.disabled
+        app.checkbox(key='history_receipt_reviewed').check().run()
+        app.button(key='history_receipt_retry').click().run()
+        retry.assert_called_once_with('test-only', raw)
+        assert not app.exception and 'Exact archive packet verified' in app.success[0].value
+
+
+def test_owner_recovers_exact_remote_packet_without_original_upload():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    environment = dict(DFS_HISTORY_OWNER_EMAIL='owner@example.org', DFS_HISTORY_SNAPSHOT_TOKEN='read-only')
+    owner = dict(email='owner@example.org', email_verified=True, is_logged_in=True)
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    folder, filename = path.rsplit('/', 1)
+    commit = 'a'*40
+    script = 'from history_intake_ui import render_archive_receipt_check\nrender_archive_receipt_check()'
+    with patch.dict('os.environ', environment, clear=True), patch.object(st, 'user', owner), patch(
+            'history_intake_ui.list_slate_packets', return_value=(commit, folder, [filename])) as listing, patch(
+            'history_snapshot._request', return_value=BytesIO(raw)) as read:
+        app = AppTest.from_string(script).run()
+        app.date_input(key='history_recover_day').set_value(SLATE)
+        app.text_input(key='history_recover_contest').set_value(folder.split('/')[-1]).run()
+        app.button(key='history_recover_find').click().run()
+        listing.assert_called_once_with('read-only', SLATE, folder.split('/')[-1])
+        app.button(key='history_recover_read').click().run()
+        assert not app.exception and app.session_state['history_recover_data'][1] == raw
+        assert read.call_args.args[0].endswith(path + '?ref=' + commit)
+        assert app.get('download_button')
+        app.text_input(key='history_recover_contest').set_value('999999').run()
+        assert not app.get('download_button')
+
+
+def test_recovered_remote_bytes_require_matching_digest_and_contest():
+    from history_intake import read_slate_packet
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    folder, filename = path.rsplit('/', 1)
+    with patch('history_snapshot._request', return_value=BytesIO(raw+b' ')):
+        with pytest.raises(ValueError, match='checksum'):
+            read_slate_packet('fixture', 'a'*40, folder, filename)
+    with patch('history_snapshot._request', return_value=BytesIO(raw)):
+        with pytest.raises(ValueError, match='metadata'):
+            read_slate_packet('fixture', 'a'*40, f'incoming-app/{SLATE}/999999', filename)
+
+
+def test_prepare_packet_does_not_submit_and_save_reuses_exact_bytes():
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    environment={'DFS_HISTORY_OWNER_EMAIL':'owner@example.org','DFS_HISTORY_INTAKE_TOKEN':'test-only'}
+    owner={'email':'owner@example.org','email_verified':True,'is_logged_in':True}
+    csv=(ROOT/'nov20_reconciled_example.csv').read_bytes()
+    with patch.dict('os.environ',environment,clear=True),patch.object(st,'user',owner),patch(
+            'history_intake_ui.submit_reviewed_slate',return_value='abcdef0') as send:
+        app=AppTest.from_file(str(ROOT/'app_staging.py')).run()
+        app.radio(key='site_view').set_value('History and advanced').run()
+        app.file_uploader(key='base').upload('pool.csv',csv,'text/csv').run()
+        app.checkbox(key='history_intake_reviewed').check()
+        app.button(key='history_intake_prepare').click().run()
+        assert not app.exception
+        send.assert_not_called()
+        path,raw=app.session_state['history_prepared_packet']
+        assert path.endswith('.json')
+        app.button(key='history_intake_save').click().run()
+        assert not app.exception
+        send.assert_called_once_with('test-only',path,raw)
+
+
+@pytest.mark.parametrize('readback_matches', [True, False])
+def test_created_packet_requires_exact_pinned_readback(readback_matches):
+    path, raw = make_submission(reviewed_pool(), SLATE)
+    commit = 'a'*40
+    created = BytesIO(json.dumps({'commit':{'sha':commit}}).encode())
+    created.status = 201
+    response = BytesIO(raw if readback_matches else raw+b' ')
+    with patch('history_intake.build_opener') as opener:
+        call = opener.return_value.open
+        call.side_effect = [created, response]
+        if readback_matches:
+            assert submit_reviewed_slate('test-only', path, raw) == commit[:7]
+        else:
+            with pytest.raises(OSError, match='did not confirm'):
+                submit_reviewed_slate('test-only', path, raw)
+        assert call.call_args.args[0].full_url.endswith('?ref='+commit)

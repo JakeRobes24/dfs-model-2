@@ -93,13 +93,14 @@ def submit_reviewed_slate(token, path, raw):
         'message': 'Archive reviewed DFS slate from Streamlit',
         'content': base64.b64encode(raw).decode('ascii'), 'branch': 'main',
     }).encode()
+    commit = None
     try:
         with opener.open(Request(url, payload, headers, method='PUT'), timeout=15) as response:
             result = json.load(response)
             commit = result.get('commit', {}).get('sha')
             if response.status != 201 or not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
                 raise OSError('GitHub did not confirm a new submission.')
-            return commit[:7]
+            # A 201 acknowledges creation. Verify the packet at that exact revision.
     except HTTPError as error:
         if error.code not in (409, 422):
             raise OSError('The private archive rejected the submission.') from error
@@ -107,9 +108,9 @@ def submit_reviewed_slate(token, path, raw):
         pass
     read_headers = dict(headers, Accept='application/vnd.github.raw+json')
     try:
-        with opener.open(Request(url + '?ref=main', headers=read_headers), timeout=15) as response:
+        with opener.open(Request(url + '?ref=' + (commit or 'main'), headers=read_headers), timeout=15) as response:
             if response.read(len(raw) + 1) == raw:
-                return None
+                return commit[:7] if commit else None
     except (URLError, TimeoutError):
         pass
     raise OSError('The private archive did not confirm the save. Retry with the same inputs.')
@@ -140,7 +141,7 @@ def list_slate_packets(token, slate_date, contest):
     return commit, folder, sorted(versions)
 
 
-def load_slate_packet(token, commit, folder, filename):
+def read_slate_packet(token, commit, folder, filename):
     """Verify the bytes using the archive's content-addressed filename."""
     from history_snapshot import _request
 
@@ -152,13 +153,81 @@ def load_slate_packet(token, commit, folder, filename):
         data = response.read(MAX_PACKET + 1)
     if len(data) > MAX_PACKET or hashlib.sha256(data).hexdigest() != filename[:-5]:
         raise ValueError('Saved slate checksum mismatch.')
-    record = json.loads(data)
-    _, slate, contest = folder.split('/')
-    if record.get('version') != 1 or record.get('slate_date') != slate or record.get('contest_id') != contest:
+    if recovery_packet_path(data) != f'{folder}/{filename}':
         raise ValueError('Saved slate metadata mismatch.')
+    return data
+
+
+def load_slate_packet(token, commit, folder, filename):
+    record = json.loads(read_slate_packet(token, commit, folder, filename))
+    contest = folder.rsplit('/', 1)[-1]
     pool = _csv(record['research_csv'])
     required = {'fanduel_id', 'fanduel_name', 'game', 'team', 'adjusted_fd_points'}
     if (pool.empty or not required <= set(pool) or pool.fanduel_id.duplicated().any()
             or not pool.fanduel_id.str.fullmatch(fr'{contest}-\d+').fillna(False).all()):
         raise ValueError('Saved slate does not contain a verified contest pool.')
     return pool, _csv(record['lineups_csv']) if record.get('lineups_csv') else None
+
+
+def recovery_packet_path(raw):
+    """Identify exact downloaded bytes, without trusting any claimed replay timing."""
+    if not isinstance(raw, bytes) or not raw or len(raw)>MAX_PACKET:
+        raise ValueError('Use a nonempty archive packet smaller than 8 MiB.')
+    try:
+        record=json.loads(raw)
+    except (UnicodeDecodeError,ValueError) as exc:
+        raise ValueError('Invalid archive packet JSON.') from exc
+    if not isinstance(record,dict) or record.get('version')!=1:
+        raise ValueError('Unsupported archive packet version.')
+    slate,contest=record.get('slate_date'),record.get('contest_id')
+    if (not isinstance(slate,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',slate)
+            or not isinstance(contest,str) or not re.fullmatch(r'\d{1,12}',contest)):
+        raise ValueError('Invalid archive date or contest ID.')
+    date.fromisoformat(slate)
+    if not isinstance(record.get('research_csv'),str) or not record['research_csv'].strip():
+        raise ValueError('Packet has no reviewed pool.')
+    return f'incoming-app/{slate}/{contest}/{hashlib.sha256(raw).hexdigest()}.json'
+
+
+def check_recovery_receipt(token, raw):
+    """Read-only exact-byte receipt at a pinned main commit; no upload or backup claim."""
+    from history_snapshot import history_head, _request
+    if not token:
+        raise ValueError('A history read credential is required.')
+    path=recovery_packet_path(raw)
+    commit=history_head(token)
+    try:
+        with _request(f'{PRIVATE_API}{path}?ref={commit}',token,raw=True) as response:
+            saved=response.read(len(raw)+1)
+    except HTTPError as exc:
+        if exc.code==404:
+            return dict(path=path,commit=commit,status='not_found')
+        raise
+    if saved!=raw:
+        raise ValueError('Remote archive bytes do not match the local packet.')
+    return dict(path=path,commit=commit,status='verified')
+
+
+def retry_recovery_packet(token, raw):
+    """Validate a recovered packet and submit its original bytes if absent."""
+    path = recovery_packet_path(raw)
+    record = json.loads(raw)
+    if set(record) - {'version', 'slate_date', 'contest_id', 'research_csv',
+                      'actuals_csv', 'lineups_csv'}:
+        raise ValueError('Unrecognized archive packet fields.')
+    optional = {}
+    for name in ('actuals', 'lineups'):
+        key = f'{name}_csv'
+        if key in record:
+            if not isinstance(record[key], str):
+                raise ValueError('Invalid archive packet CSV.')
+            optional[name] = record[key]
+    pool = _csv(record['research_csv'])
+    validated_path, _ = make_submission(pool, date.fromisoformat(record['slate_date']), **optional)
+    if validated_path.rsplit('/', 1)[0] != path.rsplit('/', 1)[0]:
+        raise ValueError('Archive packet contest ID does not match its reviewed pool.')
+    receipt = check_recovery_receipt(token, raw)
+    if receipt['status'] == 'verified':
+        return receipt
+    commit = submit_reviewed_slate(token, path, raw)
+    return dict(path=path, commit=commit, status='verified')

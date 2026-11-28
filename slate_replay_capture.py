@@ -8,7 +8,7 @@ from market_evidence import player_market_evidence
 from nba_ownership import OWNERSHIP_FIELDS
 from nba_combined_scoring_shadow import FIELDS as COMBINED_FIELDS
 from nba_projection_review import METHOD_COLUMNS
-from nba_shadow_research import FEATURES, OPPORTUNITY_FEATURES
+from nba_shadow_research import FEATURES, OPPORTUNITY_FEATURES, COMPONENT_FIELDS, COMPONENT_STATS
 from slate_import import matchup_key, team_code
 
 
@@ -81,7 +81,13 @@ def capture_pool(pool, audit, schedule, slate, captured_at, input_hashes, *, mar
                 for player, group in quotes.groupby('fanduel_id')
             }
             archived['replay_player_props_json'] = pool.fanduel_id.map(lambda player_id: by_player.get(player_id, '[]'))
-    return archived
+    # Freeze the exact challenger outputs before any verified outcomes exist.
+    # A missing/unsupported experimental forecast must not change live scores.
+    from nba_consensus_history import freeze_consensus_history
+    from nba_window_shadow import freeze_history_windows
+    from nba_shadow_research import freeze_component_rate
+    from nba_pooled_history_shadow import freeze_pooled_history
+    return freeze_pooled_history(freeze_component_rate(freeze_history_windows(freeze_consensus_history(archived))))
 
 
 def build_replay_rows(pool, results, slate):
@@ -120,19 +126,34 @@ def build_replay_rows(pool, results, slate):
                 for note in notes):
             raise ValueError('The saved replay evidence contains an invalid source timestamp.')
 
-    optional_fields = set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | {
-        'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc',
-        'propsims_distribution_json', 'matchwiz_reference_json',
+    from nba_research_triage import LARGE_MINUTES_CAPTURE_FIELDS
+    from nba_consensus_history import FROZEN_FIELDS as CONSENSUS_HISTORY_FIELDS
+    from nba_window_shadow import FROZEN_FIELDS as HISTORY_WINDOW_FIELDS
+    from nba_reference_archive import FIELDS as REFERENCE_ARCHIVE_FIELDS
+    from nba_shadow_research import COMPONENT_CAPTURE_FIELDS
+    from nba_pooled_history_shadow import FROZEN_FIELDS as POOLED_HISTORY_FIELDS
+    readiness_fields = {'history_eight_attached','history_eight_age_days','history_eight_usable',
+                        'history_eight_recent_usable','history_four_attached','history_four_age_days',
+                        'history_pooled_usable'}
+    optional_fields = readiness_fields | set(POOLED_HISTORY_FIELDS) | set(COMPONENT_CAPTURE_FIELDS) | set(REFERENCE_ARCHIVE_FIELDS) | set(HISTORY_WINDOW_FIELDS) | set(CONSENSUS_HISTORY_FIELDS) | set(LARGE_MINUTES_CAPTURE_FIELDS) | set(OWNERSHIP_FIELDS) | set(METHOD_COLUMNS) | set(FEATURES) | set(OPPORTUNITY_FEATURES) | set(COMBINED_FIELDS) | set(COMPONENT_FIELDS) | {'daily_box_'+k for k in COMPONENT_STATS} | {
+        'replay_player_props_json', 'projection_sources_json', 'projection_scored_at_utc', 'injury_flag',
+        'propsims_distribution_json', 'matchwiz_reference_json', 'replay_source_acquisition_json',
     }
     rows = pool[sorted(projection_fields | replay_fields | (optional_fields & set(pool)))].copy()
     rows['eligible'] = rows.eligible.astype(str).str.lower().eq('true')
     rows['replay_before_full_slate_tip'] = True
+    from slate_results import SCORE_WEIGHTS
+    actual_components = ['nba_'+k for k in SCORE_WEIGHTS if 'nba_'+k in results]
     official = results[['fanduel_id', 'outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source',
-                        'recorded_fd_points']].copy()
+                        'recorded_fd_points', *actual_components]].copy()
     official['verified_outcome'] = official.outcome.map({'Played': 'played', 'Did not play': 'did_not_play'})
     official['verified_outcome'] = official.verified_outcome.where(official.nba_source.fillna('').ne(''),
                                                                    'needs_review').fillna('needs_review')
     official.loc[official.verified_outcome.eq('needs_review'), ['nba_actual_minutes', 'nba_fd_points']] = None
+    # Only explicitly verified played box counts are usable. A DNP or unknown
+    # never creates an apparent zero counting-stat observation.
+    for col in actual_components:
+        official[col] = pd.to_numeric(official[col],errors='coerce').where(official.verified_outcome.eq('played'))
     rows = rows.merge(official.drop(columns='outcome'), on='fanduel_id', how='left', validate='one_to_one')
     rows['verified_outcome'] = rows.verified_outcome.fillna('needs_review')
     return rows.assign(slate_date=slate.isoformat()).rename(columns={

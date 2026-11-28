@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from history_intake import MAX_PACKET, make_submission, submit_reviewed_slate
+from history_intake import (MAX_PACKET, check_recovery_receipt, list_slate_packets, make_submission, read_slate_packet,
+                            recovery_packet_path, retry_recovery_packet, submit_reviewed_slate)
 from history_panel import NOV20_BACKFILL, NOV20_ORIGINAL, owner_can_view_history
 from slate_replay_capture import capture_pool
 from slate_research import games_for_date
@@ -63,6 +64,7 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                         st.info('Automatic preservation skipped: full-slate pre-tip timing is not verified.')
                     else:
                         path, raw = packet
+                        st.session_state['history_prepared_packet'] = (path, raw)
                         commit = submit_reviewed_slate(token, path, raw)
                         st.session_state['history_auto_saved'] = saved | {fingerprint}
                         st.session_state.pop('history_auto_pending', None)
@@ -70,7 +72,7 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                 else:
                     st.caption('Unchanged reviewed candidates already submitted this session.')
             except (ValueError, OSError, KeyError, TypeError, AttributeError):
-                st.warning('Automatic preservation unavailable. Use the manual archive controls below.')
+                st.warning('Automatic preservation unavailable. If a packet was prepared, download it below.')
 
     with st.expander('Save reviewed slate to private history'):
         st.caption('Saves the current full pool and projections. Include verified actuals or a final lineup CSV when available.')
@@ -89,8 +91,9 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
             use_generated = (generated_lineups is not None and not generated_lineups.empty
                              and st.checkbox('Include the four lineups shown above.', value=True))
             confirmed = st.checkbox('I reviewed these inputs for this contest.', key='history_intake_reviewed')
+            prepare = st.form_submit_button('Prepare downloadable archive packet', key='history_intake_prepare')
             save = st.form_submit_button('Save slate and start backup', key='history_intake_save')
-        if save:
+        if prepare or save:
             if not confirmed:
                 st.warning('Confirm the slate inputs before saving.')
                 return
@@ -120,11 +123,106 @@ def render_slate_archive(pool, *, slate_date=None, generated_lineups=None, repla
                         st.session_state['history_replay_retry'] = (retry_key, path, raw)
                     else:
                         _, path, raw = previous
-                commit = submit_reviewed_slate(token, path, raw)
+                # Retain exact bytes before any network write. A download survives a
+                # session reset; session_state alone does not.
+                st.session_state['history_prepared_packet'] = (path, raw)
+                if save:
+                    commit = submit_reviewed_slate(token, path, raw)
+                    st.session_state['history_packet_receipt'] = (path, commit)
+                else:
+                    st.success('Packet prepared locally. Download it before submitting. Nothing uploaded.')
             except (ValueError, OSError) as error:
                 st.error(str(error))
             else:
-                if commit:
-                    st.success(f'Slate submitted ({commit}). The backup job is pending.')
-                else:
-                    st.info('These exact slate inputs are already in the private archive queue.')
+                if save:
+                    if commit:
+                        st.success(f'Exact slate packet verified in the archive ({commit}). Backup publication is separate.')
+                    else:
+                        st.info('These exact slate inputs are already in the private archive queue.')
+        prepared = st.session_state.get('history_prepared_packet')
+        if prepared is not None:
+            path, raw = prepared
+            st.caption(f'Last prepared packet: {path}. This may be from an earlier review; prepare again after changes.')
+            st.download_button('Download exact prepared archive packet',raw,
+                               file_name=path.rsplit('/',1)[-1],mime='application/json',
+                               key='history_packet_download',on_click='ignore')
+            receipt=st.session_state.get('history_packet_receipt')
+            if receipt is not None and receipt[0]==path:
+                st.caption('Archive packet verified by readback. Backup publication is separate.')
+
+
+def render_archive_receipt_check():
+    """Verify or retry exact archive bytes from a prior browser session."""
+    owner=os.environ.get('DFS_HISTORY_OWNER_EMAIL','').strip()
+    if not owner or not owner_can_view_history(owner,st.user):
+        return
+    intake_token = _intake_token()
+    token = os.environ.get('DFS_HISTORY_SNAPSHOT_TOKEN','').strip() or intake_token
+    if not token:
+        return
+    with st.expander('Recover a saved archive packet by contest'):
+        st.caption('Find verified remote copies when the original download is unavailable.')
+        day = st.date_input('Saved slate date (ET)', value=None, key='history_recover_day')
+        contest = st.text_input('Saved FanDuel contest ID', key='history_recover_contest').strip()
+        scope = day, contest
+        if st.button('Find saved packets', key='history_recover_find', disabled=not (day and contest)):
+            st.session_state.pop('history_recover_listing', None)
+            st.session_state.pop('history_recover_data', None)
+            try:
+                listing = list_slate_packets(token, day, contest)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                st.warning('The saved contest could not be checked. Verify the date and contest ID.')
+            else:
+                st.session_state['history_recover_listing'] = scope, listing
+        saved = st.session_state.get('history_recover_listing')
+        if saved is not None and saved[0] == scope:
+            commit, folder, versions = saved[1]
+            if versions:
+                filename = st.selectbox('Saved packet', versions, key='history_recover_version')
+                selection = commit, folder, filename
+                if st.button('Verify saved packet', key='history_recover_read'):
+                    st.session_state.pop('history_recover_data', None)
+                    try:
+                        raw = read_slate_packet(token, *selection)
+                    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                        st.warning('The exact saved bytes could not be verified.')
+                    else:
+                        st.session_state['history_recover_data'] = selection, raw
+                verified = st.session_state.get('history_recover_data')
+                if verified is not None and verified[0] == selection:
+                    st.success(f'Exact packet verified at {commit[:12]}.')
+                    st.download_button('Download verified saved packet', verified[1], file_name=filename,
+                                       mime='application/json', key='history_recover_download', on_click='ignore')
+            else:
+                st.info('No packet found for this contest at the checked revision.')
+    with st.expander('Check a saved archive receipt'):
+        st.caption('Use the exact archive packet downloaded before the reset. Backup publication is checked separately.')
+        file=st.file_uploader('Previously downloaded archive packet',type='json',key='history_receipt_packet',
+                              on_change=lambda: st.session_state.pop('history_receipt_reviewed', None))
+        if file is None:
+            return
+        raw = file.getvalue()
+        try:
+            path = recovery_packet_path(raw)
+        except ValueError as error:
+            st.warning(str(error))
+            return
+        _, day, contest, filename = path.split('/')
+        st.caption(f'Contest {contest} · {day} ET · packet {filename[:12]}')
+        verify = st.button('Verify archive receipt', key='history_receipt_verify')
+        retry = False
+        if intake_token:
+            reviewed = st.checkbox('I reviewed this packet for this contest.', key='history_receipt_reviewed')
+            retry = st.button('Retry exact packet submission', key='history_receipt_retry', disabled=not reviewed)
+        if verify or retry:
+            try:
+                receipt = retry_recovery_packet(intake_token, raw) if retry else check_recovery_receipt(token, raw)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                st.warning('Archive save could not be confirmed. Keep the downloaded packet and verify again.')
+                return
+            if receipt['status'] == 'verified':
+                revision = f" at {receipt['commit'][:12]}" if receipt['commit'] else ''
+                st.success(f'Exact archive packet verified{revision}. Backup publication is separate.')
+            else:
+                st.warning('Exact packet is absent at the checked archive revision. Keep your downloaded copy.')
+

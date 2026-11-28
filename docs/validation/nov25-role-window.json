@@ -1,0 +1,128 @@
+{
+  "target_day": "2026-11-25",
+  "contest_id": "137104",
+  "team": "LAR",
+  "player_ids": [
+    "137104-137967",
+    "137104-104433"
+  ],
+  "history": [
+    {
+      "date": "2026-09-27",
+      "opponent": "DEN",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 6,
+        "137104-104433": 15
+      }
+    },
+    {
+      "date": "2026-10-04",
+      "opponent": "PHI",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 5,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "opponent": "BUF",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 5,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-10-18",
+      "opponent": "ARI",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 9,
+        "137104-104433": 10
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "opponent": "LV",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 17,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-11-01",
+      "opponent": "LAC",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 11,
+        "137104-104433": 16
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "opponent": "WAS",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 11,
+        "137104-104433": 15
+      }
+    },
+    {
+      "date": "2026-11-15",
+      "opponent": "ARI",
+      "team": "LAR",
+      "season_type": "regular",
+      "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+      "carries": {
+        "137104-137967": 17,
+        "137104-104433": 12
+      }
+    }
+  ],
+  "expected": {
+    "recent_share": 0.48695652173913045,
+    "prior_share": 0.3048780487804878,
+    "share_change_pp": 18.207847295864266,
+    "recent_volume": 28.75,
+    "prior_volume": 20.5,
+    "volume_change_pct": 40.24390243902438
+  },
+  "context": [
+    {
+      "published_date": "2026-11-22",
+      "url": "https://www.therams.com/news/blake-corum-sparking-rams-second-half-offense-in-past-four-games-amid-six-game-scrimmage-touchdown-streak",
+      "summary": "Team reporting identified Corum's increased second-half involvement during four wins, while coordinator emphasized a two-back approach."
+    },
+    {
+      "published_date": "2026-11-23",
+      "url": "https://www.therams.com/news/12-minute-drive-against-cardinals-provides-an-unexpected-spotlight-but-one-rams-running-back-ronnie-rivers-was-grateful-for",
+      "summary": "Third back Rivers received 15 late carries against Arizona in a lopsided win; report cautioned comparable game circumstances might not occur against Green Bay."
+    }
+  ],
+  "postgame_context": {
+    "url": "https://www.therams.com/news/game-recap-blake-corum-s-184-rushing-yards-defense-s-timely-playmaking-lift-rams-to-26-13-win-over-packers-on-thanksgiving-eve",
+    "pair_carries": 44,
+    "designed_rush_attempts": 46,
+    "pass_attempts": 23,
+    "scrambles_excluded": 1,
+    "limitations": "Postgame only; cannot enter pregame feature set."
+  },
+  "limitations": "Official current game logs independently rechecked. Last four versus previous four disjoint regular-season games; older two omitted by fixed window. Four recent games were wins, game script confounds role attribution. Pregame reporting was published before game but retrieved retrospectively. Thresholds declared after target game; no prospective evaluation or production scoring."
+}

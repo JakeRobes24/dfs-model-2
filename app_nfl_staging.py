@@ -1,0 +1,208 @@
+"""Isolated Streamlit NFL import preview, not the production entry point."""
+import json
+import pandas as pd
+import streamlit as st
+from nfl_daily_audit import audit_nfl_daily
+from nfl_reviewed_candidates import compare_reviewed_nfl
+from nfl_weather_ui import render_nfl_weather
+from nfl_projection_review import review_nfl_projections
+from research_source_registry import predictive_coverage, research_checklist
+
+st.set_page_config(page_title="DFS Model 2.0 NFL staging",layout="centered")
+st.title("DFS Model 2.0 — NFL import staging")
+st.warning("Read-only coverage audit. No certified lineup, live status check, or scoring promotion.")
+with st.expander("Complete NFL research checklist"):
+    st.dataframe(research_checklist("NFL"),hide_index=True)
+mode=st.radio("Contest format",("Classic","Single game"))
+contest_id=st.text_input("Exact FanDuel contest ID")
+contest=st.file_uploader("Original FanDuel contest CSV",type=["csv"])
+daily=st.file_uploader("Original DAILY projection CSV",type=["csv"])
+if contest and daily and contest_id:
+    try:
+        report=audit_nfl_daily(contest.getvalue(),daily.getvalue(),contest_id=contest_id,
+                              single_game=mode=="Single game")
+    except (ValueError, UnicodeError) as exc:
+        st.error(str(exc))
+    else:
+        st.metric("Contest players",report["contest_players"])
+        st.metric("Matched identities",report["matched"])
+        st.metric("Eligible header-labeled scores",report["eligible_header_scores"])
+        st.metric("Eligible unlabeled score candidates",report["eligible_unlabeled_candidates"])
+        st.warning(report["warning"])
+        st.dataframe(pd.DataFrame(report["players"]),hide_index=True)
+        st.download_button("Download coverage audit",json.dumps(report,indent=2),
+                           file_name="nfl_coverage_audit.json",mime="application/json")
+
+        render_nfl_weather(report)
+
+        with st.expander("Public NFL FanDuel references"):
+            st.caption("Checks public weekly projections against exact contest identities. These values are advisory.")
+            season = st.number_input("NFL season", min_value=2000, max_value=2100, value=None)
+            week = st.number_input("Regular-season week", min_value=1, max_value=18, value=None)
+            reference_cutoff = st.text_input("Reference cutoff (ISO 8601 with timezone)")
+            if st.button("Check public projections") and season and week and reference_cutoff:
+                from nfl_public_projection_reference import collect_4for4_reference
+                try:
+                    reference = collect_4for4_reference(report, season=season, week=week,
+                                                        cutoff_utc=reference_cutoff)
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state["nfl_4for4_reference"] = reference
+            reference = st.session_state.get("nfl_4for4_reference", {})
+            if (reference.get("contest_sha256") == report["contest_sha256"]
+                    and reference.get("daily_sha256") == report["daily_sha256"]
+                    and reference.get("season") == season and reference.get("week") == week
+                    and reference.get("cutoff_utc") == reference_cutoff):
+                st.dataframe(pd.DataFrame(reference["coverage"]), hide_index=True)
+                st.dataframe(pd.DataFrame(reference["rows"]), hide_index=True)
+                st.download_button("Download 4for4 comparison", json.dumps(reference, indent=2),
+                                   file_name="nfl_4for4_public_reference.json", mime="application/json")
+                captured = {'4for4': len(reference['rows'])}
+            else:
+                captured = {}
+            if mode == "Classic":
+                st.caption("PropSims covers Sunday afternoon games and reports a median and 85th percentile.")
+                slate = st.date_input("PropSims Sunday slate date (ET)", value=None)
+                scope = (report["contest_sha256"], report["daily_sha256"], season, week, slate, reference_cutoff)
+                if st.button("Check PropSims", disabled=not (season and week and slate and reference_cutoff)):
+                    from nfl_public_projection_reference import collect_propsims_reference
+                    st.session_state.pop("nfl_propsims_reference", None)
+                    try:
+                        propsims = collect_propsims_reference(report, season=season, week=week,
+                                                             slate=slate, cutoff_utc=reference_cutoff)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_propsims_reference"] = scope, propsims
+                saved = st.session_state.get("nfl_propsims_reference")
+                if saved is not None and saved[0] == scope:
+                    reference = saved[1]
+                    coverage = reference["coverage"]
+                    st.caption(f"Observed {reference['observed_at']}. Refresh near lock for the latest estimates.")
+                    st.write(f"{coverage['contest_matched_rows']} contest players matched from "
+                             f"{coverage['fresh_rows']} rows published within 24 hours of observation.")
+                    if reference["rows"]:
+                        columns = {"player": "Player", "game": "Game", "daily_fd": "DAILY FD",
+                                   "median_fd": "Median FD", "p85_fd": "85th percentile FD"}
+                        st.dataframe(pd.DataFrame(reference["rows"])[list(columns)].rename(columns=columns),
+                                     hide_index=True)
+                    else:
+                        st.info("No fresh PropSims rows matched this contest.")
+                    st.download_button("Download PropSims comparison", json.dumps(reference, indent=2),
+                                       file_name=f"{report['contest_id']}-propsims.json", mime="application/json")
+                    captured["PropSims"] = len(reference["rows"])
+                st.caption("DailyFantasy.tips compares exact FanDuel player IDs. Publication timezone and upstream sources are unverified.")
+                tips_scope = (report["contest_sha256"], report["daily_sha256"])
+                if st.button("Check DailyFantasy.tips", key="nfl_daily_tips"):
+                    from nfl_public_projection_reference import collect_daily_tips
+                    st.session_state.pop("nfl_daily_tips_reference", None)
+                    try:
+                        tips = collect_daily_tips(report)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_daily_tips_reference"] = tips_scope, tips
+                saved_tips = st.session_state.get("nfl_daily_tips_reference")
+                if saved_tips is not None and saved_tips[0] == tips_scope:
+                    tips = saved_tips[1]
+                    st.caption(f"Observed {tips['observed_at']}. {len(tips['rows'])} eligible matches.")
+                    if tips["rows"]:
+                        columns = {"player": "Player", "game": "Game", "daily_fd": "DAILY FD",
+                                   "reference_fd": "Reference FD"}
+                        st.dataframe(pd.DataFrame(tips["rows"])[list(columns)].rename(columns=columns),
+                                     hide_index=True)
+                    st.download_button("Download DailyFantasy.tips comparison", json.dumps(tips, indent=2),
+                                       file_name=f"{report['contest_id']}-daily-tips.json", mime="application/json")
+                    captured["DailyFantasy.tips"] = len(tips["rows"])
+        with st.expander('Predictive evidence across saved NFL sources'):
+            st.caption('Forecasts are counted here after exact contest matching. Accuracy requires final results for those same players.')
+            st.dataframe(predictive_coverage('NFL', captured=captured), hide_index=True)
+
+        with st.expander("Independent projection review (advisory)"):
+            st.caption("Upload reviewer-verified source records in JSON. No score will be automatically replaced.")
+            slate_date=st.date_input("Slate date",value=None)
+            cutoff=st.text_input("Decision cutoff (ISO 8601 with timezone)")
+            sources=st.file_uploader("Independent projection evidence JSON",type=["json"])
+            if sources and slate_date and cutoff:
+                try:
+                    review=review_nfl_projections(report,json.loads(sources.getvalue()),
+                                                  slate_date=slate_date.isoformat(),cutoff_utc=cutoff)
+                except (ValueError,TypeError,UnicodeError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.warning(review["warning"])
+                    st.dataframe(pd.DataFrame(review["rows"]),hide_index=True)
+                    if review["rejected_evidence"]:
+                        st.dataframe(pd.DataFrame(review["rejected_evidence"]),hide_index=True)
+                    st.download_button("Download independent review",json.dumps(review,indent=2),
+                                       file_name="nfl_projection_review.json",mime="application/json")
+
+        with st.expander("Expected-opportunity history challenger (research only)"):
+            st.caption("Optional reviewer-verified prior four-game history packet. Fixed receiving/rushing component forecasts, not full FanDuel scores. Missing or untimed history remains unsupported.")
+            history_packet=st.file_uploader("Expected-opportunity history JSON",type=["json"],key="nfl_expected_history")
+            if history_packet:
+                from hashlib import sha256
+                from datetime import datetime, timezone
+                from nfl_expected_opportunity_shadow import freeze_expected_opportunity
+                raw=history_packet.getvalue()
+                scope=(report["contest_sha256"],report["daily_sha256"],sha256(raw).hexdigest())
+                if st.button("Freeze expected-opportunity reference",key="nfl_expected_freeze"):
+                    st.session_state.pop("nfl_expected_shadow",None)
+                    try:
+                        packet=json.loads(raw)
+                        result=freeze_expected_opportunity(report,packet,frozen_at=datetime.now(timezone.utc).isoformat())
+                    except (ValueError,TypeError,KeyError,AttributeError,UnicodeError) as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["nfl_expected_shadow"]=(scope,result,packet)
+                saved=st.session_state.get("nfl_expected_shadow")
+                if saved is not None and saved[0]==scope:
+                    _,result,packet=saved
+                    st.warning(result["warning"])
+                    st.caption(f"Frozen at {result['frozen_at']}. Retain this exact receipt before games.")
+                    st.dataframe(pd.DataFrame(result["rows"]),hide_index=True)
+                    st.download_button("Download frozen expected-opportunity reference",
+                        json.dumps({"history_packet":packet,"forecast":result},indent=2),
+                        file_name=f"{report['contest_id']}-expected-opportunity-shadow.json",mime="application/json")
+
+        with st.expander("Grade a frozen expected-opportunity reference"):
+            st.caption("Use the exact previously saved pregame receipt and independently reconciled final outcomes. This grades scoring channels only.")
+            prior=st.file_uploader("Frozen expected-opportunity reference JSON",type=["json"],key="nfl_expected_prior")
+            actuals=st.file_uploader("Verified final outcomes JSON",type=["json"],key="nfl_expected_actuals")
+            if prior and actuals:
+                from nfl_expected_opportunity_outcomes import compare_frozen_opportunity
+                try:
+                    bundle=json.loads(prior.getvalue())
+                    result=compare_frozen_opportunity(report,bundle["history_packet"],bundle["forecast"],
+                                                      json.loads(actuals.getvalue()))
+                except (ValueError,TypeError,KeyError,AttributeError,UnicodeError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.warning(result["warning"])
+                    st.write(result["coverage"])
+                    st.dataframe(pd.DataFrame(result["summary"]),hide_index=True)
+                    st.download_button("Download channel accuracy review",json.dumps(result,indent=2),
+                                       file_name=f"{report['contest_id']}-expected-opportunity-outcomes.json",
+                                       mime="application/json")
+
+        with st.expander("Fixed-candidate research comparison"):
+            st.caption("Requires the exact DAILY capture receipt, source evidence and timestamped candidate records. No official availability certification or optimization.")
+            bundle=st.file_uploader("Reviewed candidate bundle JSON",type=["json"])
+            if bundle:
+                try:
+                    args=json.loads(bundle.getvalue())
+                    result=compare_reviewed_nfl(contest.getvalue(),daily.getvalue(),
+                        contest_id=contest_id,single_game=mode=="Single game",
+                        **{k:args[k] for k in ("slate_date","cutoff_utc","daily_capture","evidence","candidates","salary_cap")})
+                except (ValueError,TypeError,KeyError,UnicodeError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.warning(result["warning"])
+                    if result["ready"]:
+                        st.dataframe(pd.DataFrame(result["rankings"]),hide_index=True)
+                    else:
+                        st.info("Comparison blocked until every eligible player has a reviewed score.")
+                        st.dataframe(pd.DataFrame(result["unresolved"]),hide_index=True)
+                    st.download_button("Download fixed-candidate review",json.dumps(result,indent=2),
+                                       file_name="nfl_candidate_review.json",mime="application/json")

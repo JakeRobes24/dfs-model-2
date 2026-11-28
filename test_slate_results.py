@@ -117,3 +117,11 @@ def test_new_actuals_preserves_recorded_and_unresolved_scores():
     assert fresh.fanduel_id.tolist() == ['123-1', '123-2']
     assert fresh.actual_fd_points.tolist() == [22, 0]
     assert 'confirmed did not play' in fresh.actuals_source.iloc[1]
+
+
+def test_official_components_preserve_zero_and_unknown():
+    result,_=compare_results(pool(),DAY,[(box(),'NBA box')],{})
+    assert result.loc[0,'nba_steals']==1
+    assert result.loc[0,'nba_blocks']==0
+    assert result.loc[0,'nba_turnovers']==2
+    assert result.loc[1:,'nba_steals'].isna().all()

@@ -1,0 +1,980 @@
+{
+  "protocol": "ESPN completed regular-season game summaries; carries cross-checked with previously archived official player logs; no zero fill or week skipping; team targets are sum of credited individual targets. Retrospective.",
+  "cohorts": [
+    {
+      "team": "LAR",
+      "player_ids": [
+        "137104-137967",
+        "137104-104433"
+      ],
+      "target_day": "2026-11-26",
+      "history": [
+        {
+          "date": "2026-09-27",
+          "opponent": "DEN",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 6,
+            "137104-104433": 15
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872962",
+          "team_targets": 49,
+          "targets": {
+            "137104-137967": 4,
+            "137104-104433": 7
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872962"
+        },
+        {
+          "date": "2026-10-04",
+          "opponent": "PHI",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 5,
+            "137104-104433": 16
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872970",
+          "team_targets": 50,
+          "targets": {
+            "137104-137967": 2,
+            "137104-104433": 13
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872970"
+        },
+        {
+          "date": "2026-10-12",
+          "opponent": "BUF",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 5,
+            "137104-104433": 16
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872994",
+          "team_targets": 54,
+          "targets": {
+            "137104-137967": 4,
+            "137104-104433": 8
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872994"
+        },
+        {
+          "date": "2026-10-18",
+          "opponent": "ARI",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 9,
+            "137104-104433": 10
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873004",
+          "team_targets": 32,
+          "targets": {
+            "137104-137967": 2,
+            "137104-104433": 6
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873004"
+        },
+        {
+          "date": "2026-10-25",
+          "opponent": "LV",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 17,
+            "137104-104433": 16
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873021",
+          "team_targets": 29,
+          "targets": {
+            "137104-137967": 1,
+            "137104-104433": 2
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873021"
+        },
+        {
+          "date": "2026-11-01",
+          "opponent": "LAC",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 11,
+            "137104-104433": 16
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873032",
+          "team_targets": 25,
+          "targets": {
+            "137104-137967": 1,
+            "137104-104433": 1
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873032"
+        },
+        {
+          "date": "2026-11-08",
+          "opponent": "WAS",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 11,
+            "137104-104433": 15
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873043",
+          "team_targets": 41,
+          "targets": {
+            "137104-137967": 2,
+            "137104-104433": 4
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873043"
+        },
+        {
+          "date": "2026-11-15",
+          "opponent": "ARI",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 17,
+            "137104-104433": 12
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873061",
+          "team_targets": 26,
+          "targets": {
+            "137104-137967": 4,
+            "137104-104433": 5
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873061"
+        },
+        {
+          "date": "2026-11-25",
+          "opponent": "GB",
+          "team": "LAR",
+          "season_type": "regular",
+          "carries": {
+            "137104-137967": 32,
+            "137104-104433": 12
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873079",
+          "team_targets": 21,
+          "targets": {
+            "137104-137967": 3,
+            "137104-104433": 5
+          },
+          "provider_ids": {
+            "137104-137967": "4429096",
+            "137104-104433": "4430737"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873079"
+        }
+      ],
+      "result": {
+        "paired_games": 9,
+        "complete_games": 9,
+        "dropped_windows": 0,
+        "summary": [
+          {
+            "policy": "last game",
+            "dates": 5,
+            "mae": 1.4,
+            "bias": 0.0,
+            "worst_miss": 4
+          },
+          {
+            "policy": "four-game targets",
+            "dates": 5,
+            "mae": 2.35,
+            "bias": 0.9,
+            "worst_miss": 6.5
+          },
+          {
+            "policy": "four-game volume + recent shares",
+            "dates": 5,
+            "mae": 2.2404607887806174,
+            "bias": 0.7285335472410533,
+            "worst_miss": 6.533599088838269
+          }
+        ]
+      }
+    },
+    {
+      "team": "DET",
+      "player_ids": [
+        "history:jahmyr-gibbs",
+        "history:david-montgomery"
+      ],
+      "target_day": "2026-01-05",
+      "history": [
+        {
+          "date": "2025-09-07",
+          "opponent": "GB",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 9,
+            "history:david-montgomery": 11
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772722",
+          "team_targets": 38,
+          "targets": {
+            "history:jahmyr-gibbs": 10,
+            "history:david-montgomery": 4
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772722"
+        },
+        {
+          "date": "2025-09-14",
+          "opponent": "CHI",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 11
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772835",
+          "team_targets": 28,
+          "targets": {
+            "history:jahmyr-gibbs": 3,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772835"
+        },
+        {
+          "date": "2025-09-22",
+          "opponent": "BAL",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 22,
+            "history:david-montgomery": 12
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772812",
+          "team_targets": 26,
+          "targets": {
+            "history:jahmyr-gibbs": 6,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772812"
+        },
+        {
+          "date": "2025-09-28",
+          "opponent": "CLE",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 9
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772846",
+          "team_targets": 25,
+          "targets": {
+            "history:jahmyr-gibbs": 2,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772846"
+        },
+        {
+          "date": "2025-10-05",
+          "opponent": "CIN",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 18
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772854",
+          "team_targets": 23,
+          "targets": {
+            "history:jahmyr-gibbs": 2,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772854"
+        },
+        {
+          "date": "2025-10-12",
+          "opponent": "KC",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 4
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772923",
+          "team_targets": 27,
+          "targets": {
+            "history:jahmyr-gibbs": 2,
+            "history:david-montgomery": 2
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772923"
+        },
+        {
+          "date": "2025-10-20",
+          "opponent": "TB",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 13
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772816",
+          "team_targets": 28,
+          "targets": {
+            "history:jahmyr-gibbs": 3,
+            "history:david-montgomery": 3
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772816"
+        },
+        {
+          "date": "2025-11-02",
+          "opponent": "MIN",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 9,
+            "history:david-montgomery": 11
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772871",
+          "team_targets": 36,
+          "targets": {
+            "history:jahmyr-gibbs": 3,
+            "history:david-montgomery": 4
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772871"
+        },
+        {
+          "date": "2025-11-09",
+          "opponent": "WAS",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 15
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772878",
+          "team_targets": 32,
+          "targets": {
+            "history:jahmyr-gibbs": 4,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772878"
+        },
+        {
+          "date": "2025-11-16",
+          "opponent": "PHI",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 6
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772928",
+          "team_targets": 36,
+          "targets": {
+            "history:jahmyr-gibbs": 8,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772928"
+        },
+        {
+          "date": "2025-11-23",
+          "opponent": "NYG",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 5
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772888",
+          "team_targets": 38,
+          "targets": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 3
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772888"
+        },
+        {
+          "date": "2025-11-27",
+          "opponent": "GB",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 20,
+            "history:david-montgomery": 8
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772891",
+          "team_targets": 27,
+          "targets": {
+            "history:jahmyr-gibbs": 4,
+            "history:david-montgomery": 2
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772891"
+        },
+        {
+          "date": "2025-12-04",
+          "opponent": "DAL",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 6
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772947",
+          "team_targets": 31,
+          "targets": {
+            "history:jahmyr-gibbs": 7,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772947"
+        },
+        {
+          "date": "2025-12-14",
+          "opponent": "LAR",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 13,
+            "history:david-montgomery": 7
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772909",
+          "team_targets": 38,
+          "targets": {
+            "history:jahmyr-gibbs": 7,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772909"
+        },
+        {
+          "date": "2025-12-21",
+          "opponent": "PIT",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 7,
+            "history:david-montgomery": 4
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772806",
+          "team_targets": 52,
+          "targets": {
+            "history:jahmyr-gibbs": 13,
+            "history:david-montgomery": null
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772806"
+        },
+        {
+          "date": "2025-12-25",
+          "opponent": "MIN",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 10
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772711",
+          "team_targets": 29,
+          "targets": {
+            "history:jahmyr-gibbs": 3,
+            "history:david-montgomery": 2
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772711"
+        },
+        {
+          "date": "2026-01-04",
+          "opponent": "CHI",
+          "team": "DET",
+          "season_type": "regular",
+          "carries": {
+            "history:jahmyr-gibbs": 19,
+            "history:david-montgomery": 8
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772965",
+          "team_targets": 36,
+          "targets": {
+            "history:jahmyr-gibbs": 5,
+            "history:david-montgomery": 1
+          },
+          "provider_ids": {
+            "history:jahmyr-gibbs": "4429795",
+            "history:david-montgomery": "4035538"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772965"
+        }
+      ],
+      "result": {
+        "paired_games": 17,
+        "complete_games": 16,
+        "dropped_windows": 3,
+        "summary": [
+          {
+            "policy": "last game",
+            "dates": 10,
+            "mae": 1.55,
+            "bias": -0.25,
+            "worst_miss": 8
+          },
+          {
+            "policy": "four-game targets",
+            "dates": 10,
+            "mae": 1.7,
+            "bias": -0.35,
+            "worst_miss": 7.5
+          },
+          {
+            "policy": "four-game volume + recent shares",
+            "dates": 10,
+            "mae": 1.7059968880583702,
+            "bias": -0.31307860183980785,
+            "worst_miss": 6.855882352941176
+          }
+        ]
+      }
+    },
+    {
+      "team": "CHI",
+      "player_ids": [
+        "history:d-andre-swift",
+        "history:kyle-monangai"
+      ],
+      "target_day": "2026-01-05",
+      "history": [
+        {
+          "date": "2025-09-14",
+          "opponent": "DET",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 12,
+            "history:kyle-monangai": 7
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772835",
+          "team_targets": 33,
+          "targets": {
+            "history:d-andre-swift": 3,
+            "history:kyle-monangai": 3
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772835"
+        },
+        {
+          "date": "2025-09-21",
+          "opponent": "DAL",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 6
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772844",
+          "team_targets": 28,
+          "targets": {
+            "history:d-andre-swift": 4,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772844"
+        },
+        {
+          "date": "2025-09-28",
+          "opponent": "LV",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 14,
+            "history:kyle-monangai": 4
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772742",
+          "team_targets": 36,
+          "targets": {
+            "history:d-andre-swift": 6,
+            "history:kyle-monangai": null
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772742"
+        },
+        {
+          "date": "2025-10-13",
+          "opponent": "WAS",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 14,
+            "history:kyle-monangai": 5
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772717",
+          "team_targets": 29,
+          "targets": {
+            "history:d-andre-swift": 3,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772717"
+        },
+        {
+          "date": "2025-10-19",
+          "opponent": "NO",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 19,
+            "history:kyle-monangai": 13
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772861",
+          "team_targets": 25,
+          "targets": {
+            "history:d-andre-swift": 1,
+            "history:kyle-monangai": 3
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772861"
+        },
+        {
+          "date": "2025-10-26",
+          "opponent": "BAL",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 11,
+            "history:kyle-monangai": 7
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772759",
+          "team_targets": 35,
+          "targets": {
+            "history:d-andre-swift": 2,
+            "history:kyle-monangai": null
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772759"
+        },
+        {
+          "date": "2025-11-09",
+          "opponent": "NYG",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 7
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772875",
+          "team_targets": 36,
+          "targets": {
+            "history:d-andre-swift": 8,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772875"
+        },
+        {
+          "date": "2025-11-16",
+          "opponent": "MIN",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 21,
+            "history:kyle-monangai": 12
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772880",
+          "team_targets": 28,
+          "targets": {
+            "history:d-andre-swift": 1,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772880"
+        },
+        {
+          "date": "2025-11-23",
+          "opponent": "PIT",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 8,
+            "history:kyle-monangai": 12
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772780",
+          "team_targets": 30,
+          "targets": {
+            "history:d-andre-swift": 1,
+            "history:kyle-monangai": null
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772780"
+        },
+        {
+          "date": "2025-11-28",
+          "opponent": "PHI",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 18,
+            "history:kyle-monangai": 22
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772621",
+          "team_targets": 32,
+          "targets": {
+            "history:d-andre-swift": 2,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772621"
+        },
+        {
+          "date": "2025-12-07",
+          "opponent": "GB",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 14
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772897",
+          "team_targets": 28,
+          "targets": {
+            "history:d-andre-swift": 4,
+            "history:kyle-monangai": 2
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772897"
+        },
+        {
+          "date": "2025-12-14",
+          "opponent": "CLE",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 18,
+            "history:kyle-monangai": 11
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772904",
+          "team_targets": 27,
+          "targets": {
+            "history:d-andre-swift": 1,
+            "history:kyle-monangai": 2
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772904"
+        },
+        {
+          "date": "2025-12-20",
+          "opponent": "GB",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 9
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772613",
+          "team_targets": 29,
+          "targets": {
+            "history:d-andre-swift": 2,
+            "history:kyle-monangai": 4
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772613"
+        },
+        {
+          "date": "2025-12-28",
+          "opponent": "SF",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 9,
+            "history:kyle-monangai": 8
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772935",
+          "team_targets": 39,
+          "targets": {
+            "history:d-andre-swift": 3,
+            "history:kyle-monangai": 4
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772935"
+        },
+        {
+          "date": "2026-01-04",
+          "opponent": "DET",
+          "team": "CHI",
+          "season_type": "regular",
+          "carries": {
+            "history:d-andre-swift": 10,
+            "history:kyle-monangai": 6
+          },
+          "target_source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772965",
+          "team_targets": 29,
+          "targets": {
+            "history:d-andre-swift": 2,
+            "history:kyle-monangai": 1
+          },
+          "provider_ids": {
+            "history:d-andre-swift": "4259545",
+            "history:kyle-monangai": "4608686"
+          },
+          "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401772965"
+        }
+      ],
+      "result": {
+        "paired_games": 15,
+        "complete_games": 12,
+        "dropped_windows": 9,
+        "summary": [
+          {
+            "policy": "last game",
+            "dates": 2,
+            "mae": 1.25,
+            "bias": 0.75,
+            "worst_miss": 3
+          },
+          {
+            "policy": "four-game targets",
+            "dates": 2,
+            "mae": 1.25,
+            "bias": 0.0,
+            "worst_miss": 2.0
+          },
+          {
+            "policy": "four-game volume + recent shares",
+            "dates": 2,
+            "mae": 1.1508704453441294,
+            "bias": 0.0929757085020243,
+            "worst_miss": 2.2169230769230768
+          }
+        ]
+      }
+    }
+  ]
+}

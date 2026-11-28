@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
-from market_evidence import PROP_BOX_STATS
 from model import norm
 from slate_import import contest_player_keys, game_code, matchup_key, player_key, team_code
 from slate_research import ET, GAME_ID, NBA_WEB, games_for_date, nba_page, played_minutes
@@ -91,11 +90,11 @@ def nba_outcomes(boxes):
                 values = [stats.get(field) for field in SCORE_WEIGHTS]
                 if minutes is not None and all(type(value) is int and value >= 0 for value in values):
                     points = sum(value * weight for value, weight in zip(values, SCORE_WEIGHTS.values())) / 10
-                    outcome = ('Played', minutes, points, source, *(stats[key] for key in PROP_BOX_STATS.values()))
+                    outcome = ('Played', minutes, points, source, *(stats[key] for key in SCORE_WEIGHTS))
                 elif minutes is None and (inactive or 'DNP' in str(row.get('comment', '')).upper()):
-                    outcome = ('Did not play', None, None, source, None, None, None)
+                    outcome = ('Did not play', None, None, source, *([None]*len(SCORE_WEIGHTS)))
                 else:
-                    outcome = ('Needs review', None, None, source, None, None, None)
+                    outcome = ('Needs review', None, None, source, *([None]*len(SCORE_WEIGHTS)))
                 key = (matchup, team, result_name(name))
                 existing = results[key].get(person)
                 if existing is None or (existing[0] != 'Played' and outcome[0] != 'Needs review'):
@@ -121,12 +120,12 @@ def compare_results(pool, day, boxes, prior_scores):
         if unique and len(candidates) == 1:
             _, outcome = next(iter(candidates))
         elif unique and not candidates and len(proof) == 1 and matchup in finals:
-            outcome = ('Did not play', None, None, next(iter(proof)), None, None, None)
+            outcome = ('Did not play', None, None, next(iter(proof)), *([None]*len(SCORE_WEIGHTS)))
         else:
             status = 'Needs review' if matchup in finals else 'Final box unavailable'
-            outcome = (status, None, None, '', None, None, None)
+            outcome = (status, None, None, '', *([None]*len(SCORE_WEIGHTS)))
         comparisons.append(outcome)
-    stat_columns = ['nba_' + key for key in PROP_BOX_STATS.values()]
+    stat_columns = ['nba_' + key for key in SCORE_WEIGHTS]
     columns = ['outcome', 'nba_actual_minutes', 'nba_fd_points', 'nba_source', *stat_columns]
     result = pool[['fanduel_id', 'fanduel_name', 'team', 'game']].copy()
     for name in ('projected_fd_points', 'adjusted_fd_points', 'adjusted_minutes'):
@@ -145,3 +144,29 @@ def compare_results(pool, day, boxes, prior_scores):
     result['fd_projection_error'] = (result.nba_fd_points - result.adjusted_fd_points).round(2)
     result['minutes_projection_error'] = (result.nba_actual_minutes - result.adjusted_minutes).round(2)
     return result, finals
+
+
+def lineup_review(lineups, results):
+    if lineups is None or not {'lineup', 'fanduel_id'} <= set(lineups):
+        return pd.DataFrame()
+    joined = lineups[['lineup', 'fanduel_id']].merge(results, on='fanduel_id', how='left', validate='many_to_one')
+    joined['result_for_total'] = joined.nba_fd_points.where(joined.outcome.eq('Played')).mask(
+        joined.outcome.eq('Did not play'), 0)
+    scores = []
+    for label, players in joined.groupby('lineup', sort=False):
+        if len(players) != 9 or players.fanduel_id.nunique() != 9:
+            continue
+        daily = players.projected_fd_points.sum(min_count=9)
+        adjusted = players.adjusted_fd_points.sum(min_count=9)
+        actual = players.result_for_total.sum(min_count=9)
+        paired = pd.notna(daily) and pd.notna(adjusted) and pd.notna(actual)
+        scores.append({
+            'Lineup': label,
+            'DAILY projection': daily,
+            'Pre-lock projection': adjusted,
+            'NBA box-score FD': actual,
+            'DAILY absolute error': abs(daily - actual) if paired else None,
+            'Pre-lock absolute error': abs(adjusted - actual) if paired else None,
+            'Players still unresolved': int(players.result_for_total.isna().sum()),
+        })
+    return pd.DataFrame(scores)

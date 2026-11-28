@@ -165,3 +165,99 @@ def test_paired_coverage_rejects_unregistered_or_spoofed_families():
     players, providers = paired_source_coverage(pool,'2026-11-25T23:00:00Z')
     assert players['Paired providers'].tolist() == [1]
     assert providers['Provider'].tolist() == ['propsims']
+
+
+def test_large_minutes_shadow_isolates_time_and_rate_with_exact_same_sample():
+    from nba_research_triage import large_minutes_disagreement_shadow
+    from slate_research import PROPSIMS
+    import json
+    stamp = '2026-11-25T22:00:00Z'
+    notes = json.dumps([dict(source=PROPSIMS, family='propsims', observed_at=stamp,
+                             points=36, paired_minutes=30)])
+    pool = pd.DataFrame([dict(fanduel_id='1-1', eligible=True, projection_sources_json=notes,
+        identity_match='exact', minutes_method='DAILY_only_unverified', injury_flag='',
+        prelock_status='', prelock_role='', prelock_change='', history_source='NBA official box scores',
+        history_latest='2026-11-24', history_games=4, recent_mpg=32,
+        projected_minutes=20, projected_fd_points=20, adjusted_minutes=20, adjusted_fd_points=20)])
+    original = pool.copy(deep=True)
+    row = large_minutes_disagreement_shadow(pool, stamp).iloc[0]
+    assert row.time_only_fd == 31 and row.capped_time_only_fd == 24
+    assert abs(row.time_and_rate_fd - 32.55) < 1e-9
+    pd.testing.assert_frame_equal(pool, original)
+    assert large_minutes_disagreement_shadow(pool.assign(prelock_role='minutes limit'), stamp).empty
+    assert large_minutes_disagreement_shadow(pool.assign(history_latest='2026-11-25'), stamp).empty
+    assert large_minutes_disagreement_shadow(pool, '2026-11-25T21:00:00Z').empty
+
+
+def test_frozen_large_minutes_requires_identical_complete_captured_sample():
+    from nba_research_triage import compare_frozen_large_minutes
+    base = dict(shadow_large_minutes_policy='2026-11-26', shadow_large_minutes_as_of='2026-11-27T22:00:00Z',
+                shadow_large_minutes_time_only_fd=34, shadow_large_minutes_time_and_rate_fd=35,
+                shadow_large_minutes_capped_time_only_fd=33,
+                replay_captured_at_utc='2026-11-27T22:05:00Z', actual_points=36,
+                daily_points=30, adjusted_fd_points=32, eligible=True, verified_outcome='played',
+                nba_source='Official box score')
+    frame = pd.DataFrame([base, dict(base, shadow_large_minutes_time_only_fd=None),
+                          dict(base, shadow_large_minutes_as_of='2026-11-27T23:00:00Z')])
+    report = compare_frozen_large_minutes(frame)
+    assert report['Paired players'].tolist() == [1,1,1]
+    assert report['Shadow MAE'].tolist() == [2,1,3]
+    assert report['Reviewed MAE'].tolist() == [4,4,4]
+
+
+def test_full_pool_rate_review_includes_unflagged_and_low_salary_players():
+    import json
+    import pytest
+    from nba_research_triage import full_pool_rate_review
+    from slate_research import PROPSIMS
+    now='2026-11-28T21:00:00Z'
+    note=dict(source=PROPSIMS,family='propsims',points=30,paired_minutes=20,
+              observed_at='2026-11-28T20:00:00Z')
+    base=dict(eligible=True,team='ORL',game='ORL@WAS',salary=4000,
+              adjusted_minutes=30,adjusted_fd_points=30,
+              projection_sources_json='[]',prelock_starter='')
+    pool=pd.DataFrame([
+        dict(base,fanduel_id='1',fanduel_name='Offset',projection_sources_json=json.dumps([note]),
+             prelock_starter='starter'),
+        dict(base,fanduel_id='2',fanduel_name='Depth'),
+        dict(base,fanduel_id='3',fanduel_name='Missing',adjusted_fd_points=None),
+        dict(base,fanduel_id='4',fanduel_name='Out',eligible=False)])
+    history=pd.DataFrame([
+        {'fanduel_id':'1','FD/min as starter':1.2,'Starter complete FD games':4,
+         'Starter complete FD minutes':100,'FD points per minute':.9,
+         'Games with complete FD stats':8,'Minutes with complete FD stats':180},
+        {'fanduel_id':'2','FD points per minute':.8,
+         'Games with complete FD stats':3,'Minutes with complete FD stats':60}])
+    old=pool.copy(deep=True)
+    result=full_pool_rate_review(pool,history,now)
+    assert result.fanduel_id.tolist()==['3','1','2']
+    r=result.set_index('fanduel_id')
+    assert r.loc['1','Source-rate FD gap at reviewed minutes']==pytest.approx(15)
+    assert r.loc['1','Historical FD gap at reviewed minutes']==pytest.approx(6)
+    assert r.loc['1','Historical context']=='Observed confirmed-role history'
+    assert r.loc['2','Historical FD gap at reviewed minutes']==pytest.approx(-6)
+    assert pd.isna(r.loc['2','Median paired FD/min'])
+    assert pd.isna(r.loc['3','Review magnitude FD'])
+    pd.testing.assert_frame_equal(pool,old)
+    news=pd.DataFrame([{'fanduel_id':'1','Latest confirmation UTC':'2026-11-28T20:30:00Z'}])
+    r=full_pool_rate_review(pool,history,now,team_review=news).set_index('fanduel_id')
+    assert r.loc['1','Paired rate families']==0
+    assert r.loc['1','Pairs before latest team confirmation']==1
+    assert pd.isna(r.loc['1','Source-rate FD gap at reviewed minutes'])
+
+
+def test_full_pool_rate_review_keeps_insufficient_and_short_samples_missing():
+    import json
+    from nba_research_triage import full_pool_rate_review
+    from slate_research import PROPSIMS
+    now='2026-11-28T21:00:00Z'
+    pool=pd.DataFrame([dict(fanduel_id='1',fanduel_name='Short',eligible=True,salary=3500,
+        team='ORL',game='ORL@WAS',adjusted_minutes=20,adjusted_fd_points=20,
+        projection_sources_json=json.dumps([dict(source=PROPSIMS,family='propsims',
+            points=9,paired_minutes=9,observed_at=now)]))])
+    h=pd.DataFrame([{'fanduel_id':'1','FD points per minute':1.4,
+        'Games with complete FD stats':3,'Minutes with complete FD stats':59}])
+    row=full_pool_rate_review(pool,h,now).iloc[0]
+    assert row['Paired rate families']==0
+    assert pd.isna(row['Observed FD/min'])
+    assert row['Review status']=='No supported paired or historical rate'

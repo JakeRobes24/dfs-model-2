@@ -11,7 +11,7 @@ import streamlit as st
 
 from advanced_ui import render_advanced
 from evidence import validate_sources
-from history_intake_ui import render_slate_archive
+from history_intake_ui import render_slate_archive, render_archive_receipt_check
 from history_panel import render_history_panel
 from slate_results_ui import render_post_slate
 from market_evidence import game_market_evidence, player_market_evidence
@@ -26,6 +26,13 @@ from slate_research import (
     match_public, recent_boxscores, score_slate,
 )
 from slate_tools_ui import render_challenger
+
+
+@st.fragment
+def render_candidate_range_download(receipt, slate):
+    st.download_button('Download candidate ranges and roster snapshot', receipt,
+                       file_name=f'{slate}-candidate-range-receipt.json',
+                       mime='application/json')
 
 
 @st.cache_data(ttl=60, max_entries=8, show_spinner=False)
@@ -71,6 +78,17 @@ def public_rotations(slate, games):
 def extended_rotations(slate, games):
     from nba_final_box_cache import FINAL_BOX_CACHE
     return recent_boxscores(slate, set(games), game_limit=10, days_back=24, box_cache=FINAL_BOX_CACHE)
+
+
+@st.cache_data(ttl=1800, max_entries=12, show_spinner=False)
+def public_historical_roles(rows, slate, longer):
+    # Public final-box role research only. Never feed recovered roles back into
+    # the existing live score calculation or eligibility decision.
+    from nba_historical_roles import recover_espn_roles
+    from slate_research import fetch
+    return recover_espn_roles(rows, cutoff_day=slate,
+                              load_json=lambda url: json.loads(fetch(url)),
+                              max_games=120 if longer else 48)
 
 
 @st.cache_data(ttl=300, max_entries=4, show_spinner=False)
@@ -337,7 +355,7 @@ def render_slate(history_slot):
     notes, projections, source_status = live
     rotations, rotation_status = recent
     if need_reference:
-        st.session_state['slate_reference_snapshot'] = (reference_key, refs)
+        st.session_state['slate_reference_snapshot'] = (reference_key, refs, datetime.now(ET))
     with st.expander('Research retrieval timing'):
         st.caption(f'Acquisition wall time: {timing["elapsed_seconds"]:.2f}s. Task times overlap and include cache access; not publication times.')
         st.dataframe(pd.DataFrame([{'Research batch': name, 'Seconds': round(seconds, 3)}
@@ -417,15 +435,57 @@ def render_slate(history_slot):
             st.dataframe(paired_players.loc[paired_players['Paired providers'].lt(2)].merge(scored[['fanduel_id','fanduel_name','team']], on='fanduel_id', validate='one_to_one').drop(columns='fanduel_id'), hide_index=True)
     from nba_matchup_context import matchup_context
     from nba_shadow_research import freeze_research_features
+    from nba_research_acquisition import extended_history_safe
+    history_now = datetime.now(ET)
+    history_schedule = public_slate_schedule(slate) if slate == history_now.date() else []
+    history_early = extended_history_safe(history_schedule, games, datetime.now(ET), slate)
     with st.expander('Historical research window'):
         st.caption('The longer window feeds both discrepancy review and frozen experimental evidence. Reviewed live scoring continues to use its established recent rotation inputs.')
-        longer = st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}')
+        longer = st.checkbox('Load a longer rotation window', value=history_early,
+                             key=f'rotation_window_{contest_id}_{slate}')
+        recover_roles = st.checkbox('Cross-check missing historical starter and bench roles', value=True,
+                                    key=f'role_window_{contest_id}_{slate}')
+        st.caption('New optional historical requests are limited to verified schedules with at least 90 minutes before the first contest tip. This buffer does not guarantee retrieval duration. Earlier same-contest history can be retained near lock.')
     rotation_rows, coverage = rotations, rotation_status
+    long_snapshot = st.session_state.get('slate_long_rotation_snapshot')
+    retained_long = long_snapshot is not None and long_snapshot[0] == research_scope
+    used_longer = False
     if longer:
-        with st.spinner('Checking up to ten recent team games…'):
-            rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
+        if retained_long:
+            rotation_rows, coverage = long_snapshot[1:3]
+            used_longer = True
+        if history_early and (refresh or not retained_long):
+            try:
+                with st.spinner('Checking up to ten recent team games…'):
+                    extended_rows, extended_coverage = extended_rotations(slate, games)
+                if extended_rows:
+                    rotation_rows, coverage = extended_rows, extended_coverage
+                    used_longer = True
+                else:
+                    st.info('No longer-window observations returned; retaining available earlier history.')
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                st.warning(f'Extended history unavailable: {exc}. Retaining available earlier history.')
+        elif not history_early:
+            st.caption('Using retained longer history; no new optional request near lock.' if retained_long
+                       else 'Longer history deferred: schedule or time buffer not verified.')
+    # Recheck the clock after extended retrieval. Optional role requests must
+    # not start solely because there was time before the previous batch.
+    role_early = extended_history_safe(history_schedule, games, datetime.now(ET), slate)
+    if recover_roles and rotation_rows and role_early:
+        try:
+            with st.spinner('Cross-checking historical starting roles…'):
+                rotation_rows, role_coverage = public_historical_roles(rotation_rows, slate, used_longer)
+            st.caption(f'Historical starter/bench coverage: {role_coverage["known"]}/{role_coverage["total"]} played box observations. '
+                       f'{role_coverage["attempted_games"]}/{role_coverage["pending_games"]} games with missing role flags checked.')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            st.warning(f'Historical role recovery unavailable: {exc}. Unverified roles remain unknown.')
+    elif recover_roles and not role_early:
+        st.caption('New optional historical role requests deferred; retained role evidence is unchanged.')
+    if used_longer:
+        st.session_state['slate_long_rotation_snapshot'] = (research_scope, rotation_rows, coverage)
     recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
-    team_review = team_opportunity_review(scored, audit, now)
+    review_now = datetime.now(ET)
+    team_review = team_opportunity_review(scored, audit, review_now)
     if not team_review.empty:
         st.warning(f'{len(team_review)} eligible players on teams with reviewed OUT or role-change confirmations. Recheck teammate opportunities before lock.')
         with st.expander('Team opportunity refresh review', expanded=True):
@@ -433,7 +493,36 @@ def render_slate(history_slot):
             st.dataframe(team_review.drop(columns='fanduel_id'), hide_index=True)
             st.download_button('Download team opportunity review', team_review.to_csv(index=False),
                                file_name=f'{slate}-team-opportunity-review.csv', mime='text/csv')
+    from nba_research_triage import full_pool_rate_review
+    try:
+        rate_review=full_pool_rate_review(scored,recent_rates,review_now,team_review=team_review)
+        with st.expander('Full-pool production-rate review'):
+            st.caption('Independent paired FD/minute and observed role history, held at reviewed minutes. Differences are research sensitivities, not automatic score adjustments; later observation does not prove news incorporation.')
+            if not rate_review.empty:
+                st.caption(f"{len(rate_review)} eligible players · {(rate_review['Paired rate families']>0).sum()} with fresh usable pairs · {rate_review['Observed FD/min'].notna().sum()} with supported historical rates")
+                st.dataframe(rate_review.drop(columns='fanduel_id').round(3),hide_index=True)
+                st.download_button('Download full-pool production-rate review',rate_review.to_csv(index=False),
+                                   file_name=f'{slate}-{contest_id}-rate-review.csv',mime='text/csv')
+    except (ValueError,TypeError,KeyError,AttributeError) as exc:
+        st.warning(f'Production-rate review unavailable: {exc}')
     matchup = matchup_context(scored, rotation_rows, slate)
+    # Retain the same historical evidence in manual exports and archive packets.
+    reviewed_export = freeze_research_features(scored, recent_rates, recent_absences, matchup)
+    from nba_window_shadow import attach_window_inputs
+    reviewed_export = attach_window_inputs(reviewed_export, rotation_rows, slate)
+    from nba_pooled_history_shadow import attach_pooled_history
+    reviewed_export = attach_pooled_history(reviewed_export, rotation_rows, slate)
+    from nba_history_readiness import history_readiness
+    readiness = history_readiness(reviewed_export, slate)
+    reviewed_export = reviewed_export.merge(readiness, on='fanduel_id', how='left', validate='one_to_one')
+    attached = int(readiness.history_eight_attached.sum())
+    usable_windows = int(readiness.history_eight_usable.sum())
+    recent_windows = int(readiness.history_eight_recent_usable.sum())
+    pooled_windows = int(readiness.history_pooled_usable.sum())
+    st.caption(f'{len(readiness)} eligible players · Eight-game history: {attached} attached, '
+               f'{usable_windows} usable, {recent_windows} also within seven days · '
+               f'{pooled_windows} usable four-game pooled component forecasts. '
+               'Research only; current scoring unchanged. Final pre-tip capture checks still apply.')
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
@@ -472,13 +561,21 @@ def render_slate(history_slot):
     archived_matchwiz = None
     archived_market_events = ()
     reference_status = {}
+    reference_boards = {}
+    reference_observed_at = checked_at
     if slate == now.date():
         with st.expander('Check all public projection reference boards'):
-            st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz and KeelStats together. Reference estimates are not extra independent scoring votes.')
+            st.caption('One refresh checks LineupExperts, FantasySportsEdge, Fantasy Team Advisors, MatchWiz, KeelStats and Edgehalla together. Reference estimates are not extra independent scoring votes.')
             now = datetime.now(ET)
             saved_reference = st.session_state.get('slate_reference_snapshot')
             if saved_reference is not None and saved_reference[0] == reference_key:
-                reference_boards, reference_status = saved_reference[1]
+                # Legacy session snapshots have no recorded observation time.
+                # Do not silently certify them as freshly retrieved.
+                if len(saved_reference) >= 3:
+                    reference_observed_at = saved_reference[2]
+                    reference_boards, reference_status = saved_reference[1]
+                else:
+                    reference_status = {name: 'Legacy snapshot lacks observation timestamp; recheck board' for name in saved_reference[1][1]}
                 reference_status = dict(reference_status)
                 for name, result in reference_boards.items():
                     rows, stamp = result[:2]
@@ -494,17 +591,21 @@ def render_slate(history_slot):
                         else:
                             matched_count = 0
                         reference_status[name] += f'; {matched_count} eligible matches; publication time unverified'
-                    elif name in ('MatchWiz', 'KeelStats'):
+                    elif name in ('MatchWiz', 'KeelStats', 'Edgehalla'):
                         from slate_research import compare_keelstats
                         compared = compare_keelstats(scored, rows)
                         if name == 'MatchWiz':
                             archived_matchwiz = rows
                             caveat = 'Publication time unverified; partial stats and projected roles only.'
+                        elif name == 'Edgehalla':
+                            caveat = ('Minutes and FanDuel points assume the player plays. Points are calculated '
+                                      'from projected box stats. Minutes and rate effects explain the gap '
+                                      'from model points. Publication time is unverified.')
                         else:
                             caveat = 'Returning-player impact omitted from redistribution; historical L10 and starts are not projections.'
                         st.caption(f'{name}: {caveat}')
                         reference_status[name] += f'; {len(compared)} eligible matches'
-                        if name == 'MatchWiz':
+                        if name in ('MatchWiz', 'Edgehalla'):
                             reference_status[name] += '; publication time unverified'
                         if not compared.empty:
                             st.dataframe(compared.drop(columns='fanduel_id'), hide_index=True)
@@ -638,7 +739,8 @@ def render_slate(history_slot):
             'independent_fd_points':'Independent FD', 'blended_fd_points':'Weighted blend FD', 'recent_mpg':'Recent minutes',
             'prelock_status':'Official status', 'prelock_starter':'Starter',
         }), hide_index=True)
-        st.download_button('Download reviewed pool', scored.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
+        st.caption('Manual export includes historical rate, role and matchup evidence. It is not a certified pre-tip archive receipt.')
+        st.download_button('Download reviewed pool', reviewed_export.to_csv(index=False), 'reviewed_pool.csv', mime='text/csv')
 
     st.header('3. Challenge and optimize')
     objective = 'adjusted_fd_points'
@@ -672,6 +774,15 @@ def render_slate(history_slot):
                 st.info('Late swap requires verified NBA tip times for every contest game.')
         elif not complete:
             st.info('NBA tip times could not be verified for every contest game. Confirm the contest lock in FanDuel.')
+    minutes_shadow = None
+    if complete and not started:
+        from nba_research_triage import large_minutes_disagreement_shadow
+        minutes_shadow = large_minutes_disagreement_shadow(scored, now)
+        if not minutes_shadow.empty:
+            with st.expander('Large minutes disagreements with corroborating evidence'):
+                st.caption('Experimental comparison of time-only and combined time and scoring-rate forecasts.')
+                st.dataframe(minutes_shadow.merge(scored[['fanduel_id', 'fanduel_name', 'team']], on='fanduel_id',
+                                                 validate='one_to_one').round(2), hide_index=True)
     if research_replay:
         st.caption('Historical replay. Generated lineups are for research.')
     if not started:
@@ -833,8 +944,22 @@ def render_slate(history_slot):
                     if can_reuse_candidates(result):
                         # Preserve a complete proven-optimal portfolio independently of changing
                         # research inputs. Never relabel its old projections as current.
+                        earlier = st.session_state.get('last_complete_portfolio')
+                        if earlier is not None and earlier[0] == prepared_key and len(earlier) == 4:
+                            from nba_checkpoint_changes import compare_portfolio_exposure
+                            try:
+                                exposure_changes = compare_portfolio_exposure(
+                                    earlier[3], scored, earlier[2], result[0])
+                            except ValueError as exc:
+                                st.session_state.pop('portfolio_exposure_review', None)
+                                st.caption(f'Portfolio comparison unavailable: {exc}')
+                            else:
+                                st.session_state['portfolio_exposure_review'] = (
+                                    prepared_key, candidate_key, exposure_changes)
+                        else:
+                            st.session_state.pop('portfolio_exposure_review', None)
                         st.session_state['last_complete_portfolio'] = (
-                            prepared_key, candidate_key, result[0].copy(deep=True))
+                            prepared_key, candidate_key, result[0].copy(deep=True), scored.copy(deep=True))
                 else:
                     st.warning('No legal candidate returned within the budget. Existing results were not replaced.')
         except ValueError as exc:
@@ -862,6 +987,42 @@ def render_slate(history_slot):
         if started:
             st.caption('Saved pre-tip candidates for this session.')
         show_results(scored, lineups, comparison, alternative)
+        exposure_review = st.session_state.get('portfolio_exposure_review')
+        if exposure_review is not None and exposure_review[:2] == (prepared_key, candidate_key):
+            with st.expander('Changes since previous complete portfolio'):
+                st.caption('Observed exposure changes and own-projection evidence, not proof of solver causality. A player may disappear even with an unchanged or rising projection because other combinations improve.')
+                if exposure_review[2].empty:
+                    st.info('No exposure changes across the four candidates.')
+                else:
+                    st.dataframe(exposure_review[2].round(3), hide_index=True)
+                    st.download_button('Download exposure change review', exposure_review[2].to_csv(index=False),
+                                       'portfolio_exposure_changes.csv', mime='text/csv')
+        if not started and not lineups.empty:
+            with st.expander('Historical minutes and production sensitivity'):
+                st.caption('Fixed legal candidates under the existing 20% historical challengers. Unsupported players keep reviewed scores; this is sensitivity only, not a new optimization or a validated scoring rule.')
+                try:
+                    from nba_window_shadow import candidate_window_sensitivity
+                    window_review=candidate_window_sensitivity(reviewed_export,lineups,slate)
+                    st.dataframe(window_review.round(3),hide_index=True)
+                    st.download_button('Download historical candidate sensitivity',window_review.to_csv(index=False),
+                                       file_name=f'{slate}-{contest_id}-candidate-history-sensitivity.csv',mime='text/csv')
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                    st.warning(f'Historical candidate sensitivity unavailable: {exc}')
+            with st.expander('Independent minutes and production sensitivity'):
+                st.caption('Each provider uses its own paired minutes and FD points, observed within six hours and after any recorded team confirmation. Unsupported players retain reviewed points; these are fixed roster sensitivities, not ranges or automatic selections.')
+                try:
+                    from nba_candidate_paired_sensitivity import candidate_paired_sensitivity
+                    paired_candidates=candidate_paired_sensitivity(scored,lineups,review_now,team_review=team_review)
+                    if paired_candidates.empty:
+                        st.info('No supported paired forecasts for these candidates.')
+                    else:
+                        st.dataframe(paired_candidates.round(3),hide_index=True)
+                        st.download_button('Download independent candidate sensitivity',
+                                           paired_candidates.to_csv(index=False),
+                                           file_name=f'{slate}-{contest_id}-candidate-paired-sensitivity.csv',mime='text/csv')
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                    st.warning(f'Independent candidate sensitivity unavailable: {exc}')
+
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
@@ -884,7 +1045,7 @@ def render_slate(history_slot):
                                      key='slate_simulation_stress')
                 if (use_archive or files) and st.button('Simulate current candidates', key='slate_simulation_run'):
                     try:
-                        from nba_simulation import simulate_reviewed_candidates
+                        from nba_simulation import candidate_range_receipt, simulate_reviewed_candidates
                         if use_archive:
                             with st.spinner('Verifying earlier private captures and final NBA box scores…'):
                                 training, coverage = load_prior_replays(history, slate, token)
@@ -896,7 +1057,7 @@ def render_slate(history_slot):
                                 raise ValueError('Combined replay files must be smaller than 8 MiB.')
                             training = pd.concat([pd.read_csv(file, dtype={'fanduel_id': str})
                                                   for file in files], ignore_index=True).drop_duplicates()
-                        from nba_source_accuracy import review_source_dates
+                        from nba_source_accuracy import compare_minutes_consensus, review_source_dates
                         source_summary = pd.DataFrame()
                         try:
                             source_details, source_daily, source_summary = review_source_dates(training, slate)
@@ -912,7 +1073,48 @@ def render_slate(history_slot):
                                                    mime='text/csv', key='slate_prior_source_accuracy')
                             else:
                                 st.caption('No qualifying frozen independent provider forecasts in these earlier replays.')
+                            from research_source_registry import predictive_coverage
+                            matched = {(row.provider, row.metric): row.paired_forecasts
+                                       for row in source_summary.itertuples()}
+                            st.caption('Predictive evidence across saved NBA sources')
+                            st.dataframe(predictive_coverage('NBA', matched=matched), hide_index=True, height=245)
+                        from nba_reference_accuracy import review_reference_dates
+                        try:
+                            ref_details, ref_daily, ref_summary, ref_coverage = review_reference_dates(training, slate)
+                        except ValueError as exc:
+                            st.warning(f'Reference accuracy review unavailable: {exc}')
+                        else:
+                            if not ref_coverage.empty:
+                                st.caption('Archived reference coverage: publication unknown, stale and post-news holds remain separate from dated predictive evidence.')
+                                st.dataframe(ref_coverage, hide_index=True)
+                            if not ref_summary.empty:
+                                st.caption('Reference-only predictive accuracy: matched played outcomes, equal date weighting. Not independent consensus or scoring weights.')
+                                st.dataframe(ref_summary.round(3), hide_index=True)
+                                st.download_button('Download reference accuracy details', ref_details.to_csv(index=False),
+                                                   file_name=f'{slate}-prior-reference-accuracy.csv', mime='text/csv',
+                                                   key='slate_prior_reference_accuracy')
+                        from nba_reference_accuracy import review_reference_components
+                        try:
+                            component_details, _, component_summary, component_coverage = review_reference_components(training, slate)
+                        except ValueError as exc:
+                            st.info(f'Component reference review unavailable: {exc}')
+                        else:
+                            with st.expander('Matched reference component accuracy'):
+                                st.caption('Exact common counting-stat support against DAILY and official played outcomes. Shared reviewed minutes compare both rates at the same workload; not independent reviewed box forecasts. Publication-unknown observations remain exploratory.')
+                                if not component_summary.empty:
+                                    st.dataframe(component_summary.round(3), hide_index=True)
+                                    st.download_button('Download matched component details', component_details.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-component-accuracy.csv', mime='text/csv',
+                                                       key='slate_prior_component_accuracy')
+                                else:
+                                    st.caption('No comparable archived component observations yet.')
+                                if not component_coverage.empty:
+                                    st.dataframe(component_coverage, hide_index=True)
                         if not source_summary.empty:
+                            consensus_review = compare_minutes_consensus(source_details)
+                            if not consensus_review.empty:
+                                st.caption('Historical minutes challenger for players with at least two verified forecasts. Includes a 50% blend with reviewed minutes.')
+                                st.dataframe(consensus_review.round(3), hide_index=True)
                             from nba_source_rate_accuracy import review_source_rates
                             rate_details, rate_daily, rate_summary = review_source_rates(training, slate, source_details=source_details)
                             if not rate_summary.empty:
@@ -926,18 +1128,59 @@ def render_slate(history_slot):
                                     st.download_button('Download fixed-minutes rate comparison', fixed_days.to_csv(index=False),
                                                        file_name=f'{slate}-prior-fixed-minutes-rate.csv', mime='text/csv',
                                                        key='slate_prior_fixed_rate_accuracy')
+                                from nba_source_rate_accuracy import fixed_rate_shrinkage_review
+                                shrink_days, shrink_summary = fixed_rate_shrinkage_review(rate_details)
+                                if not shrink_summary.empty:
+                                    st.caption('Experimental fixed-rate blends (0/20/40/100% independent): same minutes and matched players, equal date weight. No live scoring changes.')
+                                    st.dataframe(shrink_summary.round(3), hide_index=True)
+                                    st.download_button('Download dated rate blend sensitivity', shrink_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-rate-blends.csv', mime='text/csv',
+                                                       key='slate_prior_rate_blends')
+                                from nba_source_rate_accuracy import paired_rate_attribution
+                                attribution_days, attribution = paired_rate_attribution(rate_details)
+                                if not attribution.empty:
+                                    st.caption('Compare replacing playing time, scoring rate or both on the same verified player outcomes.')
+                                    st.dataframe(attribution.round(3), hide_index=True)
+                                    st.download_button('Download minutes and rate comparison', attribution_days.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-rate-attribution.csv', mime='text/csv',
+                                                       key='slate_prior_rate_attribution')
                                 st.download_button('Download provider production-rate accuracy', rate_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-rate-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_rate_accuracy')
+                        from nba_simulation import compare_residual_training
+                        residual_days, residual_summary = compare_residual_training(training, slate)
+                        if not residual_summary.empty:
+                            st.caption('Held-out residual calibration: same verified played samples and reviewed target projections. Lower 80% interval score is better; no automatic simulator changes.')
+                            st.dataframe(residual_summary.round(3), hide_index=True)
+                            st.download_button('Download residual calibration by date', residual_days.to_csv(index=False),
+                                               'residual_training_calibration.csv', mime='text/csv')
+                            rate_sim_days, rate_sim_summary = compare_residual_training(training, slate, rate_scale_comparison=True)
+                            if not rate_sim_summary.empty:
+                                st.caption('Test whether scoring-rate errors should expand or shrink with simulated minutes. Both methods train on the same earlier players.')
+                                st.dataframe(rate_sim_summary.round(3), hide_index=True)
+                                st.download_button('Download simulated rate-error comparison', rate_sim_days.to_csv(index=False),
+                                                   'simulated_rate_error_calibration.csv', mime='text/csv')
+                        else:
+                            st.caption('Need at least two distinct verified pre-tip dates for matched residual calibration.')
                         candidates = lineups[['lineup', 'fanduel_id']].copy()
                         candidates['lineup'] = candidates.lineup.map(lambda n: f'Lineup {n}')
                         if not alternative.empty:
                             candidates = pd.concat([candidates, alternative[['fanduel_id']].assign(
                                 lineup='Best distinct alternative')], ignore_index=True)
+                        simulation_seed = 42
                         ranges, pairs, count, outcomes = simulate_reviewed_candidates(
-                            training, scored, candidates, slate, return_draws=True)
+                            training, scored, candidates, slate, seed=simulation_seed, return_draws=True)
                         st.caption(f'{count} earlier verified played training rows; 4,000 shared outcome draws.')
                         st.dataframe(ranges, hide_index=True)
+                        captured = datetime.now(ET)
+                        refreshed = public_slate_schedule(slate) if slate == captured.date() else []
+                        started_now, schedule_complete = started_contest_games(refreshed, pool.game, captured)
+                        timing = ('at_or_after_cutoff' if started_now else
+                                  'before_scheduled_tip' if schedule_complete else 'schedule_unverified')
+                        receipt = candidate_range_receipt(
+                            scored, candidates, ranges, slate=slate, captured_at=captured,
+                            timing=timing, draws=len(outcomes.fd_points), seed=simulation_seed, training_players=count)
+                        render_candidate_range_download(receipt, slate)
                         if not pairs.empty:
                             st.dataframe(pairs, hide_index=True)
                         if stress:
@@ -963,19 +1206,47 @@ def render_slate(history_slot):
                     st.info('Sign in to use eligible private archives, or supply verified earlier replay exports. Generic historical results are not substitutes for frozen DAILY points.')
         if not started and not lineups.empty and lineups.lineup.nunique() >= 2:
             with st.expander('Experimental shared lineup-core challenge'):
-                st.caption('Find the strongest legal alternative with one heavily shared player omitted, and one joint omission. No scratch is assumed and no diversification rule is applied. Compare projection cost before considering a change.')
+                st.caption('Compare legal alternatives with heavily repeated players omitted. This is a sensitivity review, not a scratch prediction or exposure cap.')
+                repeated=lineups.groupby(['fanduel_id','player']).lineup.nunique().rename('Entries').reset_index()
+                st.dataframe(repeated.sort_values(['Entries','fanduel_id'],ascending=[False,True]).drop(columns='fanduel_id'),hide_index=True)
+                broader=st.checkbox('Review all heavily repeated players and shared-core pairs',value=True,key='expanded_core_review')
                 if st.button('Challenge shared lineup cores', key='shared_core_challenge'):
                     from nba_core_challenge import challenge_shared_core
                     try:
                         if not can_reuse_candidates((lineups, comparison, alternative)):
                             raise ValueError('Complete and verify the original candidate comparison first.')
+                        budget=45.0 if broader else 15.0
+                        if slate == datetime.now(ET).date():
+                            current=datetime.now(ET)
+                            fresh_schedule=public_slate_schedule(slate)
+                            current_started,current_complete=started_contest_games(fresh_schedule,pool.game,current)
+                            if current_started or not current_complete:
+                                raise ValueError('Verify the complete pre-tip contest schedule before starting this optional review.')
+                            matchups={matchup_key(game) for game in pool.game}
+                            tips=[pd.to_datetime(entry.get('gameTimeUtc'),utc=True,errors='coerce')
+                                  for entry in fresh_schedule
+                                  if matchup_key('@'.join(team_code((entry.get(side) or {}).get('teamTricode',''))
+                                            for side in ('awayTeam','homeTeam'))) in matchups]
+                            tips=[tip for tip in tips if pd.notna(tip) and tip.tz_convert(ET).date()==current.date()]
+                            if not tips:
+                                raise ValueError('Cannot verify first contest tip.')
+                            budget=min(budget,(min(tips)-current).total_seconds()-30)
+                            if budget<=0:
+                                raise ValueError('Too close to lock for optional core review.')
                         with st.spinner('Checking alternate roster cores…'):
                             core_report, core_alternatives = challenge_shared_core(
-                                scored,lineups,exclude_uncertain=exclude,objective_column=objective)
+                                scored,lineups,exclude_uncertain=exclude,objective_column=objective,
+                                expanded=broader,max_players=9 if broader else 3,time_budget_seconds=budget)
+                        if slate==datetime.now(ET).date():
+                            now_started,now_complete=started_contest_games(public_slate_schedule(slate),pool.game,datetime.now(ET))
+                            if now_started or not now_complete:
+                                raise ValueError('Game locks changed during review; do not use these pre-tip alternatives.')
                         if core_report.empty:
                             st.info('No players shared by multiple candidates.')
                         else:
                             st.dataframe(core_report.round(2),hide_index=True)
+                            if not core_report.Status.str.startswith('Certified').all():
+                                st.warning('Some planned exposure challenges were not certified; do not infer a strong numerical edge from an incomplete search.')
                         if not core_alternatives.empty:
                             st.dataframe(core_alternatives,hide_index=True)
                             st.download_button('Download alternative cores',core_alternatives.to_csv(index=False),
@@ -1135,11 +1406,28 @@ def render_slate(history_slot):
             except (ValueError, TypeError, KeyError) as exc:
                 st.warning(f'Ownership comparison unavailable: {exc}')
     hashes = (sha256(contest_bytes).hexdigest(), sha256(daily_bytes).hexdigest())
-    archive_pool = archive_ownership(scored, *archived_ownership) if archived_ownership else scored
-    archive_pool = freeze_research_features(archive_pool, recent_rates, recent_absences, matchup)
+    archive_pool = archive_ownership(reviewed_export, *archived_ownership) if archived_ownership else reviewed_export
     if archived_matchwiz is not None:
         from matchwiz_reference import freeze_matchwiz_reference
         archive_pool = freeze_matchwiz_reference(archive_pool, archived_matchwiz, slate, datetime.now(ET))
+    # Record the acquisition result even when no forecast survived matching.
+    # Review cutoff is not a provider's publication timestamp or a fresh fetch.
+    from nba_acquisition_receipt import acquisition_receipt
+    if minutes_shadow is not None:
+        columns = ['estimated_minutes', 'time_only_fd', 'time_and_rate_fd', 'capped_time_only_fd']
+        lookup = minutes_shadow.set_index('fanduel_id')
+        archive_pool = archive_pool.assign(shadow_large_minutes_policy='2026-11-26',
+                                           shadow_large_minutes_as_of=now.isoformat(),
+                                           **{'shadow_large_minutes_' + c: archive_pool.fanduel_id.map(lookup[c])
+                                              for c in columns})
+    archive_pool = archive_pool.assign(replay_source_acquisition_json=acquisition_receipt(
+        slate, checked_at, source_status, notes, projections))
+    from nba_reference_archive import freeze_reference_boards
+    archive_pool, reference_coverage = freeze_reference_boards(
+        archive_pool, reference_boards, reference_status, slate, reference_observed_at)
+    with st.expander('Archived reference-board coverage'):
+        st.caption('Matched numerical references preserved for later research. Unknown publication times and unavailable sources do not become accepted projections.')
+        st.dataframe(reference_coverage, hide_index=True)
     render_slate_archive(archive_pool, slate_date=slate, generated_lineups=lineups,
                          replay_inputs=(audit, hashes), market_events=archived_market_events)
 
@@ -1147,6 +1435,7 @@ def render_slate(history_slot):
 def render_site():
     st.set_page_config(page_title='DFS Model 2.0', layout='centered')
     st.title('DFS Model 2.0')
+    render_archive_receipt_check()
     view = st.radio('Workspace', ('Build a slate', 'Post-slate review', 'History and advanced'), horizontal=True,
                     label_visibility='collapsed', key='site_view')
     if view == 'Build a slate':

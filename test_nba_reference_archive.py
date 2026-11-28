@@ -1,0 +1,109 @@
+from datetime import date
+import json
+import pandas as pd
+from nba_reference_archive import freeze_reference_boards,FIELDS
+
+DAY=date(2026,11,27)
+NOW='2026-11-27T17:00:00Z'
+def fixture():
+    return pd.DataFrame([dict(fanduel_id='123-1',fanduel_name='Alpha Player',team='BOS',
+        game='BOS@NYK',eligible=True,salary=5000,projected_fd_points=20,
+        adjusted_fd_points=22,adjusted_minutes=24),
+        dict(fanduel_id='123-2',fanduel_name='Beta Player',team='NYK',
+        game='BOS@NYK',eligible=False,salary=5000,projected_fd_points=20,
+        adjusted_fd_points=22,adjusted_minutes=24)])
+def le():
+    return dict(player='Alpha Player',team='BOS',game='BOS@NYK',reference_fd=30)
+def test_unknown_publication_kept_as_reference_only_and_missing_distinguished():
+    p=fixture()
+    out,report=freeze_reference_boards(p,{'LineupExperts':([le()],None)},
+                                     {'LineupExperts':'Returned'},DAY,NOW)
+    pd.testing.assert_frame_equal(out[p.columns],p)
+    e=json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert e['fd_points']==30 and e['published_at'] is None and not e['scoring_accepted']
+    r=report.set_index('provider')
+    assert r.loc['LineupExperts','publication_unknown_players']==1
+    assert pd.isna(r.loc['MatchWiz','matched_players'])
+    assert json.loads(out[FIELDS[0]].iloc[1])==[]
+
+def test_duplicate_reference_identity_is_not_accepted():
+    out,r=freeze_reference_boards(fixture(),{'LineupExperts':([le(),le()],None)}, {},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])==[]
+    assert r.loc[r.provider.eq('LineupExperts'),'matched_players'].iloc[0]==0
+
+def test_future_stamp_rejected_and_stale_explicit():
+    p=fixture()
+    out,_=freeze_reference_boards(p,{'LineupExperts':([le()],'2026-11-27T18:00:00Z')},{},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])==[]
+    out,_=freeze_reference_boards(p,{'LineupExperts':([le()],'2026-11-27T08:00:00Z')},{},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])[0]['freshness']=='Dated but stale'
+
+def test_dated_board_exact_salary_and_match():
+    row=dict(player='Alpha Player',team='BOS',game='BOS@NYK',
+             reference_salary=5000,reference_points=25,reference_minutes=30)
+    p=fixture()
+    out,r=freeze_reference_boards(p,{'Fantasy Team Advisors':([row],'2026-11-27T16:00:00Z')},{},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])[0]['minutes']==30
+    assert r.loc[r.provider.eq('Fantasy Team Advisors'),'fresh_dated_players'].iloc[0]==1
+    row['reference_salary']=5100
+    out,_=freeze_reference_boards(p,{'Fantasy Team Advisors':([row],'2026-11-27T16:00:00Z')},{},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])==[]
+
+
+def test_lineupexperts_archive_preserves_the_explicit_fanduel_value():
+    row = dict(le(), reference_points=4)
+    out, _ = freeze_reference_boards(fixture(), {'LineupExperts': ([row], None)}, {}, DAY, NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])[0]['fd_points'] == 30
+
+
+def test_edgehalla_reference_archives_actual_observation_without_certifying_publication():
+    from slate_research import compare_keelstats, reference_review_queue
+
+    pool = fixture()
+    record = dict(le(), reference_minutes=31, reference_points=30, retrieved_at='2026-11-27T16:55:00Z',
+                  slate_date=DAY.isoformat(), conditional_on_playing=True)
+    board = {'Edgehalla': ([record], None)}
+    out, coverage = freeze_reference_boards(pool, board, {}, DAY, NOW)
+    evidence = json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert evidence['minutes'] == 31 and evidence['fd_points'] == 30 and evidence['conditional_on_playing']
+    assert evidence['observed_at'] == '2026-11-27T16:55:00+00:00'
+    assert evidence['published_at'] is None and evidence['scoring_accepted'] is False
+    assert coverage.set_index('provider').loc['Edgehalla','publication_unknown_players'] == 1
+    queue = reference_review_queue(pool, board, NOW)
+    assert list(queue['Minutes gap']) == [7]
+    assert list(queue['FD gap']) == [8]
+    assert list(queue['Published UTC']) == ['Unverified']
+    comparison = compare_keelstats(pool, [record]).iloc[0]
+    assert comparison.minutes_effect_fd + comparison.rate_effect_fd == 8
+    assert pd.isna(compare_keelstats(pool, [dict(record, reference_minutes=2)]).iloc[0].rate_effect_fd)
+    assert reference_review_queue(pool, board, '2026-11-27T23:00:00Z').empty
+    record['retrieved_at'] = '2026-11-27T17:01:00Z'
+    rejected, _ = freeze_reference_boards(pool, board, {}, DAY, NOW)
+    assert json.loads(rejected[FIELDS[0]].iloc[0]) == []
+
+
+def test_partial_components_preserved_without_full_score_or_missing_zero():
+    p=fixture()
+    record=dict(le(),reference_minutes=25,reference_pts=12,reference_reb=4,
+                reference_ast=3,reference_role='nonstarter listing',
+                retrieved_at='2026-11-27T16:55:00Z',slate_date=DAY.isoformat())
+    out,_=freeze_reference_boards(p,{'MatchWiz':([record],None)}, {},DAY,NOW)
+    e=json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert e['components']=={'points':12,'rebounds':4,'assists':3}
+    assert e['fd_points'] is None and e['published_at'] is None
+    assert e['reference_role']=='nonstarter listing'
+    assert e['observed_at']=='2026-11-27T16:55:00+00:00'
+    assert not e['scoring_accepted']
+    out,_=freeze_reference_boards(p,{'MatchWiz':([dict(record,retrieved_at='2026-11-27T17:01:00Z')],None)}, {},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])==[]
+
+
+def test_edgehalla_full_components_and_explicit_zero():
+    record=dict(le(),reference_minutes=25,reference_points=22.3,
+                reference_pts=12,reference_rebounds=4,reference_assists=3,
+                reference_steals=0,reference_blocks=1,reference_turnovers=2,
+                retrieved_at='2026-11-27T16:55:00Z',slate_date=DAY.isoformat())
+    out,_=freeze_reference_boards(fixture(),{'Edgehalla':([record],None)}, {},DAY,NOW)
+    e=json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert e['components']==dict(points=12,rebounds=4,assists=3,steals=0,blocks=1,turnovers=2)
+    assert e['fd_points']==22.3

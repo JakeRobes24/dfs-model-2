@@ -1,0 +1,598 @@
+{
+  "cohorts": [
+    {
+      "team": "LAR",
+      "player_ids": [
+        "137104-137967",
+        "137104-104433"
+      ],
+      "target_day": "2026-11-26",
+      "history": [
+        {
+          "date": "2026-09-27",
+          "opponent": "DEN",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 6,
+            "137104-104433": 15
+          }
+        },
+        {
+          "date": "2026-10-04",
+          "opponent": "PHI",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 5,
+            "137104-104433": 16
+          }
+        },
+        {
+          "date": "2026-10-12",
+          "opponent": "BUF",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 5,
+            "137104-104433": 16
+          }
+        },
+        {
+          "date": "2026-10-18",
+          "opponent": "ARI",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 9,
+            "137104-104433": 10
+          }
+        },
+        {
+          "date": "2026-10-25",
+          "opponent": "LV",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 17,
+            "137104-104433": 16
+          }
+        },
+        {
+          "date": "2026-11-01",
+          "opponent": "LAC",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 11,
+            "137104-104433": 16
+          }
+        },
+        {
+          "date": "2026-11-08",
+          "opponent": "WAS",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 11,
+            "137104-104433": 15
+          }
+        },
+        {
+          "date": "2026-11-15",
+          "opponent": "ARI",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 17,
+            "137104-104433": 12
+          }
+        },
+        {
+          "date": "2026-11-25",
+          "opponent": "GB",
+          "team": "LAR",
+          "season_type": "regular",
+          "source": "https://www.therams.com/team/players-roster/blake-corum/logs/ | https://www.therams.com/team/players-roster/kyren-williams/logs/",
+          "carries": {
+            "137104-137967": 32,
+            "137104-104433": 12
+          }
+        }
+      ]
+    },
+    {
+      "team": "DET",
+      "player_ids": [
+        "history:jahmyr-gibbs",
+        "history:david-montgomery"
+      ],
+      "target_day": "2026-01-05",
+      "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+      "history": [
+        {
+          "date": "2025-09-07",
+          "opponent": "GB",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 9,
+            "history:david-montgomery": 11
+          }
+        },
+        {
+          "date": "2025-09-14",
+          "opponent": "CHI",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 11
+          }
+        },
+        {
+          "date": "2025-09-22",
+          "opponent": "BAL",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 22,
+            "history:david-montgomery": 12
+          }
+        },
+        {
+          "date": "2025-09-28",
+          "opponent": "CLE",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 9
+          }
+        },
+        {
+          "date": "2025-10-05",
+          "opponent": "CIN",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 18
+          }
+        },
+        {
+          "date": "2025-10-12",
+          "opponent": "KC",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 4
+          }
+        },
+        {
+          "date": "2025-10-20",
+          "opponent": "TB",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 13
+          }
+        },
+        {
+          "date": "2025-11-02",
+          "opponent": "MIN",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 9,
+            "history:david-montgomery": 11
+          }
+        },
+        {
+          "date": "2025-11-09",
+          "opponent": "WAS",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 15
+          }
+        },
+        {
+          "date": "2025-11-16",
+          "opponent": "PHI",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 6
+          }
+        },
+        {
+          "date": "2025-11-23",
+          "opponent": "NYG",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 15,
+            "history:david-montgomery": 5
+          }
+        },
+        {
+          "date": "2025-11-27",
+          "opponent": "GB",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 20,
+            "history:david-montgomery": 8
+          }
+        },
+        {
+          "date": "2025-12-04",
+          "opponent": "DAL",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 12,
+            "history:david-montgomery": 6
+          }
+        },
+        {
+          "date": "2025-12-14",
+          "opponent": "LAR",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 13,
+            "history:david-montgomery": 7
+          }
+        },
+        {
+          "date": "2025-12-21",
+          "opponent": "PIT",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 7,
+            "history:david-montgomery": 4
+          }
+        },
+        {
+          "date": "2025-12-25",
+          "opponent": "MIN",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 17,
+            "history:david-montgomery": 10
+          }
+        },
+        {
+          "date": "2026-01-04",
+          "opponent": "CHI",
+          "team": "DET",
+          "season_type": "regular",
+          "source": "https://www.detroitlions.com/team/players-roster/jahmyr-gibbs/logs/2025/reg/ | https://www.nfl.com/players/david-montgomery/stats/logs/2025/",
+          "carries": {
+            "history:jahmyr-gibbs": 19,
+            "history:david-montgomery": 8
+          }
+        }
+      ]
+    },
+    {
+      "team": "CHI",
+      "player_ids": [
+        "history:d-andre-swift",
+        "history:kyle-monangai"
+      ],
+      "target_day": "2026-01-05",
+      "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+      "history": [
+        {
+          "date": "2025-09-14",
+          "opponent": "DET",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 12,
+            "history:kyle-monangai": 7
+          }
+        },
+        {
+          "date": "2025-09-21",
+          "opponent": "DAL",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 6
+          }
+        },
+        {
+          "date": "2025-09-28",
+          "opponent": "LV",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 14,
+            "history:kyle-monangai": 4
+          }
+        },
+        {
+          "date": "2025-10-13",
+          "opponent": "WAS",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 14,
+            "history:kyle-monangai": 5
+          }
+        },
+        {
+          "date": "2025-10-19",
+          "opponent": "NO",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 19,
+            "history:kyle-monangai": 13
+          }
+        },
+        {
+          "date": "2025-10-26",
+          "opponent": "BAL",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 11,
+            "history:kyle-monangai": 7
+          }
+        },
+        {
+          "date": "2025-11-09",
+          "opponent": "NYG",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 7
+          }
+        },
+        {
+          "date": "2025-11-16",
+          "opponent": "MIN",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 21,
+            "history:kyle-monangai": 12
+          }
+        },
+        {
+          "date": "2025-11-23",
+          "opponent": "PIT",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 8,
+            "history:kyle-monangai": 12
+          }
+        },
+        {
+          "date": "2025-11-28",
+          "opponent": "PHI",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 18,
+            "history:kyle-monangai": 22
+          }
+        },
+        {
+          "date": "2025-12-07",
+          "opponent": "GB",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 14
+          }
+        },
+        {
+          "date": "2025-12-14",
+          "opponent": "CLE",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 18,
+            "history:kyle-monangai": 11
+          }
+        },
+        {
+          "date": "2025-12-20",
+          "opponent": "GB",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 13,
+            "history:kyle-monangai": 9
+          }
+        },
+        {
+          "date": "2025-12-28",
+          "opponent": "SF",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 9,
+            "history:kyle-monangai": 8
+          }
+        },
+        {
+          "date": "2026-01-04",
+          "opponent": "DET",
+          "team": "CHI",
+          "season_type": "regular",
+          "source": "https://www.chicagobears.com/team/players-roster/d-andre-swift/logs/2025/reg/ | https://www.chicagobears.com/team/players-roster/kyle-monangai/logs/2025/reg/",
+          "carries": {
+            "history:d-andre-swift": 10,
+            "history:kyle-monangai": 6
+          }
+        }
+      ]
+    }
+  ],
+  "expected_by_pair": [
+    {
+      "team": "LAR",
+      "summary": [
+        {
+          "policy": "last",
+          "dates": 5,
+          "carry_mae": 4.5,
+          "volume_abs_error": 7.8,
+          "share_abs_error_pp": 9.381534644692541
+        },
+        {
+          "policy": "equal",
+          "dates": 5,
+          "carry_mae": 4.5,
+          "volume_abs_error": 7,
+          "share_abs_error_pp": 12.143186367871326
+        },
+        {
+          "policy": "recent",
+          "dates": 5,
+          "carry_mae": 4.37,
+          "volume_abs_error": 6.62,
+          "share_abs_error_pp": 12.078310284505848
+        }
+      ]
+    },
+    {
+      "team": "DET",
+      "summary": [
+        {
+          "policy": "last",
+          "dates": 13,
+          "carry_mae": 4.8076923076923075,
+          "volume_abs_error": 7.923076923076923,
+          "share_abs_error_pp": 11.44993894993895
+        },
+        {
+          "policy": "equal",
+          "dates": 13,
+          "carry_mae": 3.548076923076923,
+          "volume_abs_error": 5.865384615384615,
+          "share_abs_error_pp": 10.185358399896794
+        },
+        {
+          "policy": "recent",
+          "dates": 13,
+          "carry_mae": 3.7692307692307687,
+          "volume_abs_error": 6.16923076923077,
+          "share_abs_error_pp": 10.4117797061571
+        }
+      ]
+    },
+    {
+      "team": "CHI",
+      "summary": [
+        {
+          "policy": "last",
+          "dates": 11,
+          "carry_mae": 5.045454545454546,
+          "volume_abs_error": 9.363636363636363,
+          "share_abs_error_pp": 7.789980783602008
+        },
+        {
+          "policy": "equal",
+          "dates": 11,
+          "carry_mae": 4.284090909090909,
+          "volume_abs_error": 7.4772727272727275,
+          "share_abs_error_pp": 8.172342874821956
+        },
+        {
+          "policy": "recent",
+          "dates": 11,
+          "carry_mae": 4.3500000000000005,
+          "volume_abs_error": 7.590909090909091,
+          "share_abs_error_pp": 7.753536290342623
+        }
+      ]
+    }
+  ],
+  "expected_equal_pair_summary": [
+    {
+      "policy": "last",
+      "cohorts": 3,
+      "pair_game_dates": 29,
+      "equal_pair_carry_mae": 4.784382284382285,
+      "equal_pair_volume_abs_error": 8.362237762237763,
+      "equal_pair_share_abs_error_pp": 9.540484792744499
+    },
+    {
+      "policy": "equal",
+      "cohorts": 3,
+      "pair_game_dates": 29,
+      "equal_pair_carry_mae": 4.110722610722611,
+      "equal_pair_volume_abs_error": 6.780885780885781,
+      "equal_pair_share_abs_error_pp": 10.166962547530026
+    },
+    {
+      "policy": "recent",
+      "cohorts": 3,
+      "pair_game_dates": 29,
+      "equal_pair_carry_mae": 4.163076923076923,
+      "equal_pair_volume_abs_error": 6.7933799533799535,
+      "equal_pair_share_abs_error_pp": 10.08120876033519
+    }
+  ],
+  "limitations": [
+    "2025 DET and CHI historical regular-season logs independently retrieved November 26 2026; LAR reused verified prior archive. Historical labels for DET and CHI are not contest IDs.",
+    "Chicago September 8 and November 2 have blank carry fields for one player, excluded instead of assuming zero. Conditioning on jointly observed carry records means this does not model participation or forecast before knowing both played. Rolling windows use earlier paired observations, not necessarily consecutive team games.",
+    "Three selected backfields, overlapping training windows and overlapping match dates; not independent sample or prospective validation. Equal-pair weighting avoids longest cohort dominating. No DAILY forecasts, no automatic model selection, no scoring changes."
+  ]
+}

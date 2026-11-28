@@ -110,3 +110,24 @@ def test_started_or_final_schedule_status_blocks_pretip_capture_without_actual_s
     scheduled = capture_pool(pool,pd.DataFrame(),[dict(schedule,gameStatus=1)],
                              day,'2026-11-24T22:00:00Z',('a'*64,'b'*64))
     assert scheduled.replay_before_full_slate_tip.all()
+
+
+def test_replay_preserves_only_verified_played_components():
+    from slate_replay_capture import build_replay_rows
+    day=date(2026,11,20)
+    pool=pd.DataFrame({'fanduel_id':['123-1','123-2','123-3'],
+        'fanduel_name':['A','B','C'],'team':'BOS','game':'BOS@NYK',
+        'eligible':True,'prelock_status':'','prelock_starter':'',
+        'projected_minutes':21,'projected_fd_points':24,
+        'adjusted_minutes':22,'adjusted_fd_points':25})
+    schedule=[dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},
+                   gameTimeUtc='2026-11-21T00:00:00Z')]
+    saved=capture_pool(pool,pd.DataFrame(),schedule,day,'2026-11-20T23:00:00Z',('a'*64,'b'*64))
+    results=pd.DataFrame({'fanduel_id':pool.fanduel_id,'outcome':['Played','Did not play','Needs review'],
+        'nba_source':['NBA box','NBA box',''],'nba_actual_minutes':[24,None,None],
+        'nba_fd_points':[31,None,None],'recorded_fd_points':[31,None,None],
+        'nba_steals':[1,0,0],'nba_blocks':[0,0,0],'nba_turnovers':[2,0,0]})
+    out=build_replay_rows(saved,results,day)
+    assert out.loc[0,'nba_steals']==1 and out.loc[0,'nba_blocks']==0
+    assert out.loc[0,'nba_turnovers']==2
+    assert out.loc[1:,['nba_steals','nba_blocks','nba_turnovers']].isna().all().all()

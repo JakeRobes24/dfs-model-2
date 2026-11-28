@@ -29,3 +29,58 @@ def acquire_research(public_loader, rotation_loader, reference_loader=None):
             results[jobs[2][0]][0] if reference_loader is not None else None,
             {'elapsed_seconds': elapsed,
              'tasks': {name: seconds for name, (_, seconds) in results.items()}})
+
+
+def extended_history_safe(schedule, games, now, slate):
+    """Allow a new optional historical fetch only >=90 min before every tip.
+
+    Conservative scheduling guard, not a latency guarantee or lock certificate.
+    Ambiguous/incomplete schedules, other dates and started games fail closed.
+    Already acquired history can still be retained without a new network fetch.
+    """
+    import pandas as pd
+    from zoneinfo import ZoneInfo
+    from slate_import import matchup_key, team_code
+
+    stamp = pd.Timestamp(now)
+    if pd.isna(stamp) or stamp.tzinfo is None:
+        return False
+    if stamp.tz_convert(ZoneInfo('America/New_York')).date() != slate:
+        return False
+    games = list(games)
+    if any(not isinstance(g,str) or g.count('@')!=1 or any(not team_code(t) for t in g.split('@')) for g in games):
+        return False
+    expected = {matchup_key('@'.join(team_code(t) for t in g.split('@'))) for g in games}
+    if not expected or any(not g or len(set(g.split('/')))!=2 or not all(g.split('/')) for g in expected):
+        return False
+    tips = {}
+    for entry in schedule:
+        if not isinstance(entry,dict):
+            continue
+        away, home = (team_code((entry.get(side) or {}).get('teamTricode',''))
+                      for side in ('awayTeam','homeTeam'))
+        if not away or not home or away==home:
+            continue
+        key = matchup_key(f'{away}@{home}')
+        if key not in expected:
+            continue
+        if key in tips or entry.get('gameStatus') not in (1,'1'):
+            return False
+        try:
+            tip = pd.Timestamp(entry.get('gameTimeUtc'))
+        except (TypeError,ValueError):
+            return False
+        if pd.isna(tip) or tip.tzinfo is None or tip.tz_convert('America/New_York').date()!=slate:
+            return False
+        if tip-stamp < pd.Timedelta(minutes=90):
+            return False
+        actual = entry.get('actualStartTimeUTC')
+        if actual:
+            try:
+                started=pd.Timestamp(actual)
+            except (TypeError,ValueError):
+                return False
+            if pd.isna(started) or started.tzinfo is None or started<=stamp:
+                return False
+        tips[key]=tip
+    return set(tips)==expected

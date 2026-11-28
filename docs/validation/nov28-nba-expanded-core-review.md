@@ -1,0 +1,15 @@
+# Nov28 NBA-first development: expanded repeated-player challenge
+
+Prior checkpoint 24a760c67b22fceada97186e661827494b39bce1 passed NBA 46145026304, NFL 46145026413, full 46145026316. Preserve NBA-first priority, all 48 sources and original validated scoring. No discretionary NFL expansion.
+
+## Exact historical coverage check
+
+Private history 8549d752ae253e972d09f160dfa6d5cee08be9a5, daily-lineups/2026-11-27/137257-post-slate-entries-audit.json blob 9963c30f7bfafe2015bee7b3e6144409d4b83d8e. Four numbered entered rosters, excluding personal entry; nine unique IDs each, same frozen final score per repeated player; 17 unique players. Six players appeared in at least three entries: McDaniels, Jenkins, Sharpe (all four), Maxey, Huerter, Joe (three each). The existing default three-target/one-pair solver would request four scenarios; the expanded review requests six singles and three all-entry pairs, nine scenarios. This is a coverage check, not a new full optimization. See nov28-full-pool-exposure-challenge.md for earlier verified 20 solves and shared-draw results. Those results do not support mandatory exposure reduction or new mean-loss thresholds.
+
+## Implementation
+
+nba_core_challenge.py now supports expanded=True, up to nine targets, using existing exposure_challenge_plan to select players appearing in at least max(2, entries-1) lineups and all pairs among selected all-entry core players. Earlier three-target behavior stays the default API for existing callers and core-expansion experiments. All omitted-player alternatives are subject to existing exact roster legality, eligibility, solver optimality and team checks. Retain original candidates; novel certified alternatives exported; explicitly disclose target-limited and time-limited or uncertified scenarios. Finite scenario budget does not guarantee complete optimal search.
+
+Draft site UI shows exposure counts even without ownership forecasts in the pre-tip core review. Expanded mode defaults enabled in that optional review, requires deliberate button press, with up to 45 seconds (15 for narrow mode) and a 30-second buffer to verified first contest tip; today's full schedule required before starting, check again afterward. No forced rerun, automatic selection, score/weight adjustment, or additional network requests for the solver except existing schedule checks. These operating budgets are defaults selected for responsiveness, not measured guarantees. Historical scope remains available for research. No common-draw simulation of the newly generated alternatives automatically added in this change; use existing shared-draw comparison separately before claiming a portfolio edge.
+
+Added two synthetic scope/failure-disclosure regressions; existing narrow-mode tests remain. Actual new code regression pending; hosted runtime unverified. No today's contest inputs or new results. This upgrade strengthens the breadth of candidate challenges, not predictive accuracy itself. Next NBA emphasis: actionable rate/workload evidence and verified current full-pool research, rather than further optional UI expansion. Production unchanged.

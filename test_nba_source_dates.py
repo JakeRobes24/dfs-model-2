@@ -111,3 +111,23 @@ def test_rotogrinders_fresh_previous_evening_requires_exact_current_pre_tip_sche
         with patch('slate_research.fetch', return_value=invalid.encode()):
             with pytest.raises(ValueError):
                 rotogrinders_research(now.date(), now)
+
+
+def test_minutes_challenger_uses_identical_players_and_excludes_duplicate_families():
+    import pandas as pd
+
+    from nba_source_accuracy import compare_minutes_consensus
+
+    def forecast(pid, provider, minutes, date='2026-11-24'):
+        return dict(slate_date=date, fanduel_id=pid, provider=provider, metric='Minutes',
+                    forecast=minutes, actual=30, reviewed=34, daily=40)
+
+    forecasts = pd.DataFrame([
+        forecast('a', 'x', 27), forecast('a', 'y', 31), forecast('b', 'x', 30),
+        forecast('a', 'x', 30, '2026-11-25'), forecast('a', 'x', 33, '2026-11-25'),
+        forecast('a', 'y', 35, '2026-11-25'),
+    ])
+    result = compare_minutes_consensus(forecasts).iloc[0]
+    assert len(compare_minutes_consensus(forecasts)) == 1
+    assert (result.players, result.daily_mae, result.reviewed_mae) == (1, 10, 4)
+    assert (result.provider_median_mae, result.half_consensus_mae) == (1, 1.5)

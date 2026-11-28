@@ -16,7 +16,7 @@ from nba_player_decision_audit import audit_player_decisions, summarize_player_d
 from slate_import import game_code, matchup_key
 from slate_replay_capture import build_replay_rows
 from slate_research import ET
-from slate_results import SOURCE_ERRORS, collect_final_boxes, compare_results
+from slate_results import SOURCE_ERRORS, collect_final_boxes, compare_results, lineup_review
 
 
 @st.cache_data(ttl=300, max_entries=12, show_spinner=False)
@@ -30,32 +30,6 @@ def recorded_scores(history, slate):
     rows = history.loc[history.slate_date.eq(slate.isoformat()), ['fanduel_id', 'actual_fd_points']]
     scores = rows.dropna().drop_duplicates()
     return scores.loc[~scores.fanduel_id.duplicated(keep=False)].set_index('fanduel_id').actual_fd_points
-
-
-def lineup_review(lineups, results):
-    if lineups is None or not {'lineup', 'fanduel_id'} <= set(lineups):
-        return pd.DataFrame()
-    joined = lineups[['lineup', 'fanduel_id']].merge(results, on='fanduel_id', how='left', validate='many_to_one')
-    joined['result_for_total'] = joined.nba_fd_points.where(joined.outcome.eq('Played')).mask(
-        joined.outcome.eq('Did not play'), 0)
-    scores = []
-    for label, players in joined.groupby('lineup', sort=False):
-        if len(players) != 9 or players.fanduel_id.nunique() != 9:
-            continue
-        daily = players.projected_fd_points.sum(min_count=9)
-        adjusted = players.adjusted_fd_points.sum(min_count=9)
-        actual = players.result_for_total.sum(min_count=9)
-        paired = pd.notna(daily) and pd.notna(adjusted) and pd.notna(actual)
-        scores.append({
-            'Lineup': label,
-            'DAILY projection': daily,
-            'Pre-lock projection': adjusted,
-            'NBA box-score FD': actual,
-            'DAILY absolute error': abs(daily - actual) if paired else None,
-            'Pre-lock absolute error': abs(adjusted - actual) if paired else None,
-            'Players still unresolved': int(players.result_for_total.isna().sum()),
-        })
-    return pd.DataFrame(scores)
 
 
 def new_actuals(results, history, slate):
@@ -118,6 +92,20 @@ def render_post_slate():
                     st.dataframe(details.round(2), hide_index=True)
                     st.download_button('Download multi-slate policy evaluation', aggregate.to_csv(index=False),
                                        'shadow_multislate_summary.csv', mime='text/csv')
+                    from nba_window_shadow import compare_frozen_history_windows, FROZEN_FIELDS
+                    cohort_reports=[]
+                    for day, packet in earlier.groupby('slate_date', sort=True):
+                        if set(FROZEN_FIELDS)<=set(packet):
+                            cohort=compare_frozen_history_windows(packet,by_projected_minutes=True)
+                            if 'Eligible pre-tip players' in cohort:
+                                cohort_reports.append(cohort.assign(Date=day))
+                    if cohort_reports:
+                        by_minutes=pd.concat(cohort_reports,ignore_index=True)
+                        st.caption('Historical-window challengers by projected minutes. Frozen support counts all eligible players with verified recorded forecasts; paired error counts only verified played outcomes. Missing support is not zero production.')
+                        st.dataframe(by_minutes.round(3),hide_index=True)
+                        st.download_button('Download workload cohort evaluation',by_minutes.to_csv(index=False),
+                                           'shadow_workload_cohorts.csv',mime='text/csv')
+
             except SOURCE_ERRORS:
                 st.warning('Multi-slate evidence could not be verified. No policy was changed.')
 

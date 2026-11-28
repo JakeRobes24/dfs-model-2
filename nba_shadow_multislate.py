@@ -3,8 +3,15 @@ from datetime import date
 import numpy as np
 import pandas as pd
 from nba_shadow_research import (compare_shadow_forecasts, FEATURES, POLICIES,
-                                 compare_frozen_opportunity, OPPORTUNITY_POLICIES)
+                                 compare_frozen_opportunity, OPPORTUNITY_POLICIES,
+                                 compare_frozen_history_rate, HISTORY_RATE_POLICY,
+                                 compare_frozen_component_rate, COMPONENT_POLICY,
+                                 compare_exact_component_capture, COMPONENT_CAPTURE_FIELDS)
 from nba_combined_scoring_shadow import compare_frozen_combined, compare_frozen_paired_rate, PAIRED_RATE_POLICY
+
+from nba_research_triage import compare_frozen_large_minutes, LARGE_MINUTES_POLICIES, LARGE_MINUTES_CAPTURE_FIELDS
+from nba_consensus_history import compare_consensus_history, POLICIES as CONSENSUS_HISTORY_POLICIES
+from nba_window_shadow import compare_frozen_history_windows, POLICIES as HISTORY_WINDOW_POLICIES, FROZEN_FIELDS as HISTORY_WINDOW_FIELDS
 
 # The fixed policy was introduced on this date; earlier replays are exploratory.
 POLICY_DECLARED = date(2026, 11, 24)
@@ -58,11 +65,30 @@ def compare_across_slates(replays):
         if report.empty:
             report = pd.DataFrame({'Policy': POLICIES, 'Paired players': 0})
         report = pd.concat([report, compare_frozen_combined(frame), compare_frozen_paired_rate(frame),
-                            compare_frozen_opportunity(frame)], ignore_index=True)
+                            compare_frozen_opportunity(frame), compare_frozen_history_rate(frame), compare_frozen_component_rate(frame)], ignore_index=True)
+        if set(LARGE_MINUTES_CAPTURE_FIELDS) <= set(frame):
+            report = pd.concat([report, compare_frozen_large_minutes(frame)], ignore_index=True)
+        if {'projection_sources_json','replay_evidence_json','shadow_recent_fppm'} <= set(frame):
+            report = pd.concat([report, compare_consensus_history(frame, require_frozen=day > date(2026,11,26))], ignore_index=True)
+        if set(HISTORY_WINDOW_FIELDS) <= set(frame):
+            report = pd.concat([report, compare_frozen_history_windows(frame)], ignore_index=True)
+        # Separate reconstructed component policy from exact saved forecasts.
+        if day >= date(2026,11,28) or set(COMPONENT_CAPTURE_FIELDS)<=set(frame):
+            report = pd.concat([report, compare_exact_component_capture(frame)], ignore_index=True)
+        from nba_pooled_history_shadow import compare_frozen_pooled_history, FROZEN_FIELDS as POOLED_HISTORY_FIELDS, POLICIES as POOLED_POLICIES
+        if day >= date(2026,11,28) or set(POOLED_HISTORY_FIELDS)<=set(frame):
+            report = pd.concat([report, compare_frozen_pooled_history(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):
             report.loc[report.Policy.isin((PAIRED_RATE_POLICY, *OPPORTUNITY_POLICIES)), 'Period'] = 'Exploratory'
+        if day <= date(2026,11,26):
+            report.loc[report.Policy.isin((HISTORY_RATE_POLICY, COMPONENT_POLICY, *LARGE_MINUTES_POLICIES, *CONSENSUS_HISTORY_POLICIES, *HISTORY_WINDOW_POLICIES)), 'Period'] = 'Exploratory'
+        report.loc[report.Policy.eq(COMPONENT_POLICY), 'Period'] = 'Exploratory'
+        if day < date(2026,11,28):
+            report.loc[report.Policy.eq(COMPONENT_POLICY+' — exact capture'), 'Period'] = 'Exploratory'
+        if day < date(2026,11,28):
+            report.loc[report.Policy.isin(POOLED_POLICIES),'Period'] = 'Exploratory'
         reports.append(report)
     daily = pd.concat(reports, ignore_index=True)
     for col in ['Eligible played with baseline', 'DAILY MAE', 'Reviewed MAE', 'Shadow MAE',

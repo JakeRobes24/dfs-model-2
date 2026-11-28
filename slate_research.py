@@ -3,6 +3,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
+from statistics import median
 import json
 import re
 from urllib.error import HTTPError, URLError
@@ -391,7 +392,11 @@ def propsims_distribution(row, median):
 
 
 def propsims_research(slate, as_of):
-    soup = BeautifulSoup(fetch_paired_provider(PROPSIMS), 'html.parser')
+    return _parse_propsims_board(fetch_paired_provider(PROPSIMS), slate, as_of)
+
+
+def _parse_propsims_board(raw, slate, as_of, *, next_day_preview=False):
+    soup = BeautifulSoup(raw, 'html.parser')
     heading = soup.select_one('h1')
     clock = soup.select_one('.updstamp time[datetime]')
     if heading is None or clock is None or not heading.get_text(strip=True).endswith(
@@ -404,7 +409,9 @@ def propsims_research(slate, as_of):
     if published.tzinfo is None or as_of.tzinfo is None:
         raise ValueError('PropSims requires timezone-aware publication and review times')
     stamp = published.astimezone(ET)
-    if (slate != as_of.astimezone(ET).date()
+    review_day = as_of.astimezone(ET).date()
+    expected_day = review_day + timedelta(days=1) if next_day_preview else review_day
+    if (slate != expected_day
             or stamp.date() not in {slate, slate - timedelta(days=1)}
             or not as_of - timedelta(hours=6) <= stamp <= as_of):
         raise ValueError('PropSims projections are stale or not for the current slate')
@@ -739,6 +746,8 @@ def reference_review_queue(scored, boards, as_of):
     Each row is one provider/player match. Unknown publication time is explicit.
     Old dated boards are excluded from the actionable queue. Scores are untouched.
     """
+    from research_source_registry import NBA_REFERENCE_BOARDS, NBA_MINUTES_REFERENCE_BOARDS
+
     columns = ['fanduel_id', 'Player', 'Salary', 'Provider', 'Published UTC',
                'DAILY FD', 'Model FD', 'Reference FD', 'FD gap',
                'Model minutes', 'Reference minutes', 'Minutes gap', 'Review']
@@ -748,13 +757,13 @@ def reference_review_queue(scored, boards, as_of):
     if not scored.fanduel_id.is_unique:
         raise ValueError('Reference review requires unique contest IDs')
     rows = []
-    for name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats'):
+    for name in NBA_REFERENCE_BOARDS:
         if name not in boards:
             continue
         records, stamp = boards[name][:2]
         published = None if stamp is None else pd.Timestamp(stamp)
         if published is None:
-            if name not in ('LineupExperts', 'MatchWiz'):
+            if name not in ('LineupExperts', 'MatchWiz', 'Edgehalla'):
                 continue
         elif (pd.isna(published) or published.tzinfo is None
               or not cutoff - pd.Timedelta(hours=6) <= published <= cutoff):
@@ -766,8 +775,8 @@ def reference_review_queue(scored, boards, as_of):
             compared = scored.loc[scored.eligible].merge(
                 matched.drop_duplicates('fanduel_id', keep=False)[['fanduel_id', 'reference_fd']],
                 on='fanduel_id', validate='one_to_one').rename(columns={'reference_fd':'reference_points'})
-        elif name in ('MatchWiz', 'KeelStats'):
-            if name == 'MatchWiz':
+        elif name in NBA_MINUTES_REFERENCE_BOARDS:
+            if name in ('MatchWiz', 'Edgehalla'):
                 # Retrieval timestamps are not publication timestamps.
                 def recent(record):
                     try:
@@ -781,7 +790,9 @@ def reference_review_queue(scored, boards, as_of):
             compared = compare_keelstats(scored, records)
             if compared.empty:
                 continue
-            compared = compared.merge(scored[['fanduel_id','salary','projected_fd_points','adjusted_fd_points']],
+            model_columns = ['salary', 'projected_fd_points', 'adjusted_fd_points']
+            missing = [column for column in model_columns if column not in compared]
+            compared = compared.merge(scored[['fanduel_id', *missing]],
                                       on='fanduel_id', validate='one_to_one')
         else:
             compared = compare_reference(scored, records)
@@ -883,21 +894,60 @@ def compare_keelstats(scored, records):
     compared = scored.loc[scored.eligible, ['fanduel_id','fanduel_name','adjusted_minutes']].merge(
         matches.drop_duplicates('fanduel_id',keep=False), on='fanduel_id', validate='one_to_one')
     compared['minutes_gap'] = (compared.reference_minutes - compared.adjusted_minutes).round(2)
+    if 'reference_points' in compared:
+        compared = compared.merge(scored[['fanduel_id', 'adjusted_fd_points']],
+                                  on='fanduel_id', validate='one_to_one')
+        model_minutes = compared.adjusted_minutes.where(compared.adjusted_minutes.between(10, 48))
+        source_minutes = compared.reference_minutes.where(compared.reference_minutes.between(10, 48))
+        model_points = compared.adjusted_fd_points.where(compared.adjusted_fd_points.gt(0))
+        source_points = compared.reference_points.where(compared.reference_points.gt(0))
+        model_rate = model_points / model_minutes
+        source_rate = source_points / source_minutes
+        # Split the interaction evenly so the two effects sum to the points gap.
+        compared['model_fd_per_min'] = model_rate.round(3)
+        compared['reference_fd_per_min'] = source_rate.round(3)
+        compared['minutes_effect_fd'] = ((source_minutes-model_minutes)*(model_rate+source_rate)/2).round(2)
+        compared['rate_effect_fd'] = ((source_rate-model_rate)*(model_minutes+source_minutes)/2).round(2)
     return compared.sort_values('minutes_gap',key=lambda col:col.abs(),ascending=False)
+
+
+def edgehalla_slate_reference(slate, contest_games):
+    """Capture conditional minutes for the upcoming games on this contest."""
+    from nba_edgehalla_reference import URL, conditional_fd_points, edgehalla_reference
+
+    scope = {matchup_key(game) for game in contest_games}
+    schedule = [game for game in games_for_date(slate) if matchup_key(
+        f"{game['awayTeam']['teamTricode']}@{game['homeTeam']['teamTricode']}"
+    ) in scope]
+    raw = fetch(URL)
+    observed_at = datetime.now(ET)
+    if observed_at.date() != slate:
+        raise ValueError('Edgehalla reference observation date does not match the contest')
+    forecasts = edgehalla_reference(raw, slate, observed_at, schedule)
+    return ([dict(player=row['player'], team=row['team'], game=row['game'],
+                  reference_minutes=row['minutes'], reference_points=conditional_fd_points(row),
+                  retrieved_at=row['observed_at'],
+                  slate_date=slate.isoformat(), conditional_on_playing=True,
+                  reference_pts=row['points'],
+                  **{'reference_'+k: row[k] for k in ('rebounds','assists','steals','blocks','turnovers')})
+             for row in forecasts], None)
 
 
 def get_reference_research(slate, as_of, contest_games):
     """Refresh public reference boards independently, without accepting scoring inputs."""
     from matchwiz_reference import matchwiz_reference
+    from research_source_registry import NBA_REFERENCE_BOARDS
+
     if slate != as_of.astimezone(ET).date():
         return {}, {name: 'Historical slate: current reference not checked' for name in
-                    ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'MatchWiz', 'KeelStats')}
+                    NBA_REFERENCE_BOARDS}
     jobs = (
         ('LineupExperts', lambda: (lineupexperts_reference(slate, slate), None)),
         ('FantasySportsEdge', lambda: fantasysportsedge_reference(slate, as_of)),
         ('Fantasy Team Advisors', lambda: fta_nba_reference(slate, as_of, contest_games)),
         ('MatchWiz', lambda: (matchwiz_reference(slate, as_of), None)),
         ('KeelStats', lambda: keelstats_reference(slate, as_of)),
+        ('Edgehalla', lambda: edgehalla_slate_reference(slate, contest_games)),
     )
     boards, status = {}, {}
     with ThreadPoolExecutor(max_workers=len(jobs)) as workers:
@@ -910,9 +960,32 @@ def get_reference_research(slate, as_of, contest_games):
                     continue
                 boards[name] = result
                 status[name] = f'Reference checked: {len(result[0])} returned rows; not scoring evidence'
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
-                status[name] = 'Reference unavailable for this slate or source format changed'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+                status[name] = 'Reference ' + public_source_failure(exc)
     return boards, status
+
+
+def public_source_failure(error):
+    """Safe diagnostic category; never expose raw exceptions or credentials."""
+    if isinstance(error, HTTPError):
+        if error.code in (401, 403):
+            return 'Unavailable: access denied'
+        if error.code == 429:
+            return 'Unavailable: rate limited'
+        if 500 <= error.code <= 599:
+            return 'Unavailable: provider server error'
+        return 'Unavailable: HTTP error'
+    if isinstance(error, (TimeoutError, ConnectionError, URLError, OSError)):
+        return 'Unavailable: transport error'
+    if isinstance(error, ValueError):
+        reason = str(error).lower()
+        if any(word in reason for word in ('stale', 'different slate', 'current slate', 'date does not match')):
+            return 'Unavailable: freshness or slate date mismatch'
+        if any(word in reason for word in ('timestamp', 'update time', 'publication', 'timezone-aware', 'slate date unavailable')):
+            return 'Unavailable: timestamp or date evidence missing'
+        if any(word in reason for word in ('no verifiable', 'table unavailable', 'no public')):
+            return 'Unavailable: no verifiable public rows'
+    return 'Unavailable: data or source format could not be validated'
 
 
 def get_public_research(slate, as_of):
@@ -929,8 +1002,8 @@ def get_public_research(slate, as_of):
         for (label, _, empty), future in zip(jobs, futures):
             try:
                 data, detail = future.result()
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
-                data, detail = empty, 'Unavailable for this slate or source format changed'
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as error:
+                data, detail = empty, public_source_failure(error)
             results.append(data)
             status.append((label, detail))
     injuries, starters, projections, *additional = results
@@ -1135,7 +1208,8 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     candidates = candidates.loc[~conflicts].drop_duplicates(groups)
     by_id = candidates.groupby('fanduel_id').minutes.apply(list).to_dict()
     result['independent_minutes'] = result.fanduel_id.map(
-        {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
+        # Use the same order-independent center regardless of provider return order.
+        {key: float(median(values)) for key, values in by_id.items() if max(values) - min(values) <= 3}
     )
     minutes_agree = ((result.independent_minutes - historical).abs().le(3)
                      & (result.independent_minutes - baseline).abs().between(2, 6))

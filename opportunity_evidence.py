@@ -22,6 +22,24 @@ def complete_stat_rows(rows, weights):
                     and 0 <= row[stat] <= 150 for stat in weights)]
 
 
+def component_rate_evidence(rows):
+    """Joint complete-stat sample: net scoring, peripheral FD, opportunity proxy.
+    
+    Opportunities are FGA + .44 FTA + turnovers, NOT official usage percentage.
+    Never divide rates derived from different sets of games.
+    """
+    complete = complete_stat_rows(rows, FD_WEIGHTS | OPPORTUNITY_WEIGHTS)
+    minutes = sum(r['minutes'] for r in complete)
+    opportunities = sum(sum(r[k]*w for k,w in OPPORTUNITY_WEIGHTS.items()) for r in complete)
+    net = sum(r['points']-r['turnovers'] for r in complete)
+    peripheral = sum(sum(r[k]*w for k,w in FD_WEIGHTS.items()
+                         if k not in ('points','turnovers')) for r in complete)
+    return dict(games=len(complete), minutes=minutes,
+                opportunities_per_minute=opportunities/minutes if minutes else None,
+                net_per_opportunity=net/opportunities if opportunities else None,
+                peripheral_per_minute=peripheral/minutes if minutes else None)
+
+
 def rate_comparison(present, absent, weights):
     """Report observed and shrunk gaps with separate complete-stat denominators."""
     left, right = (complete_stat_rows(rows, weights) for rows in (present, absent))
@@ -93,6 +111,13 @@ def teammate_participation(row, teammate):
     return 'played' if played and not absent else 'absent' if absent and not played else 'unknown'
 
 
+def box_sources(rows):
+    # Preserve both official production and explicit secondary role evidence.
+    return ' · '.join(sorted({source for r in rows
+                             for source in (r.get('source'),r.get('historical_role_source'))
+                             if isinstance(source,str) and source.strip()}))
+
+
 def opportunity_evidence(pool, rotations, slate):
     logs_by_player = defaultdict(list)
     for row in rotations:
@@ -123,7 +148,12 @@ def opportunity_evidence(pool, rotations, slate):
         start_logs = [row for row in logs if row.get('started') is True]
         role_fd = rate_comparison(bench_logs, start_logs, FD_WEIGHTS)
         role_opp = rate_comparison(bench_logs, start_logs, OPPORTUNITY_WEIGHTS)
+        component_samples = {}
+        for prefix, group in [('recent', logs), ('starter', start_logs), ('bench', bench_logs)]:
+            component_samples.update({f'component_{prefix}_{key}': value
+                                      for key,value in component_rate_evidence(group).items()})
         summaries.append({
+            **component_samples,
             'fanduel_id': player.fanduel_id, 'Player': player.fanduel_name, 'Team': player.team,
             'Games observed': len(logs), 'Known starts': sum(starts_known) if starts_known else None,
             'Games with starter status': len(starts_known), 'Last played': logs[-1]['game_date'],
@@ -151,7 +181,7 @@ def opportunity_evidence(pool, rotations, slate):
                                                          for stat in FD_WEIGHTS)),
             'Shot/FT/turnover opportunities per minute': stat_rate(
                 logs, {'fieldGoalsAttempted': 1, 'freeThrowsAttempted': .44, 'turnovers': 1}),
-            'Box-score sources': ' · '.join(sorted({row['source'] for row in logs})),
+            'Box-score sources': box_sources(logs),
         })
         for teammate, display in unavailable[player.team]:
             with_player = [row for row in logs if teammate_participation(row, teammate) == 'played']
@@ -219,6 +249,6 @@ def opportunity_evidence(pool, rotations, slate):
                 'Current role FD/min without': current_fd['without_rate'] if current_fd['sufficient'] else None,
                 'Current role complete FD games per side': min(current_fd['with_games'], current_fd['without_games']),
                 'Current role complete FD minutes per side': min(current_fd['with_minutes'], current_fd['without_minutes']),
-                'Box-score sources': ' · '.join(sorted({row['source'] for row in with_player + without_player})),
+                'Box-score sources': box_sources(with_player + without_player),
             })
     return pd.DataFrame(summaries), pd.DataFrame(splits)

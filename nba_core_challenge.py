@@ -8,7 +8,8 @@ from nba_historical_field import _rosters
 
 
 def challenge_shared_core(pool, baseline, *, max_players=3, time_budget_seconds=15,
-                          exclude_uncertain=False, objective_column='adjusted_fd_points'):
+                          exclude_uncertain=False, objective_column='adjusted_fd_points',
+                          expanded=False):
     """Compare best legal roster with selected heavily shared players omitted.
 
     Choose targets from the existing portfolio, before seeing outcomes.
@@ -16,10 +17,10 @@ def challenge_shared_core(pool, baseline, *, max_players=3, time_budget_seconds=
     cores are. No injured-player claim or mandatory exposure rule is implied.
     An incomplete or uncertified solve is reported rather than accepted.
     """
-    if (type(max_players) is not int or not 1 <= max_players <= 3
+    if (type(max_players) is not int or not 1 <= max_players <= (9 if expanded else 3)
             or isinstance(time_budget_seconds,bool) or not isfinite(time_budget_seconds)
             or not 0 < time_budget_seconds <= 45):
-        raise ValueError('Use a bounded core challenge budget and one to three targets.')
+        raise ValueError('Use a bounded core challenge budget and one to three targets (up to nine in expanded review).')
     if pool.fanduel_id.isna().any() or not pool.fanduel_id.is_unique:
         raise ValueError('Use the authoritative unique contest pool.')
     roster_sets = _rosters(pool,baseline,'lineup')
@@ -38,11 +39,19 @@ def challenge_shared_core(pool, baseline, *, max_players=3, time_budget_seconds=
     baseline_best = max(float(means.loc[sorted(ids)].sum()) for ids in roster_sets.values())
     baseline_objective = max(float(objective.loc[sorted(ids)].sum()) for ids in roster_sets.values())
     exposure = Counter(pid for ids in roster_sets.values() for pid in ids)
-    targets = sorted((pid for pid,count in exposure.items() if count >= 2),
-                     key=lambda pid:(-exposure[pid],-means.loc[pid],str(pid)))[:max_players]
-    scenarios = [(pid,) for pid in targets]
-    if len(targets)>=2:
-        scenarios.append(tuple(targets[:2]))
+    unreviewed = []
+    if expanded:
+        from exposure_challenge_plan import exposure_challenge_plan
+        plan = exposure_challenge_plan(roster_sets.values(),max_targets=max_players,
+                                      priority=means.to_dict())
+        scenarios = plan['scenarios']
+        unreviewed = plan['unreviewed_targets']
+    else:
+        targets = sorted((pid for pid,count in exposure.items() if count >= 2),
+                         key=lambda pid:(-exposure[pid],-means.loc[pid],str(pid)))[:max_players]
+        scenarios = [(pid,) for pid in targets]
+        if len(targets)>=2:
+            scenarios.append(tuple(targets[:2]))
     deadline = monotonic()+time_budget_seconds
     records, alternatives = [], []
     known = set(roster_sets.values())
@@ -85,4 +94,9 @@ def challenge_shared_core(pool, baseline, *, max_players=3, time_budget_seconds=
         except (ValueError,TypeError,KeyError) as exc:
             row['Status'] = f'Unavailable: {exc}'
         records.append(row)
+    for pid in unreviewed:
+        records.append({'Scenario':len(records)+1,'Omitted IDs':str(pid),
+                        'Omitted players':str(lookup.loc[pid,'fanduel_name']),
+                        'Affected baseline entries':exposure[pid],
+                        'Status':'Not run: target limit'})
     return pd.DataFrame(records), (pd.concat(alternatives,ignore_index=True) if alternatives else pd.DataFrame())

@@ -1,5 +1,21 @@
 from research_source_registry import research_checklist
 
+def test_new_research_candidates_remain_visible_without_claiming_numerical_coverage():
+    from research_source_registry import predictive_coverage
+    nba = research_checklist('NBA').set_index('Source')
+    nfl = research_checklist('NFL').set_index('Source')
+    assert 'potential assists' in nba.loc['NBA House','Research purpose']
+    for name in ('Fantasy Life Utilization', 'ffopportunity / ffverse', 'PFF Usage and Production', 'Fantasy Six Pack'):
+        assert name in nfl.index and name not in nba.index
+    for sport in ('NBA','NFL'):
+        coverage = predictive_coverage(sport).set_index('Source')
+        for name in ('SportsDataIO','SpreadModel','FantasyPros'):
+            assert coverage.loc[name,'Evidence'] == 'No comparable rows in this archive'
+    assert 'not an independent vote' in nfl.loc['Fantasy Six Pack','Research purpose']
+    assert not nfl.loc['SpreadModel','Verified access link']
+    assert nfl.loc['ffopportunity / ffverse','Verified access link'].startswith('https://')
+
+
 def test_saved_sources_remain_visible_with_incomplete_automatic_refresh():
     nba = research_checklist('NBA',[('PropSims','36 estimates')]).set_index('Source')
     for source in ('LineupExperts','RotoGrinders','FantasyProjections','NBA House',
@@ -14,11 +30,11 @@ def test_saved_sources_remain_visible_with_incomplete_automatic_refresh():
     for source in ('The Fantasy Footballers','Fantasy Points','FantasySharks','Upper Hand Fantasy',
                    'RotoQL / stat-api','Linemate','WalterPicks','LineupExperts','Daily Fantasy Fuel'):
         assert source in nfl.index
-    assert 'PropSims' not in nfl.index
+    assert nfl.loc['PropSims','Integration'] == 'Public weekly reference'
     assert nfl.loc['The Fantasy Footballers','Integration'] == 'Manual required'
 
 
-def test_courtside_and_4for4_are_retained_as_manual_references_only():
+def test_courtside_and_4for4_have_reference_only_status():
     nba = research_checklist('NBA', [('Courtside', 'claimed estimates')]).set_index('Source')
     nfl = research_checklist('NFL', [('4for4', 'claimed estimates')]).set_index('Source')
     assert 'Courtside' in nba.index and 'Courtside' not in nfl.index
@@ -26,7 +42,8 @@ def test_courtside_and_4for4_are_retained_as_manual_references_only():
     for table, source, domain in ((nba, 'Courtside', 'https://courtside.higgsfield.app/'),
                                   (nfl, '4for4', 'https://www.4for4.com/')):
         row = table.loc[source]
-        assert row['Integration'] == 'Manual research'
+        expected = 'Public weekly reference' if source == '4for4' else 'Manual research'
+        assert row['Integration'] == expected
         assert 'Not verified' in row['Refresh evidence']
         assert 'claimed estimates' not in row['Refresh evidence']
         assert row['Verified access link'].startswith(domain)
@@ -97,17 +114,19 @@ def test_reference_refresh_isolated_from_failures_and_scoring():
          patch('slate_research.fantasysportsedge_reference', side_effect=OSError('unavailable')), \
          patch('slate_research.fta_nba_reference', return_value=(fta_rows, now, 'Main', 10)) as fta, \
          patch('matchwiz_reference.matchwiz_reference', return_value=line_rows), \
-         patch('slate_research.keelstats_reference', side_effect=OSError('403')):
+         patch('slate_research.keelstats_reference', side_effect=OSError('403')), \
+         patch('slate_research.edgehalla_slate_reference', return_value=(line_rows, None)) as edge:
         boards, status = get_reference_research(slate, now, ('BOS@NYK',))
-        assert set(boards) == {'LineupExperts', 'Fantasy Team Advisors', 'MatchWiz'}
+        assert set(boards) == {'LineupExperts', 'Fantasy Team Advisors', 'MatchWiz', 'Edgehalla'}
         assert 'unavailable' in status['KeelStats'].lower()
         assert 'unavailable' in status['FantasySportsEdge'].lower()
         assert 'not scoring evidence' in status['LineupExperts']
         assert boards['LineupExperts'] == (line_rows, None)
         fta.assert_called_once_with(slate, now, ('BOS@NYK',))
+        edge.assert_called_once_with(slate, ('BOS@NYK',))
     with patch('slate_research.lineupexperts_reference') as line:
         boards, status = get_reference_research(date(2026, 11, 24), now, ('BOS@NYK',))
-        assert not boards and len(status) == 5
+        assert not boards and len(status) == 6
         line.assert_not_called()
     checklist = research_checklist('NBA', [('LineupExperts', 'Reference checked: 1 eligible match'),
                                           ('FantasySportsEdge', 'Reference unavailable'),
@@ -375,3 +394,105 @@ def test_paired_data_documentation_does_not_promote_manual_providers():
         assert 'count shared provenance once' in rows.loc['RotoQL / stat-api', 'Research purpose']
     nba = research_checklist('NBA').set_index('Source')
     assert 'does not expose projected minutes' in nba.loc['Daily Fantasy Fuel', 'Research purpose']
+
+
+def test_predictive_coverage_distinguishes_matched_forecasts_from_capture_and_gaps():
+    from research_source_registry import predictive_coverage
+
+    nba = predictive_coverage('NBA', matched={('propsims', 'Minutes'): 56,
+                                             ('propsims', 'FD points'): 59,
+                                             ('lineupexperts', 'Minutes'): 0}).set_index('Source')
+    assert nba.index.tolist() == research_checklist('NBA').Source.tolist()
+    assert nba.loc['PropSims', 'Matched forecast rows by metric'] == 'FD points (59), Minutes (56)'
+    assert nba.loc['LineupExperts', 'Evidence'] == 'No comparable rows in this archive'
+    nfl = predictive_coverage('NFL', captured={'4for4': 14}).set_index('Source')
+    assert nfl.index.tolist() == research_checklist('NFL').Source.tolist()
+    assert nfl.loc['4for4', 'Forecast rows awaiting outcomes'] == 14
+    assert nfl.loc['4for4', 'Evidence'] == 'Captured forecasts'
+
+
+def test_sumersports_is_nfl_context_not_validated_forecast():
+    from research_source_registry import predictive_coverage
+    nba = research_checklist('NBA').set_index('Source')
+    nfl = research_checklist('NFL', [('SumerSports', 'claimed forecast')]).set_index('Source')
+    assert 'SumerSports' in nfl.index and 'SumerSports' not in nba.index
+    assert nfl.loc['SumerSports', 'Verified access link'].startswith('https://sumersports.com/')
+    assert 'not an independent forecast vote' in nfl.loc['SumerSports', 'Research purpose']
+    assert 'Not verified' in nfl.loc['SumerSports', 'Refresh evidence']
+    assert predictive_coverage('NFL').set_index('Source').loc['SumerSports', 'Evidence'] == 'No comparable rows in this archive'
+
+
+def test_role_sources_are_candidates_not_scoring_votes():
+    from research_source_registry import predictive_coverage
+    for sport, names in [('NBA', ('BankrollSZN','Statyx')), ('NFL', ('StatRankings','HeatRadar'))]:
+        rows = research_checklist(sport).set_index('Source')
+        evidence = predictive_coverage(sport).set_index('Source')
+        for name in names:
+            assert 'candidate' in rows.loc[name,'Integration']
+            assert 'Not verified' in rows.loc[name,'Refresh evidence']
+            assert evidence.loc[name,'Evidence'] == 'No comparable rows in this archive'
+            assert rows.loc[name,'Verified access link'].startswith('https://')
+
+
+
+def test_nov28_new_sources_stay_reference_only():
+    from research_source_registry import SOURCES, predictive_coverage
+    assert len(SOURCES) == len({row[0] for row in SOURCES})
+    for sport, names in [('NBA', ('Vektor Labs', 'Parlae', 'Dimers')), ('NFL', ('Volt Fantasy', 'Malter Analytics', 'Dimers'))]:
+        rows = research_checklist(sport, [(name, 'claimed forecast') for name in names]).set_index('Source')
+        coverage = predictive_coverage(sport).set_index('Source')
+        for name in names:
+            assert 'candidate' in rows.loc[name, 'Integration']
+            assert 'Not verified' in rows.loc[name, 'Refresh evidence']
+            assert 'claimed forecast' not in rows.loc[name, 'Refresh evidence']
+            assert coverage.loc[name, 'Evidence'] == 'No comparable rows in this archive'
+        assert rows.loc['Dimers', 'Verified access link'].endswith('/'+sport.lower()+'/player-projections')
+
+
+def test_complete_inventory_is_distinct_from_accepted_live_inputs():
+    from research_source_registry import source_inventory, source_inventory_counts, SOURCES
+    from slate_research import POINT_SOURCE_GROUPS
+    from research_source_registry import NBA_FORECAST_PROVIDERS
+    inventory = source_inventory().set_index('Source')
+    assert len(inventory) == len(SOURCES) == 50
+    assert inventory.index.is_unique
+    assert source_inventory_counts() == {
+        'Direct or conditional model support': 8,
+        'Integrated advisory reference': 7,
+        'Manual or historical research': 14,
+        'Candidate / further verification': 21,
+    }
+    accepted = set(inventory.index[inventory['NBA eligible point family']])
+    assert accepted == {NBA_FORECAST_PROVIDERS[k] for k in POINT_SOURCE_GROUPS.values()}
+    assert set(inventory.index[inventory['NBA eligible automatic minutes provider']]) == {
+        'RotoWire', 'NBA House', 'PropSims', 'RotoGrinders'}
+    assert not inventory['NFL automatic point consensus'].any()
+    assert 'conditional verified' in inventory.loc['LineupExperts','Model contribution']
+    for name in ('Vektor Labs', 'Parlae', 'Volt Fantasy', 'Malter Analytics', 'Dimers', 'Huffalytics'):
+        assert inventory.loc[name,'Highest established use'] == 'Candidate / further verification'
+        assert not inventory.loc[name,'NBA eligible point family']
+        assert not inventory.loc[name,'NBA eligible automatic minutes provider']
+
+
+def test_huffalytics_is_nfl_advisory_only():
+    from research_source_registry import research_checklist, source_inventory
+    nfl = research_checklist('NFL').set_index('Source')
+    assert nfl.loc['Huffalytics','Verified access link'] == 'https://huffalytics.com/nfl/w/12/'
+    assert 'Huffalytics' not in set(research_checklist('NBA').Source)
+    row=source_inventory().set_index('Source').loc['Huffalytics']
+    assert not row['NFL automatic point consensus']
+    assert 'Candidate' in row['Highest established use']
+
+
+def test_new_nba_depth_sources_do_not_vote_or_imply_complete_fd_rates():
+    from research_source_registry import source_inventory, research_checklist
+    nba=research_checklist('NBA').set_index('Source')
+    nfl=research_checklist('NFL').set_index('Source')
+    inventory=source_inventory().set_index('Source')
+    for name in ('TipoffLab','Statz'):
+        assert name in nba.index and name not in nfl.index
+        assert 'candidate' in nba.loc[name,'Integration']
+        assert not inventory.loc[name,'NBA eligible point family']
+        assert not inventory.loc[name,'NBA eligible automatic minutes provider']
+    assert 'DraftKings scoring' in nba.loc['TipoffLab','Research purpose']
+    assert 'turnovers not exposed' in nba.loc['Statz','Research purpose']

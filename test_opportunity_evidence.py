@@ -151,3 +151,16 @@ def test_rate_evidence_ignores_zero_missing_or_nonfinite_minutes():
     invalid = [dict(row, minutes=m) for m in (0, None, float('inf'), float('nan'))]
     assert stat_rate(invalid, FD_WEIGHTS) is None
     assert stat_rate([row, *invalid], FD_WEIGHTS) == 1
+
+
+def test_component_evidence_requires_joint_complete_stat_games():
+    from opportunity_evidence import component_rate_evidence
+    row=dict(minutes=30,points=20,turnovers=2,reboundsTotal=5,assists=4,
+             steals=1,blocks=0,fieldGoalsAttempted=12,freeThrowsAttempted=4)
+    ev=component_rate_evidence([row,row,dict(row,fieldGoalsAttempted=None)])
+    assert ev['games']==2
+    assert ev['minutes']==60
+    assert ev['opportunities_per_minute']==pytest.approx(15.76/30)
+    assert ev['net_per_opportunity']==pytest.approx(18/15.76)
+    assert ev['peripheral_per_minute']==pytest.approx(15/30)
+    assert component_rate_evidence([dict(row,blocks=None)])['net_per_opportunity'] is None

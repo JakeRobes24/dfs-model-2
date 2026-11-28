@@ -9,11 +9,13 @@ import pandas as pd
 SOURCES = (
     ('Official NBA reports / NBA Stats','Automatic','Not applicable','Availability, official box scores, recent rotations and results'),
     ('Official NFL reports / statistics','Not applicable','Manual required','Availability, active/inactive, workload and verified results'),
-    ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news'),
-    ('NBA House','Automatic','Not applicable','Minutes and rotation estimates'),
-    ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity'),
+    ('RotoWire','Automatic','Manual research','Minutes, lineups, roles and news. Public NFL recaps provide dated historical snaps and route counts. Verify against final schedules and box counts'),
+    ('NBA House','Automatic','Not applicable','Minutes and rotation estimates; separately verified historical logs for potential assists on a selected played cohort. Historical tracking needs exact box-score matching'),
+    ('RotoGrinders','Automatic','Manual required','Platform-specific projections and opportunity; public sample only, full board subscription required'),
     ('Courtside','Manual research','Not applicable','Morning historical minutes/stat reference only; no injury, rest, starter or late trade updates; do not count as live consensus without verification'),
-    ('PropSims','Automatic','Not established','Same-provider NBA points and minutes'),
+    ('PropSims','Automatic','Public weekly reference','NBA paired points and minutes. NFL Sunday afternoon market-informed FanDuel median and 85th percentile with exact contest and schedule checks'),
+    ('Edgehalla','Public minutes and rate reference','Not applicable','Conditional minutes and box-score estimates derived from historical season and recent player logs. Publication time unverified'),
+    ('Drop Coverage','Public timed component preview','Not applicable','Dated NBA minutes and scoring components for the public preview game. Verify player IDs, lineup status and outcomes before weighting'),
     ('Daily Fantasy Fuel','Automatic','Manual research','Platform-specific fantasy projections; public board does not expose projected minutes'),
     ('LineupExperts','Reference + verified upload','Manual required','Public projected stat lines; verified timestamp required for numerical use; licensed API documented'),
     ('Fantasy Team Advisors','Reference + optional archive','Manual research','Points, minutes, ownership, ceiling and teammate-absence splits; limited public preview'),
@@ -28,9 +30,33 @@ SOURCES = (
     ('FantasyProjections','Identity unresolved','Identity unresolved','Confirm exact provider before numerical use'),
     ('The Fantasy Footballers','Not applicable','Manual required','Weekly roles, matchup, injury and DFS research'),
     ('Fantasy Points','Not established','Manual research','Weekly projections, usage and efficiency'),
-    ('4for4','Not applicable','Manual research','Accessible NFL matchup research; full DFS projections/ownership/ceilings require authorized subscription access; verify provenance'),
+    ('4for4','Not applicable','Public weekly reference','Dated FanDuel points and components, including defense points allowed, sacks and turnovers. Verify matchup and cutoff. Full board requires authorized subscription access'),
     ('FantasySharks','Not applicable','Manual research','Weekly platform-specific projections'),
     ('Upper Hand Fantasy','Not applicable','Manual required','Workload, role and matchup analysis'),
+    ('FF Today','Not applicable','Public research candidate','Weekly offensive stat projections. Verify publication time and FanDuel scoring before exact slate comparison'),
+    ('DailyFantasy.tips','Not applicable','Public research candidate','Platform-specific points, salary and provider IDs. Blends two unnamed sources. Require timezone and exact contest verification'),
+    ('FTN via nflverse','Not applicable','Historical research','Play charting. Primary-read field failed the 2026 exact-target audit; validate coding before using first-read rates'),
+    ('PBP Stats','Historical research','Not applicable','Possession and usage data with partial historical game coverage. Verify official schedule and complete prior team games'),
+    ('Fantasy Life Utilization','Not applicable','Manual research candidate','Historical snaps, routes, targets and red-zone opportunities. Game log subscription gate; verify authorized dated exports before use'),
+    ('ffopportunity / ffverse','Not applicable','Historical research candidate','2025 and 2026 weekly opportunities verified. NFL model-derived fantasy components require exact volume and yardage matching. Historical source with unverified publication lag'),
+    ('SportsDataIO','API access unverified','API access unverified','Documented player projection feeds; NBA minutes and platform scoring. No authorized numerical coverage established'),
+    ('SpreadModel','Access unverified','Access unverified','Advertised player stat-line and platform projections; direct documentation returned 502. Require verified data and timestamp'),
+    ('PFF Usage and Production','Not applicable','Manual research candidate','Documented snap, route, target and situational usage fields; player-level access and dated export not established'),
+    ('Fantasy Six Pack','Not applicable','Access unverified','Advertised usage table; direct access returned 403. Route statistics attributed to Fantasy Life, not an independent vote'),
+    ('FantasyPros','API access unverified','API access unverified','Documented projection endpoints require API key; verify scoring, dates and underlying expert overlap before comparisons'),
+    ('SumerSports','Not applicable','Public historical and matchup reference','Public season-to-date QB/RB/WR/TE and team efficiency, routes, target share and rushing opportunity. Situational splits partly subscription-gated; verify dated game-level data and exact identities before historical replay. Third-party fantasy consensus is not an independent forecast vote'),
+    ('BankrollSZN','Public historical tracking candidate','Not established','Public recent potential-assist and conversion table; DFS sample defaults to DraftKings, full board requires free account. Verify dated game logs, FanDuel tab, exact slate and provenance; no independent forecast vote'),
+    ('Statyx','Public tracking candidate','Not established','Advertised historical opportunity, shooting, usage and teammate splits with CSV; inspected page had no numerical board rows. Verify export and identity before modeling'),
+    ('StatRankings','Limited public projection candidate','Public historical usage candidate','NBA public Nov27 preview displayed three DraftKings point rows, expanded stat/minutes access unverified; no FD rate. NFL dated first-read leaderboard and recent summaries; verify denominator, raw counts, upstream charting and game-level dates before using first-read rates'),
+    ('HeatRadar','Not established','Public routes candidate','Weekly routes, targets and efficiency table schema; numerical rows not present in inspected response. Verify dated exports and source provenance'),
+    ('Vektor Labs','Public historical minutes candidate','Not established','Dated conditional minutes, points/rebounds/assists/threes and separate availability. One recovered historical game matched; freeze time and probability censoring require verification. No full FD projection or automatic vote.'),
+    ('Parlae','Public numerical candidate','Not established','Displayed dated minutes, FD-equivalent scoring and component ranges. Direct board returned previous date despite current search snippet. Verify exact date, point semantics, publication time and upstream independence.'),
+    ('Volt Fantasy','Not established','Public weekly component candidate','Week 12 half-PPR, projected carries/targets, catches, yards and ranges; relative update time and game freeze claim require independent capture. No FD bonus/turnover equivalence assumed.'),
+    ('Malter Analytics','Not established','Public weekly component candidate','Dated weekly half-PPR, projected stat lines and trailing-three-game snap, target and carry shares. Historical shares are not projected opportunities; exact game and source timing required.'),
+    ('Dimers','Limited public component candidate','Limited public component candidate','Dated stat projections; most numerical rows locked, full board/CSV access not verified. Do not infer minutes or FD scoring; no subscription or automatic vote.'),
+    ('TipoffLab','Public dated minutes candidate','Not established','Selected historical minutes and injury redistribution estimates; Nov27 16 matched minutes rows including eight FanDuel salaries below 5000. DraftKings scoring, no FD conversion; private beta full board and source lineage unverified. No automatic vote.'),
+    ('Statz','Limited public component candidate','Not established','Public sample of points, rebounds, assists, threes, steals and blocks with ranges; minutes and turnovers not exposed in inspected board. Broader access requires account; no full FD rate or automatic vote.'),
+    ('Huffalytics','Not established','Public weekly component candidate','Public weekly PPR depth-player receiving projections including receptions and yards. Publication time and upstream provenance unverified; ambiguous Rush/Touches/TD fields are not inferred as attempts, targets or channel-specific touchdowns. No automatic vote.'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -40,6 +66,19 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'Huffalytics': 'https://huffalytics.com/nfl/w/12/',
+    'TipoffLab': 'https://dfs.tipofflab.com/nba-dfs-projections/2026-11-27',
+    'Statz': 'https://statz.ai/nba/projections/players',
+    'Vektor Labs': 'https://www.vektorlabs.app/nba',
+    'Parlae': 'https://parlae.io/fantasy/nba/projections',
+    'Volt Fantasy': 'https://voltfantasy.com/nfl/projections',
+    'Malter Analytics': 'https://www.malteranalytics.com/fantasy-football',
+    'Dimers': 'https://www.dimers.com/nba/player-projections',
+    'BankrollSZN': 'https://bankrollszn.com/nba-assist-luck',
+    'Statyx': 'https://statyx.io/nba-props/data-lab',
+    'StatRankings': 'https://statrankings.com/nfl/advanced/players/usage/first-read-target-share',
+    'HeatRadar': 'https://heatradar.app/nfl/routes',
+    'SumerSports': 'https://sumersports.com/players/wide-receiver/',
     'MatchWiz': 'https://matchwiz.ai/nba/lineups',
     'TheCapper': 'https://thecapper.io/nba/projections/',
     'KeelStats': 'https://keelstats.com/nba/usage',
@@ -52,7 +91,23 @@ RESEARCH_LINKS = {
     'WalterPicks': 'https://www.walterpicks.com/',
     'Courtside': 'https://courtside.higgsfield.app/projections',
     '4for4': 'https://www.4for4.com/dfs-legacy-generators',
+    'Edgehalla': 'https://www.edgehalla.com/fantasy-basketball/projections/today/minutes',
+    'Drop Coverage': 'https://thedropcoverage.com/api',
+    'PropSims': 'https://propsims.com/nba/dfs/',
+    'FF Today': 'https://www.fftoday.com/rankings/',
+    'DailyFantasy.tips': 'https://dailyfantasy.tips/nfl/',
+    'FTN via nflverse': 'https://nflreadr.nflverse.com/reference/load_ftn_charting.html',
+    'PBP Stats': 'https://api.pbpstats.com/docs',
+    'Fantasy Life Utilization': 'https://www.fantasylife.com/nfl/utilization-report/game-log',
+    'ffopportunity / ffverse': 'https://ffopportunity.ffverse.com/',
+    'SportsDataIO': 'https://sportsdata.io/developers/workflow-guide/nba',
+    'PFF Usage and Production': 'https://www.pff.com/news/fantasy-football-usage-production-report',
+    'FantasyPros': 'https://api.fantasypros.com/public/v2/docs',
 }
+NBA_MINUTES_REFERENCE_BOARDS = ('MatchWiz', 'KeelStats', 'Edgehalla')
+NBA_REFERENCE_BOARDS = ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors',
+                        *NBA_MINUTES_REFERENCE_BOARDS)
+
 AUTOMATIC_NBA = {
     'Official NBA reports / NBA Stats': ('NBA injury report','NBA recent box scores'),
     'RotoWire': ('RotoWire starters and minutes',),
@@ -60,6 +115,15 @@ AUTOMATIC_NBA = {
     'RotoGrinders': ('RotoGrinders',),
     'PropSims': ('PropSims',),
     'Daily Fantasy Fuel': ('Daily Fantasy Fuel',),
+}
+
+NBA_FORECAST_PROVIDERS = {
+    'daily-fantasy-fuel': 'Daily Fantasy Fuel',
+    'lineupexperts': 'LineupExperts',
+    'nba-house': 'NBA House',
+    'propsims': 'PropSims',
+    'rotogrinders': 'RotoGrinders',
+    'rotowire': 'RotoWire',
 }
 
 
@@ -76,13 +140,103 @@ def research_checklist(sport, source_status=()):
         labels = AUTOMATIC_NBA.get(name,()) if sport == 'NBA' else ()
         if labels:
             current = ' | '.join(f'{label}: {status.get(label,"Not checked this refresh")}' for label in labels)
-        elif sport == 'NBA' and name in ('LineupExperts', 'FantasySportsEdge', 'Fantasy Team Advisors', 'KeelStats', 'MatchWiz') and name in status:
+        elif sport == 'NBA' and name in NBA_REFERENCE_BOARDS and name in status:
             current = status[name]
         elif mode == 'Identity unresolved':
             current = 'Identity not verified'
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
+        link = {('NFL', 'PropSims'): 'https://propsims.com/dfs/fanduel/',
+                ('NFL', 'Dimers'): 'https://www.dimers.com/nfl/player-projections'}.get((sport, name), RESEARCH_LINKS.get(name, ''))
         rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,
-                     'Verified access link': RESEARCH_LINKS.get(name, ''),
+                     'Verified access link': link,
                      'Historical reference link': HISTORICAL_RESEARCH_LINKS.get(name, '')})
     return pd.DataFrame(rows,columns=['Source','Integration','Research purpose','Refresh evidence','Verified access link','Historical reference link'])
+
+
+def predictive_coverage(sport, *, matched=None, captured=None):
+    """Label records in the selected archive independently of provider accessibility.
+
+    Matched counts use (provider, metric) because one player can contribute to
+    multiple metrics. Captured counts describe forecast rows awaiting outcomes.
+    """
+    matched = matched or {}
+    captured = captured or {}
+    checklist = research_checklist(sport)[['Source', 'Integration']]
+    aliases = NBA_FORECAST_PROVIDERS if sport == 'NBA' else {}
+    metrics = {}
+    for (provider, metric), count in matched.items():
+        if count > 0:
+            metrics.setdefault(aliases.get(provider, provider), []).append(f'{metric} ({count})')
+    checklist['Matched forecast rows by metric'] = checklist.Source.map(
+        lambda source: ', '.join(sorted(metrics.get(source, ()))))
+    checklist['Forecast rows awaiting outcomes'] = checklist.Source.map(captured).fillna(0).astype(int)
+    return checklist.assign(Evidence=checklist.apply(
+        lambda row: 'Matched outcomes' if row['Matched forecast rows by metric'] else
+        'Captured forecasts' if row['Forecast rows awaiting outcomes'] else 'No comparable rows in this archive',
+        axis=1))
+
+
+# Highest established use across sports, not a live coverage or deployment claim.
+# A source may have a lower integration level in the other sport.
+MODEL_SUPPORT = {
+    'Official NBA reports / NBA Stats': 'NBA: official availability and historical rotation/production',
+    'Official NFL reports / statistics': 'NFL: manual official status and outcome evidence',
+    'RotoWire': 'NBA: starter and minutes evidence; NFL: manual research',
+    'NBA House': 'NBA: minutes evidence',
+    'RotoGrinders': 'NBA: minutes and point consensus; NFL: manual research',
+    'PropSims': 'NBA: minutes and point consensus; NFL: advisory weekly reference',
+    'Daily Fantasy Fuel': 'NBA: point consensus; NFL: manual research',
+    'LineupExperts': 'NBA: conditional verified points upload; automatic public board is reference only',
+}
+INTEGRATED_REFERENCE = {
+    'Fantasy Team Advisors', 'FantasySportsEdge', 'MatchWiz', 'KeelStats',
+    'Edgehalla', '4for4', 'DailyFantasy.tips',
+}
+MANUAL_HISTORICAL = {
+    'Courtside', 'Drop Coverage', 'DraftEdge', 'RotoQL / stat-api',
+    'Linemate', 'WalterPicks', 'TheCapper', 'The Fantasy Footballers',
+    'Fantasy Points', 'FantasySharks', 'Upper Hand Fantasy', 'FTN via nflverse',
+    'PBP Stats', 'SumerSports',
+}
+NBA_POINT_FAMILIES = {'Daily Fantasy Fuel', 'PropSims', 'RotoGrinders', 'LineupExperts'}
+NBA_MINUTE_PROVIDERS = {'RotoWire', 'NBA House', 'PropSims', 'RotoGrinders'}
+
+
+def source_inventory():
+    """All registered providers, one row each; no inference of live acceptance.
+
+    New names default to candidate pending explicit classification. NFL has no
+    automatic weighted independent point consensus in the reviewed staging path.
+    Separate the base contest and DAILY inputs from external research providers.
+    """
+    names = [r[0] for r in SOURCES]
+    groups = [set(MODEL_SUPPORT), INTEGRATED_REFERENCE, MANUAL_HISTORICAL]
+    if len(names) != len(set(names)) or any(
+            not g <= set(names) for g in groups) or any(
+            a & b for i,a in enumerate(groups) for b in groups[i+1:]):
+        raise ValueError('Source inventory has duplicate or stale classifications')
+    rows = []
+    for name,nba,nfl,purpose in SOURCES:
+        if name in MODEL_SUPPORT:
+            tier = 'Direct or conditional model support'
+        elif name in INTEGRATED_REFERENCE:
+            tier = 'Integrated advisory reference'
+        elif name in MANUAL_HISTORICAL:
+            tier = 'Manual or historical research'
+        else:
+            tier = 'Candidate / further verification'
+        rows.append({'Source':name, 'Highest established use':tier,
+                     'NBA integration':nba, 'NFL integration':nfl,
+                     'NBA eligible point family':name in NBA_POINT_FAMILIES,
+                     'NBA eligible automatic minutes provider':name in NBA_MINUTE_PROVIDERS,
+                     'NFL automatic point consensus':False,
+                     'Model contribution':MODEL_SUPPORT.get(name, 'Research only; no automatic scoring vote'),
+                     'Research purpose':purpose,
+                     'Verified access link':RESEARCH_LINKS.get(name,'')})
+    return pd.DataFrame(rows)
+
+
+def source_inventory_counts():
+    """Counts of registry entries, not the number of successfully fetched sources."""
+    return source_inventory()['Highest established use'].value_counts().to_dict()
