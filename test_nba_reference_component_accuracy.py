@@ -9,7 +9,7 @@ from test_nba_reference_accuracy import replay
 DAY=date(2026,11,28)
 
 def fixture():
-    f=replay().assign(replay_contest_sha256='a'*64,replay_daily_sha256='b'*64',
+    f=replay().assign(replay_contest_sha256='a'*64,replay_daily_sha256='b'*64,
         nba_points=12,nba_reboundsTotal=4,nba_assists=2,
         daily_box_points=10,daily_box_rebounds=5,daily_box_assists=3)
     e=dict(provider='MatchWiz',source=RESEARCH_LINKS['MatchWiz'],scoring_accepted=False,
