@@ -6,7 +6,7 @@ from nba_shadow_research import (compare_shadow_forecasts, FEATURES, POLICIES,
                                  compare_frozen_opportunity, OPPORTUNITY_POLICIES,
                                  compare_frozen_history_rate, HISTORY_RATE_POLICY,
                                  compare_frozen_component_rate, COMPONENT_POLICY,
-                                 compare_exact_component_capture)
+                                 compare_exact_component_capture, COMPONENT_CAPTURE_FIELDS)
 from nba_combined_scoring_shadow import compare_frozen_combined, compare_frozen_paired_rate, PAIRED_RATE_POLICY
 
 from nba_research_triage import compare_frozen_large_minutes, LARGE_MINUTES_POLICIES, LARGE_MINUTES_CAPTURE_FIELDS
@@ -73,7 +73,8 @@ def compare_across_slates(replays):
         if set(HISTORY_WINDOW_FIELDS) <= set(frame):
             report = pd.concat([report, compare_frozen_history_windows(frame)], ignore_index=True)
         # Separate reconstructed component policy from exact saved forecasts.
-        report = pd.concat([report, compare_exact_component_capture(frame)], ignore_index=True)
+        if day >= date(2026,11,28) or set(COMPONENT_CAPTURE_FIELDS)<=set(frame):
+            report = pd.concat([report, compare_exact_component_capture(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):
