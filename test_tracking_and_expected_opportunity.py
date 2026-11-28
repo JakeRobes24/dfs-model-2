@@ -78,3 +78,24 @@ def test_missing_unrelated_rebound_chances_do_not_discard_valid_assists():
         changed=values.copy()
         changed[field]=value
         assert nba_house_potential_assists(html(changed))==[]
+
+
+def test_raw_and_tracked_pooling_use_same_support_and_distinct_denominators():
+    from nba_tracking_challenge import compare_raw_and_tracked_pooling
+    schedule=[(date(2026,11,i).isoformat(),str(i),'BOS','NYK') for i in range(1,6)]
+    rows=pd.DataFrame([dict(date=day,game_id=game,team=team,nba_id=pid,
+        minutes=30,rebounds=reb,rebound_chances=ch)
+        for day,game,*_ in schedule for team,pid,reb,ch in
+        [('BOS','1',6,12),('NYK','2',2,8)]])
+    result=compare_raw_and_tracked_pooling(rows,schedule,channel='rebounds')
+    a=result.set_index('nba_id').loc['1']
+    assert a.base==6
+    assert a.raw_pool==pytest.approx(30*(24+100*8/60)/(120+100))
+    assert a.chance_pool==pytest.approx(12*(24+20*.4)/(48+20))
+    changed=rows.copy()
+    changed.loc[changed.game_id.eq('5'),['rebounds','rebound_chances']]=[14,30]
+    new=compare_raw_and_tracked_pooling(changed,schedule,channel='rebounds')
+    pd.testing.assert_frame_equal(result.drop(columns='actual'),new.drop(columns='actual'))
+    assert len(compare_raw_and_tracked_pooling(rows.drop(index=2),schedule,channel='rebounds'))==1
+    with pytest.raises(ValueError,match='Ambiguous'):
+        compare_raw_and_tracked_pooling(pd.concat([rows,rows.iloc[[0]]]),schedule,channel='rebounds')
