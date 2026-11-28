@@ -66,3 +66,4 @@ def test_extended_history_requires_all_tips_and_ninety_minute_buffer():
     assert not allowed([dict(a,gameTimeUtc='2026-11-28T21:30:00'),b])
     assert not allowed([a,b],'2026-11-27T20:00:00Z')
     assert not allowed([a,b],'2026-11-28T20:00:00')
+    assert not extended_history_safe([a,b],games+['malformed'],now,slate)
