@@ -82,8 +82,8 @@ def freeze_reference_boards(pool,boards,status,slate,observed_at):
                     # Keep raw reported components; never fill an absent stat with zero.
                     if name in ('Edgehalla','MatchWiz'):
                         fields = ({'points':'reference_pts','rebounds':'reference_reb','assists':'reference_ast'}
-                                  if name=='MatchWiz' else {k:'reference_'+k for k in
-                                  ('points','rebounds','assists','steals','blocks','turnovers')})
+                                  if name=='MatchWiz' else {'points':'reference_pts', **{k:'reference_'+k for k in
+                                  ('rebounds','assists','steals','blocks','turnovers')}})
                         components={k:bounded(item.get(col),0,150) for k,col in fields.items()}
                         components={k:v for k,v in components.items() if v is not None}
                         if components:
