@@ -44,6 +44,7 @@ SOURCES = (
     ('PFF Usage and Production','Not applicable','Manual research candidate','Documented snap, route, target and situational usage fields; player-level access and dated export not established'),
     ('Fantasy Six Pack','Not applicable','Access unverified','Advertised usage table; direct access returned 403. Route statistics attributed to Fantasy Life, not an independent vote'),
     ('FantasyPros','API access unverified','API access unverified','Documented projection endpoints require API key; verify scoring, dates and underlying expert overlap before comparisons'),
+    ('SumerSports','Not applicable','Public historical and matchup reference','Public season-to-date QB/RB/WR/TE and team efficiency, routes, target share and rushing opportunity. Situational splits partly subscription-gated; verify dated game-level data and exact identities before historical replay. Third-party fantasy consensus is not an independent forecast vote'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.

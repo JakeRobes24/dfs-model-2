@@ -409,3 +409,14 @@ def test_predictive_coverage_distinguishes_matched_forecasts_from_capture_and_ga
     assert nfl.index.tolist() == research_checklist('NFL').Source.tolist()
     assert nfl.loc['4for4', 'Forecast rows awaiting outcomes'] == 14
     assert nfl.loc['4for4', 'Evidence'] == 'Captured forecasts'
+
+
+def test_sumersports_is_nfl_context_not_validated_forecast():
+    from research_source_registry import predictive_coverage
+    nba = research_checklist('NBA').set_index('Source')
+    nfl = research_checklist('NFL', [('SumerSports', 'claimed forecast')]).set_index('Source')
+    assert 'SumerSports' in nfl.index and 'SumerSports' not in nba.index
+    assert nfl.loc['SumerSports', 'Verified access link'].startswith('https://sumersports.com/')
+    assert 'not an independent forecast vote' in nfl.loc['SumerSports', 'Research purpose']
+    assert 'Not verified' in nfl.loc['SumerSports', 'Refresh evidence']
+    assert predictive_coverage('NFL').set_index('Source').loc['SumerSports', 'Evidence'] == 'No comparable rows in this archive'
