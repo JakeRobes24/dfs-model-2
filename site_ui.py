@@ -28,6 +28,13 @@ from slate_research import (
 from slate_tools_ui import render_challenger
 
 
+@st.fragment
+def render_candidate_range_download(receipt, slate):
+    st.download_button('Download candidate ranges and roster snapshot', receipt,
+                       file_name=f'{slate}-candidate-range-receipt.json',
+                       mime='application/json')
+
+
 @st.cache_data(ttl=60, max_entries=8, show_spinner=False)
 def public_slate_schedule(slate):
     try:
@@ -1077,9 +1084,7 @@ def render_slate(history_slot):
                         receipt = candidate_range_receipt(
                             scored, candidates, ranges, slate=slate, captured_at=captured,
                             timing=timing, draws=len(outcomes.fd_points), seed=simulation_seed, training_players=count)
-                        st.download_button('Download candidate ranges and roster snapshot', receipt,
-                                           file_name=f'{slate}-candidate-range-receipt.json',
-                                           mime='application/json', on_click='ignore')
+                        render_candidate_range_download(receipt, slate)
                         if not pairs.empty:
                             st.dataframe(pairs, hide_index=True)
                         if stress:
