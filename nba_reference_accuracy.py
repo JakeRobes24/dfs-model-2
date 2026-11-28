@@ -30,16 +30,19 @@ def _records(value):
         pass
     return None
 
-def review_reference_dates(frame,target_day):
+def review_reference_dates(frame,target_day,*,components_only=False):
     """Return matched detail, daily and equal-date summaries plus exclusions.
 
     All rows in a date must be a single exact full-slate pre-tip capture.
     Team-level status/role news invalidates older reference estimates. Unknown
     actuals and DNPs are excluded, not zeroed. No live scoring changes.
     """
+    from nba_reference_component_accuracy import matched_components, component_reports
     detail=[]
     coverage=[]
     if frame.empty or 'replay_reference_forecasts_json' not in frame:
+        if components_only:
+            return component_reports([],[])
         return pd.DataFrame(columns=DETAIL_FIELDS),pd.DataFrame(),pd.DataFrame(),pd.DataFrame()
     required={'slate_date','fanduel_id','team','game','eligible','verified_outcome',
         'nba_source','actual_points','actual_minutes','daily_points','daily_minutes',
@@ -63,6 +66,10 @@ def review_reference_dates(frame,target_day):
             or not g.replay_timing.eq('before_scheduled_tip').all()):
             raise ValueError(f'{day}: require one exact full-slate pre-tip capture')
         capture=captures[0]
+        if components_only:
+            for field in ('replay_contest_sha256','replay_daily_sha256'):
+                if field not in g or g[field].nunique()!=1 or not g[field].astype(str).str.fullmatch('[0-9a-f]{64}').all():
+                    raise ValueError(f'{day}: require original input fingerprints for component evaluation')
         latest_news={}
         invalid=set()
         for r in g.itertuples():
@@ -108,23 +115,39 @@ def review_reference_dates(frame,target_day):
                     or obs.tz_convert('America/New_York').date()!=day):
                     count['invalid_provenance']+=1
                     continue
-                if e.get('published_at') is None:
+                unknown_publication=e.get('published_at') is None
+                if unknown_publication:
                     count['publication_unknown']+=1
-                    continue
-                if pub is None or pub>obs:
+                    if not components_only:
+                        continue
+                if not unknown_publication and (pub is None or pub>obs):
                     count['invalid_provenance']+=1
                     continue
-                if pub<capture-pd.Timedelta(hours=6):
+                basis_time=obs if unknown_publication else pub
+                if basis_time<capture-pd.Timedelta(hours=6):
                     count['stale']+=1
                     continue
                 key=(r.team,r.game)
-                if key in invalid or (key in latest_news and pub<latest_news[key]):
+                if key in invalid or (key in latest_news and basis_time<latest_news[key]):
                     count['news_or_evidence_hold']+=1
                     continue
-                count['dated_fresh']+=1
+                if not unknown_publication:
+                    count['dated_fresh']+=1
+                else:
+                    count['observed_only_exploratory']+=1
                 if (r.verified_outcome!='played' or not isinstance(r.nba_source,str) or not r.nba_source.strip()
                     or bounded(r.actual_minutes,1/60,60) is None):
                     count['outcome_not_played_or_unverified']+=1
+                    continue
+                if components_only:
+                    entries=matched_components(r,e)
+                    timing='Observed before tip; publication unknown (exploratory)' if unknown_publication else 'Dated fresh publication'
+                    for metric,forecast,actual,daily in entries:
+                        detail.append(dict(slate_date=day.isoformat(),fanduel_id=r.fanduel_id,provider=provider,
+                            timing_basis=timing,metric=metric,published_at=pub.isoformat() if pub is not None else None,
+                            observed_at=obs.isoformat(),forecast=forecast,actual=actual,daily=daily,
+                            source_error=forecast-actual,daily_error=daily-actual))
+                    count['matched_played_players' if entries else 'missing_comparable_metric']+=1
                     continue
                 contributed=False
                 source_points = bounded(e.get('fd_points'),0,150)
@@ -153,9 +176,13 @@ def review_reference_dates(frame,target_day):
         fields=('archived_players','ambiguous','invalid_provenance','publication_unknown','stale',
                 'news_or_evidence_hold','dated_fresh','outcome_not_played_or_unverified',
                 'matched_played_players','missing_comparable_metric')
+        if components_only:
+            fields=(*fields,'observed_only_exploratory')
         for p,c in counters.items():
             coverage.append(dict(slate_date=day.isoformat(),provider=p,eligible_players=eligible,
                                  **{k:c[k] for k in fields}))
+    if components_only:
+        return component_reports(detail,coverage)
     details=pd.DataFrame(detail,columns=DETAIL_FIELDS)
     daily=[]
     for (day,p,m),g in details.groupby(['slate_date','provider','metric']):
@@ -171,3 +198,12 @@ def review_reference_dates(frame,target_day):
                 equal_date_reviewed_mae=g.reviewed_mae.mean(),equal_date_source_bias=g.source_bias.mean(),
                 status='Descriptive reference evidence; not an independent scoring weight'))
     return details,days,pd.DataFrame(aggregate),pd.DataFrame(coverage)
+
+
+def review_reference_components(frame,target_day):
+    """Separate component reports; observed-only publication unknown is exploratory.
+
+    Shared reviewed-minute sensitivity compares both provider and DAILY rates
+    at the same minutes, not reconstructed reviewed-model component forecasts.
+    """
+    return review_reference_dates(frame,target_day,components_only=True)
