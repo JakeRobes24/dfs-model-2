@@ -166,6 +166,26 @@ if contest and daily and contest_id:
                         json.dumps({"history_packet":packet,"forecast":result},indent=2),
                         file_name=f"{report['contest_id']}-expected-opportunity-shadow.json",mime="application/json")
 
+        with st.expander("Grade a frozen expected-opportunity reference"):
+            st.caption("Use the exact previously saved pregame receipt and independently reconciled final outcomes. This grades scoring channels only.")
+            prior=st.file_uploader("Frozen expected-opportunity reference JSON",type=["json"],key="nfl_expected_prior")
+            actuals=st.file_uploader("Verified final outcomes JSON",type=["json"],key="nfl_expected_actuals")
+            if prior and actuals:
+                from nfl_expected_opportunity_outcomes import compare_frozen_opportunity
+                try:
+                    bundle=json.loads(prior.getvalue())
+                    result=compare_frozen_opportunity(report,bundle["history_packet"],bundle["forecast"],
+                                                      json.loads(actuals.getvalue()))
+                except (ValueError,TypeError,KeyError,AttributeError,UnicodeError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.warning(result["warning"])
+                    st.write(result["coverage"])
+                    st.dataframe(pd.DataFrame(result["summary"]),hide_index=True)
+                    st.download_button("Download channel accuracy review",json.dumps(result,indent=2),
+                                       file_name=f"{report['contest_id']}-expected-opportunity-outcomes.json",
+                                       mime="application/json")
+
         with st.expander("Fixed-candidate research comparison"):
             st.caption("Requires the exact DAILY capture receipt, source evidence and timestamped candidate records. No official availability certification or optimization.")
             bundle=st.file_uploader("Reviewed candidate bundle JSON",type=["json"])
