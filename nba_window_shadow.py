@@ -116,8 +116,12 @@ def _row_predictions(row, slate):
 
 def _capture_day(frame):
     required={'fanduel_id','team','fanduel_name','eligible','adjusted_minutes','adjusted_fd_points',
-              'replay_captured_at_utc','replay_cutoff_utc','replay_timing','replay_before_full_slate_tip',*INPUTS}
+              'replay_captured_at_utc','replay_cutoff_utc','replay_timing','replay_before_full_slate_tip',
+              'replay_contest_sha256','replay_daily_sha256',*INPUTS}
     if frame.empty or not required<=set(frame):
+        return None
+    if any(frame[k].nunique()!=1 or not frame[k].astype(str).str.fullmatch('[0-9a-f]{64}').all()
+           for k in ('replay_contest_sha256','replay_daily_sha256')):
         return None
     captures=[timestamp(v) for v in frame.replay_captured_at_utc]
     tips=[timestamp(v) for v in frame.replay_cutoff_utc]
@@ -147,37 +151,61 @@ def freeze_history_windows(frame):
         out[col]=[v[i] for v in values]
     return out
 
-def compare_frozen_history_windows(frame):
-    """Use only frozen values; verify exact input arithmetic, not hindsight fill."""
-    reports=[{'Policy':p,'Paired players':0} for p in POLICIES]
+MINUTES_COHORTS=('10 to <20','20 to <30','30 to 48','Outside window / missing')
+
+
+def compare_frozen_history_windows(frame, *, by_projected_minutes=False):
+    """Grade recorded values on identical support, optionally by pre-tip workload.
+
+    Frozen support is measured before inspecting outcomes; paired accuracy is
+    conditional on a verified played outcome. Missing history is not a zero
+    forecast. Validate the whole contest before dividing it into cohorts.
+    """
+    labels=MINUTES_COHORTS if by_projected_minutes else ('All',)
+    def empty_report():
+        return pd.DataFrame([dict({'Policy':p,'Paired players':0},
+                                  **({'Cohort':label} if by_projected_minutes else {}))
+                             for label in labels for p in POLICIES])
     if not {*FROZEN_FIELDS,'verified_outcome','nba_source','actual_points',
             'actual_minutes','daily_points'}<=set(frame):
-        return pd.DataFrame(reports)
+        return empty_report()
+    frame=frame.reset_index(drop=True)
     day=_capture_day(frame)
     if day is None:
-        return pd.DataFrame(reports)
+        return empty_report()
     columns=list(POLICIES.values())
     expected=freeze_history_windows(frame)
-    numeric=frame[['daily_points','adjusted_fd_points','actual_points','actual_minutes',*columns]].apply(pd.to_numeric,errors='coerce')
-    baseline=(frame.eligible.astype(str).str.lower().eq('true')
-              & frame.verified_outcome.eq('played') & frame.nba_source.fillna('').astype(str).str.strip().ne('')
+    numeric=frame[['daily_points','adjusted_fd_points','adjusted_minutes',
+                   'actual_points','actual_minutes',*columns]].apply(pd.to_numeric,errors='coerce')
+    eligible=frame.eligible.astype(str).str.lower().eq('true')
+    baseline=(eligible & frame.verified_outcome.eq('played')
+              & frame.nba_source.fillna('').astype(str).str.strip().ne('')
               & numeric.actual_minutes.between(10,60)
               & np.isfinite(numeric[['daily_points','adjusted_fd_points','actual_points']]).all(axis=1))
-    good=(baseline & frame.shadow_hw_version.eq(VERSION)
-          & frame.shadow_hw_captured_at.map(timestamp).notna()
-          & frame.shadow_hw_captured_at.map(timestamp).eq(frame.replay_captured_at_utc.map(timestamp)))
+    supported=(eligible & frame.shadow_hw_version.eq(VERSION)
+               & frame.shadow_hw_captured_at.map(timestamp).notna()
+               & frame.shadow_hw_captured_at.map(timestamp).eq(frame.replay_captured_at_utc.map(timestamp)))
     for col in columns:
-        good &= np.isfinite(numeric[col]) & np.isclose(numeric[col],pd.to_numeric(expected[col],errors='coerce'),rtol=1e-9,atol=1e-8)
-    sample=numeric.loc[good]
-    for report,col in zip(reports,columns):
-        report.update({'Eligible played with baseline':int(baseline.sum()),'Paired players':len(sample)})
-        if sample.empty:
-            continue
-        err=sample[col]-sample.actual_points
-        incumbent=(sample.adjusted_fd_points-sample.actual_points).abs()
-        report.update({'DAILY MAE':(sample.daily_points-sample.actual_points).abs().mean(),
-                       'Reviewed MAE':incumbent.mean(),'Shadow MAE':err.abs().mean(),
-                       'MAE improvement vs reviewed':(incumbent-err.abs()).mean(),'Shadow bias':err.mean()})
+        supported &= np.isfinite(numeric[col]) & np.isclose(numeric[col],pd.to_numeric(expected[col],errors='coerce'),rtol=1e-9,atol=1e-8)
+    m=numeric.adjusted_minutes
+    groups=(m.ge(10)&m.lt(20),m.ge(20)&m.lt(30),m.between(30,48),~m.between(10,48)) if by_projected_minutes else (pd.Series(True,index=frame.index),)
+    reports=[]
+    for label,group in zip(labels,groups):
+        sample=numeric.loc[baseline & supported & group]
+        for policy,col in POLICIES.items():
+            report={'Policy':policy,'Eligible pre-tip players':int((eligible&group).sum()),
+                    'Frozen supported players':int((supported&group).sum()),
+                    'Eligible played with baseline':int((baseline&group).sum()),
+                    'Paired players':len(sample)}
+            if by_projected_minutes:
+                report['Cohort']=label
+            if not sample.empty:
+                err=sample[col]-sample.actual_points
+                incumbent=(sample.adjusted_fd_points-sample.actual_points).abs()
+                report.update({'DAILY MAE':(sample.daily_points-sample.actual_points).abs().mean(),
+                               'Reviewed MAE':incumbent.mean(),'Shadow MAE':err.abs().mean(),
+                               'MAE improvement vs reviewed':(incumbent-err.abs()).mean(),'Shadow bias':err.mean()})
+            reports.append(report)
     return pd.DataFrame(reports)
 
 
