@@ -70,3 +70,24 @@ def test_incomplete_recent_window_and_identity_are_not_imputed():
         assert pooled_prediction(next(frame.itertuples()),DAY) is None
     same_day=logs+[dict(logs[0],game_date=DAY,points=100)]
     pd.testing.assert_frame_equal(attach_pooled_history(p,logs,DAY),attach_pooled_history(p,same_day,DAY))
+
+
+def test_stale_four_game_history_is_not_a_current_prediction():
+    p,logs,_=fixture()
+    seven=[dict(r,game_date=r['game_date']-timedelta(days=6)) for r in logs]
+    eight=[dict(r,game_date=r['game_date']-timedelta(days=7)) for r in logs]
+    fresh=attach_pooled_history(p,seven,DAY)
+    stale=attach_pooled_history(p,eight,DAY)
+    assert pooled_prediction(next(fresh.itertuples()),DAY) is not None
+    assert stale.pooled_hw_history_json.iloc[0]!='[]'
+    assert pooled_prediction(next(stale.itertuples()),DAY) is None
+
+
+def test_previous_version_is_not_counted_as_new_recent_history_policy():
+    p,logs,schedule=fixture()
+    cap=capture_pool(attach_pooled_history(p,logs,DAY),pd.DataFrame(),schedule,DAY,NOW,('a'*64,'b'*64))
+    actual=pd.DataFrame([dict(fanduel_id='137300-1',outcome='Played',nba_actual_minutes=30,
+        nba_fd_points=40,nba_source='NBA box',recorded_fd_points=None)])
+    replay=build_replay_rows(cap,actual,DAY)
+    old=replay.assign(pooled_hw_version='2026-11-28-pooled-history-v1')
+    assert compare_frozen_pooled_history(old)['Paired players'].tolist()==[0,0]
