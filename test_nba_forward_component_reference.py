@@ -37,3 +37,12 @@ def test_missing_and_timing():
         compare_capture(c,[a,a])
     with pytest.raises(ValueError):
         compare_capture(dict(c,reviewed_at=a['tip_utc']),[a])
+
+
+def test_partial_fd_attribution_uses_paired_minutes_and_rate():
+    c,a=fixture()
+    r=compare_capture(c,[a])['partial_fd_error_attribution']['all']
+    assert r['n']==1
+    assert r['total_bias']==0
+    assert r['volume_bias']+r['rate_bias']==pytest.approx(0)
+    assert r['volume_bias']<0<r['rate_bias']
