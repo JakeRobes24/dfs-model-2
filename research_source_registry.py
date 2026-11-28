@@ -45,6 +45,10 @@ SOURCES = (
     ('Fantasy Six Pack','Not applicable','Access unverified','Advertised usage table; direct access returned 403. Route statistics attributed to Fantasy Life, not an independent vote'),
     ('FantasyPros','API access unverified','API access unverified','Documented projection endpoints require API key; verify scoring, dates and underlying expert overlap before comparisons'),
     ('SumerSports','Not applicable','Public historical and matchup reference','Public season-to-date QB/RB/WR/TE and team efficiency, routes, target share and rushing opportunity. Situational splits partly subscription-gated; verify dated game-level data and exact identities before historical replay. Third-party fantasy consensus is not an independent forecast vote'),
+    ('BankrollSZN','Public historical tracking candidate','Not established','Public recent potential-assist and conversion table; DFS sample defaults to DraftKings, full board requires free account. Verify dated game logs, FanDuel tab, exact slate and provenance; no independent forecast vote'),
+    ('Statyx','Public tracking candidate','Not established','Advertised historical opportunity, shooting, usage and teammate splits with CSV; inspected page had no numerical board rows. Verify export and identity before modeling'),
+    ('StatRankings','Not established','Public historical usage candidate','Dated first-read leaderboard and recent summaries; verify denominator, raw counts, upstream charting and game-level dates before using first-read rates'),
+    ('HeatRadar','Not established','Public routes candidate','Weekly routes, targets and efficiency table schema; numerical rows not present in inspected response. Verify dated exports and source provenance'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -54,6 +58,10 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'BankrollSZN': 'https://bankrollszn.com/nba-assist-luck',
+    'Statyx': 'https://statyx.io/nba-props/data-lab',
+    'StatRankings': 'https://statrankings.com/nfl/advanced/players/usage/first-read-target-share',
+    'HeatRadar': 'https://heatradar.app/nfl/routes',
     'SumerSports': 'https://sumersports.com/players/wide-receiver/',
     'MatchWiz': 'https://matchwiz.ai/nba/lineups',
     'TheCapper': 'https://thecapper.io/nba/projections/',

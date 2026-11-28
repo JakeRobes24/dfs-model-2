@@ -420,3 +420,15 @@ def test_sumersports_is_nfl_context_not_validated_forecast():
     assert 'not an independent forecast vote' in nfl.loc['SumerSports', 'Research purpose']
     assert 'Not verified' in nfl.loc['SumerSports', 'Refresh evidence']
     assert predictive_coverage('NFL').set_index('Source').loc['SumerSports', 'Evidence'] == 'No comparable rows in this archive'
+
+
+def test_role_sources_are_candidates_not_scoring_votes():
+    from research_source_registry import predictive_coverage
+    for sport, names in [('NBA', ('BankrollSZN','Statyx')), ('NFL', ('StatRankings','HeatRadar'))]:
+        rows = research_checklist(sport).set_index('Source')
+        evidence = predictive_coverage(sport).set_index('Source')
+        for name in names:
+            assert 'candidate' in rows.loc[name,'Integration']
+            assert 'Not verified' in rows.loc[name,'Refresh evidence']
+            assert evidence.loc[name,'Evidence'] == 'No comparable rows in this archive'
+            assert rows.loc[name,'Verified access link'].startswith('https://')
