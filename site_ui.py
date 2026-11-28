@@ -1152,19 +1152,47 @@ def render_slate(history_slot):
                     st.info('Sign in to use eligible private archives, or supply verified earlier replay exports. Generic historical results are not substitutes for frozen DAILY points.')
         if not started and not lineups.empty and lineups.lineup.nunique() >= 2:
             with st.expander('Experimental shared lineup-core challenge'):
-                st.caption('Find the strongest legal alternative with one heavily shared player omitted, and one joint omission. No scratch is assumed and no diversification rule is applied. Compare projection cost before considering a change.')
+                st.caption('Compare legal alternatives with heavily repeated players omitted. This is a sensitivity review, not a scratch prediction or exposure cap.')
+                repeated=lineups.groupby(['fanduel_id','player']).lineup.nunique().rename('Entries').reset_index()
+                st.dataframe(repeated.sort_values(['Entries','fanduel_id'],ascending=[False,True]).drop(columns='fanduel_id'),hide_index=True)
+                broader=st.checkbox('Review all heavily repeated players and shared-core pairs',value=True,key='expanded_core_review')
                 if st.button('Challenge shared lineup cores', key='shared_core_challenge'):
                     from nba_core_challenge import challenge_shared_core
                     try:
                         if not can_reuse_candidates((lineups, comparison, alternative)):
                             raise ValueError('Complete and verify the original candidate comparison first.')
+                        budget=45.0 if broader else 15.0
+                        if slate == datetime.now(ET).date():
+                            current=datetime.now(ET)
+                            fresh_schedule=public_slate_schedule(slate)
+                            current_started,current_complete=started_contest_games(fresh_schedule,pool.game,current)
+                            if current_started or not current_complete:
+                                raise ValueError('Verify the complete pre-tip contest schedule before starting this optional review.')
+                            matchups={matchup_key(game) for game in pool.game}
+                            tips=[pd.to_datetime(entry.get('gameTimeUtc'),utc=True,errors='coerce')
+                                  for entry in fresh_schedule
+                                  if matchup_key('@'.join(team_code((entry.get(side) or {}).get('teamTricode',''))
+                                            for side in ('awayTeam','homeTeam'))) in matchups]
+                            tips=[tip for tip in tips if pd.notna(tip) and tip.tz_convert(ET).date()==current.date()]
+                            if not tips:
+                                raise ValueError('Cannot verify first contest tip.')
+                            budget=min(budget,(min(tips)-current).total_seconds()-30)
+                            if budget<=0:
+                                raise ValueError('Too close to lock for optional core review.')
                         with st.spinner('Checking alternate roster cores…'):
                             core_report, core_alternatives = challenge_shared_core(
-                                scored,lineups,exclude_uncertain=exclude,objective_column=objective)
+                                scored,lineups,exclude_uncertain=exclude,objective_column=objective,
+                                expanded=broader,max_players=9 if broader else 3,time_budget_seconds=budget)
+                        if slate==datetime.now(ET).date():
+                            now_started,now_complete=started_contest_games(public_slate_schedule(slate),pool.game,datetime.now(ET))
+                            if now_started or not now_complete:
+                                raise ValueError('Game locks changed during review; do not use these pre-tip alternatives.')
                         if core_report.empty:
                             st.info('No players shared by multiple candidates.')
                         else:
                             st.dataframe(core_report.round(2),hide_index=True)
+                            if not core_report.Status.str.startswith('Certified').all():
+                                st.warning('Some planned exposure challenges were not certified; do not infer a strong numerical edge from an incomplete search.')
                         if not core_alternatives.empty:
                             st.dataframe(core_alternatives,hide_index=True)
                             st.download_button('Download alternative cores',core_alternatives.to_csv(index=False),
