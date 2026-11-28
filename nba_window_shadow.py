@@ -179,3 +179,48 @@ def compare_frozen_history_windows(frame):
                        'Reviewed MAE':incumbent.mean(),'Shadow MAE':err.abs().mean(),
                        'MAE improvement vs reviewed':(incumbent-err.abs()).mean(),'Shadow bias':err.mean()})
     return pd.DataFrame(reports)
+
+
+def candidate_window_sensitivity(pool, candidates, slate):
+    """Compare verified fixed rosters under existing historical-window policies.
+
+    Use only pre-slate history and current reviewed scores, not actual outcomes.
+    Unsupported histories retain incumbent scores in the sensitivity, explicitly
+    counted as fallback; this is neither optimization nor a new live policy.
+    """
+    from nba_historical_field import _rosters
+    if not {'fanduel_id','eligible','adjusted_fd_points',*INPUTS}<=set(pool):
+        raise ValueError('Use current reviewed pool with attached history inputs')
+    if type(slate) is not date:
+        raise ValueError('Exact slate date required')
+    rosters=_rosters(pool,candidates,'lineup')
+    if len(set(rosters.values()))!=len(rosters):
+        raise ValueError('Distinct candidate player sets required')
+    lookup=pool.set_index('fanduel_id')
+    needed=set().union(*rosters.values())
+    baselines={}
+    forecasts={}
+    for r in pool.loc[pool.fanduel_id.isin(needed)].itertuples():
+        p=bounded(r.adjusted_fd_points,0,150)
+        if str(r.eligible).lower()!='true' or p is None or p<=0:
+            raise ValueError('Candidate is no longer eligible or has missing reviewed points')
+        baselines[r.fanduel_id]=p
+        forecasts[r.fanduel_id]=_row_predictions(r,slate)
+    output=[]
+    for label,ids in rosters.items():
+        ordered=sorted(ids)
+        total=sum(baselines[pid] for pid in ordered)
+        supported=sum(forecasts[pid] is not None for pid in ordered)
+        row={'Lineup':label,'Reviewed FD':total,'Supported players':supported,
+             'Unchanged fallback players':len(ids)-supported}
+        for i,name in enumerate(POLICIES):
+            value=sum(forecasts[pid][i] if forecasts[pid] is not None else baselines[pid]
+                      for pid in ordered)
+            row[name+' FD']=value
+            row[name+' delta']=value-total
+        output.append(row)
+    result=pd.DataFrame(output)
+    for name in POLICIES:
+        result[name+' rank']=result[name+' FD'].rank(method='min',ascending=False).astype(int)
+    result['Reviewed rank']=result['Reviewed FD'].rank(method='min',ascending=False).astype(int)
+    return result.sort_values('Reviewed rank',kind='stable').reset_index(drop=True)
