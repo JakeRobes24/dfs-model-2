@@ -18,6 +18,8 @@ Acceptance: a reproducible multi-slate performance report with sample counts, ma
 
 The [first five-contest audit](validation/nov28-live-performance-audit.md) records the matched evidence and outstanding archive gaps. Keep this priority while expanding comparable close-time and simulation records.
 
+The [rotation follow-up](validation/nov28-rotation-evidence.md) reconciles final substitution clocks and evaluates two pretip warning rules. Continue gathering timed roles and complete close-time forecasts for prospective testing.
+
 ## November 24 checkpoint (NBA contest 137128)
 
 - Hosted archive submission and backup publication observed. Four pre-tip candidates and 105 contest rows preserved; manifest reports 668 historical research rows.
