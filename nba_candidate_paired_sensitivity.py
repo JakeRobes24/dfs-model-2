@@ -38,9 +38,12 @@ def candidate_paired_sensitivity(pool, candidates, as_of, *, team_review=None):
         pid=r.fanduel_id
         try:
             fd=float(r.adjusted_fd_points)
+        except (ValueError,TypeError,OverflowError):
+            fd=float('nan')
+        try:
             minutes=float(r.adjusted_minutes)
         except (ValueError,TypeError,OverflowError):
-            fd=minutes=float('nan')
+            minutes=float('nan')
         if str(r.eligible).lower()!='true' or not isfinite(fd) or not 0<fd<=150:
             raise ValueError('Candidate is ineligible or lacks usable reviewed points.')
         base[pid]=fd
