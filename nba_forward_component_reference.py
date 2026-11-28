@@ -4,6 +4,7 @@ from statistics import mean
 from math import isfinite
 import unicodedata
 from nfl_forward_component_reference import stamp
+from forward_component_attribution import attribute, summarize_attribution
 
 # Blocks are absent from the captured provider, so this subtotal is not FD total.
 WEIGHTS = {'points':1,'rebounds':1.2,'assists':1.5,'steals':3,'turnovers':-1}
@@ -63,6 +64,7 @@ def compare_capture(capture, actuals):
     stats=defaultdict(list)
     ranges=[]
     partial=[]
+    attribution=defaultdict(list)
     for r in capture['rows']:
         k=key(r)
         if k in seen:
@@ -104,6 +106,9 @@ def compare_capture(capture, actuals):
             ap=sum(actual[k]*w for k,w in WEIGHTS.items())
             if min(cm,am)>=10:
                 partial.append((fp-ap,fp/cm-ap/am,house*fp/cm-ap))
+                split=attribute(cm,am,fp,ap)
+                for group in ('all',band):
+                    attribution[group].append(split)
     return dict(captured_players=len(seen),coverage=dict(coverage),
                 minutes={g:{'house':error_metrics([r[0] for r in v]),
                             'capper':error_metrics([r[1] for r in v])} for g,v in minutes.items()},
@@ -115,4 +120,5 @@ def compare_capture(capture, actuals):
                 partial_fd_without_blocks={'capper':error_metrics([r[0] for r in partial]),
                     'capper_rate':error_metrics([r[1] for r in partial]),
                     'house_minutes_capper_rate':error_metrics([r[2] for r in partial])},
+                partial_fd_error_attribution={g:summarize_attribution(v) for g,v in attribution.items()},
                 certified=False,warning='Exploratory played-only reference; partial FD excludes blocks, not a full score.')
