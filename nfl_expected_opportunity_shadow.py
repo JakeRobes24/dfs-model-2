@@ -63,6 +63,9 @@ def freeze_expected_opportunity(audit, packet, *, frozen_at):
     freeze=stamp(frozen_at)
     cutoff=stamp(packet['cutoff_utc'])
     slate=date.fromisoformat(packet['slate_date'])
+    season=packet.get('season')
+    if type(season) is not int or season not in (slate.year,slate.year-1):
+        raise ValueError('Explicit regular-season year required')
     if freeze>cutoff:
         raise ValueError('Freeze cannot occur after decision cutoff')
     if (packet.get('schema')!=1 or packet.get('contest_id')!=audit['contest_id']
@@ -133,6 +136,7 @@ def freeze_expected_opportunity(audit, packet, *, frozen_at):
             gid=r.get('game_id')
             if (r.get('gsis_id')!=record['gsis_id'] or team(r.get('team'))!=team(p['team'])
                 or r.get('position')!=p['positions'][0] or r.get('season_type')!='regular'
+                or r.get('season')!=season
                 or r.get('participation')!='played' or not text(gid) or gid in games
                 or day>=slate or not all(text(r.get(k)) for k in
                     ('workload_source','expected_source','expected_record_id','workload_record_id'))
@@ -175,6 +179,6 @@ def freeze_expected_opportunity(audit, packet, *, frozen_at):
     digest=sha256(json.dumps(packet,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
     return dict(policy_version=POLICY_VERSION,contest_id=audit['contest_id'],
                 contest_sha256=audit['contest_sha256'],daily_sha256=audit['daily_sha256'],
-                history_packet_sha256=digest,slate_date=packet['slate_date'],
+                history_packet_sha256=digest,slate_date=packet['slate_date'],season=season,
                 cutoff_utc=packet['cutoff_utc'],frozen_at=freeze.isoformat(),rows=rows,
                 certified=False,warning='Reviewer-attested channel-only shadow forecasts; no full FD or optimizer substitution.')
