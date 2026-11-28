@@ -1008,6 +1008,21 @@ def render_slate(history_slot):
                                        file_name=f'{slate}-{contest_id}-candidate-history-sensitivity.csv',mime='text/csv')
                 except (ValueError,TypeError,KeyError,AttributeError) as exc:
                     st.warning(f'Historical candidate sensitivity unavailable: {exc}')
+            with st.expander('Independent minutes and production sensitivity'):
+                st.caption('Each provider uses its own paired minutes and FD points, observed within six hours and after any recorded team confirmation. Unsupported players retain reviewed points; these are fixed roster sensitivities, not ranges or automatic selections.')
+                try:
+                    from nba_candidate_paired_sensitivity import candidate_paired_sensitivity
+                    paired_candidates=candidate_paired_sensitivity(scored,lineups,review_now,team_review=team_review)
+                    if paired_candidates.empty:
+                        st.info('No supported paired forecasts for these candidates.')
+                    else:
+                        st.dataframe(paired_candidates.round(3),hide_index=True)
+                        st.download_button('Download independent candidate sensitivity',
+                                           paired_candidates.to_csv(index=False),
+                                           file_name=f'{slate}-{contest_id}-candidate-paired-sensitivity.csv',mime='text/csv')
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                    st.warning(f'Independent candidate sensitivity unavailable: {exc}')
+
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
