@@ -80,3 +80,30 @@ def test_edgehalla_reference_archives_actual_observation_without_certifying_publ
     record['retrieved_at'] = '2026-11-27T17:01:00Z'
     rejected, _ = freeze_reference_boards(pool, board, {}, DAY, NOW)
     assert json.loads(rejected[FIELDS[0]].iloc[0]) == []
+
+
+def test_partial_components_preserved_without_full_score_or_missing_zero():
+    p=fixture()
+    record=dict(le(),reference_minutes=25,reference_pts=12,reference_reb=4,
+                reference_ast=3,reference_role='nonstarter listing',
+                retrieved_at='2026-11-27T16:55:00Z',slate_date=DAY.isoformat())
+    out,_=freeze_reference_boards(p,{'MatchWiz':([record],None)}, {},DAY,NOW)
+    e=json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert e['components']=={'points':12,'rebounds':4,'assists':3}
+    assert e['fd_points'] is None and e['published_at'] is None
+    assert e['reference_role']=='nonstarter listing'
+    assert e['observed_at']=='2026-11-27T16:55:00+00:00'
+    assert not e['scoring_accepted']
+    out,_=freeze_reference_boards(p,{'MatchWiz':([dict(record,retrieved_at='2026-11-27T17:01:00Z')],None)}, {},DAY,NOW)
+    assert json.loads(out[FIELDS[0]].iloc[0])==[]
+
+
+def test_edgehalla_full_components_and_explicit_zero():
+    record=dict(le(),reference_minutes=25,reference_points=22.3,
+                reference_pts=12,reference_rebounds=4,reference_assists=3,
+                reference_steals=0,reference_blocks=1,reference_turnovers=2,
+                retrieved_at='2026-11-27T16:55:00Z',slate_date=DAY.isoformat())
+    out,_=freeze_reference_boards(fixture(),{'Edgehalla':([record],None)}, {},DAY,NOW)
+    e=json.loads(out[FIELDS[0]].iloc[0])[0]
+    assert e['components']==dict(points=12,rebounds=4,assists=3,steals=0,blocks=1,turnovers=2)
+    assert e['fd_points']==22.3
