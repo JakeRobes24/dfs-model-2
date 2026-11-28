@@ -454,13 +454,13 @@ def test_complete_inventory_is_distinct_from_accepted_live_inputs():
     from slate_research import POINT_SOURCE_GROUPS
     from research_source_registry import NBA_FORECAST_PROVIDERS
     inventory = source_inventory().set_index('Source')
-    assert len(inventory) == len(SOURCES) == 47
+    assert len(inventory) == len(SOURCES) == 48
     assert inventory.index.is_unique
     assert source_inventory_counts() == {
         'Direct or conditional model support': 8,
         'Integrated advisory reference': 7,
         'Manual or historical research': 14,
-        'Candidate / further verification': 18,
+        'Candidate / further verification': 19,
     }
     accepted = set(inventory.index[inventory['NBA eligible point family']])
     assert accepted == {NBA_FORECAST_PROVIDERS[k] for k in POINT_SOURCE_GROUPS.values()}
@@ -468,7 +468,17 @@ def test_complete_inventory_is_distinct_from_accepted_live_inputs():
         'RotoWire', 'NBA House', 'PropSims', 'RotoGrinders'}
     assert not inventory['NFL automatic point consensus'].any()
     assert 'conditional verified' in inventory.loc['LineupExperts','Model contribution']
-    for name in ('Vektor Labs', 'Parlae', 'Volt Fantasy', 'Malter Analytics', 'Dimers'):
+    for name in ('Vektor Labs', 'Parlae', 'Volt Fantasy', 'Malter Analytics', 'Dimers', 'Huffalytics'):
         assert inventory.loc[name,'Highest established use'] == 'Candidate / further verification'
         assert not inventory.loc[name,'NBA eligible point family']
         assert not inventory.loc[name,'NBA eligible automatic minutes provider']
+
+
+def test_huffalytics_is_nfl_advisory_only():
+    from research_source_registry import research_checklist, source_inventory
+    nfl = research_checklist('NFL').set_index('Source')
+    assert nfl.loc['Huffalytics','Verified access link'] == 'https://huffalytics.com/nfl/w/12/'
+    assert 'Huffalytics' not in set(research_checklist('NBA').Source)
+    row=source_inventory().set_index('Source').loc['Huffalytics']
+    assert not row['NFL automatic point consensus']
+    assert 'Candidate' in row['Highest established use']
