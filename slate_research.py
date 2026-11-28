@@ -3,6 +3,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
+from statistics import median
 import json
 import re
 from urllib.error import HTTPError, URLError
@@ -1205,7 +1206,8 @@ def score_slate(pool, history, evidence, projections, as_of, *, manual_minutes=N
     candidates = candidates.loc[~conflicts].drop_duplicates(groups)
     by_id = candidates.groupby('fanduel_id').minutes.apply(list).to_dict()
     result['independent_minutes'] = result.fanduel_id.map(
-        {key: values[0] for key, values in by_id.items() if max(values) - min(values) <= 3}
+        # Use the same order-independent center regardless of provider return order.
+        {key: float(median(values)) for key, values in by_id.items() if max(values) - min(values) <= 3}
     )
     minutes_agree = ((result.independent_minutes - historical).abs().le(3)
                      & (result.independent_minutes - baseline).abs().between(2, 6))
