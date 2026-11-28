@@ -1078,6 +1078,23 @@ def render_slate(history_slot):
                                 st.download_button('Download reference accuracy details', ref_details.to_csv(index=False),
                                                    file_name=f'{slate}-prior-reference-accuracy.csv', mime='text/csv',
                                                    key='slate_prior_reference_accuracy')
+                        from nba_reference_accuracy import review_reference_components
+                        try:
+                            component_details, _, component_summary, component_coverage = review_reference_components(training, slate)
+                        except ValueError as exc:
+                            st.info(f'Component reference review unavailable: {exc}')
+                        else:
+                            with st.expander('Matched reference component accuracy'):
+                                st.caption('Exact common counting-stat support against DAILY and official played outcomes. Shared reviewed minutes compare both rates at the same workload; not independent reviewed box forecasts. Publication-unknown observations remain exploratory.')
+                                if not component_summary.empty:
+                                    st.dataframe(component_summary.round(3), hide_index=True)
+                                    st.download_button('Download matched component details', component_details.to_csv(index=False),
+                                                       file_name=f'{slate}-prior-component-accuracy.csv', mime='text/csv',
+                                                       key='slate_prior_component_accuracy')
+                                else:
+                                    st.caption('No comparable archived component observations yet.')
+                                if not component_coverage.empty:
+                                    st.dataframe(component_coverage, hide_index=True)
                         if not source_summary.empty:
                             consensus_review = compare_minutes_consensus(source_details)
                             if not consensus_review.empty:
