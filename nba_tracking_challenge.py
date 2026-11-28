@@ -137,3 +137,46 @@ def compare_tracking_conversion(records, schedule, *, channel):
                                    prediction=prediction, absolute_error=abs(prediction-target[outcome]),
                                    opportunities_error=abs(opportunity-target[chances])))
     return pd.DataFrame(result)
+
+
+def compare_raw_and_tracked_pooling(records, schedule, *, channel):
+    """Same-support raw rate vs opportunity conversion; historical only.
+
+    Keep the personal four-game average minutes and chance volume fixed.
+    The raw-rate prior uses 100 earlier-cohort minutes; the tracked
+    conversion prior uses 20 earlier-cohort opportunities. Do not use target
+    chances in the forecast. Complete tracked target support is an evaluation
+    condition, not a pregame selection rule.
+    """
+    outcome, chances = {'rebounds': ('rebounds','rebound_chances'),
+                        'assists': ('assists','potential')}[channel]
+    rows = _scheduled_player_rows(records, schedule)
+    if rows.duplicated(['nba_id','game_id']).any():
+        raise ValueError('Ambiguous tracked player-game rows')
+    rows = rows.loc[rows.minutes.between(10,60) & rows[outcome].ge(0)
+                    & rows[chances].ge(rows[outcome]) & rows[chances].le(70)].copy()
+    daily = rows.groupby('date')[[outcome,chances,'minutes']].sum()
+    earlier = daily.cumsum()-daily
+    result=[]
+    for _, group in rows.groupby(['nba_id','team']):
+        ordered=group.sort_values('sequence').to_dict('records')
+        for i in range(4,len(ordered)):
+            prior,target=ordered[i-4:i],ordered[i]
+            seq=target['sequence']
+            day=target['date']
+            if ([r['sequence'] for r in prior]!=list(range(seq-4,seq))
+                    or any(r['date']>=day for r in prior)):
+                continue
+            total=sum(r[chances] for r in prior)
+            count=sum(r[outcome] for r in prior)
+            minutes=sum(r['minutes'] for r in prior)
+            pool=earlier.loc[day]
+            if total<4 or pool[chances]<20 or pool['minutes']<=0:
+                continue
+            raw_rate=pool[outcome]/pool['minutes']
+            conversion=pool[outcome]/pool[chances]
+            result.append(dict(date=day,game_id=target['game_id'],nba_id=target['nba_id'],
+                team=target['team'],channel=channel,minutes=minutes/4,actual=target[outcome],
+                base=count/4,raw_pool=minutes/4*(count+100*raw_rate)/(minutes+100),
+                chance_pool=total/4*(count+20*conversion)/(total+20)))
+    return pd.DataFrame(result)
