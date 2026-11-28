@@ -5,7 +5,8 @@ import pandas as pd
 from nba_shadow_research import (compare_shadow_forecasts, FEATURES, POLICIES,
                                  compare_frozen_opportunity, OPPORTUNITY_POLICIES,
                                  compare_frozen_history_rate, HISTORY_RATE_POLICY,
-                                 compare_frozen_component_rate, COMPONENT_POLICY)
+                                 compare_frozen_component_rate, COMPONENT_POLICY,
+                                 compare_exact_component_capture)
 from nba_combined_scoring_shadow import compare_frozen_combined, compare_frozen_paired_rate, PAIRED_RATE_POLICY
 
 from nba_research_triage import compare_frozen_large_minutes, LARGE_MINUTES_POLICIES, LARGE_MINUTES_CAPTURE_FIELDS
@@ -71,12 +72,17 @@ def compare_across_slates(replays):
             report = pd.concat([report, compare_consensus_history(frame, require_frozen=day > date(2026,11,26))], ignore_index=True)
         if set(HISTORY_WINDOW_FIELDS) <= set(frame):
             report = pd.concat([report, compare_frozen_history_windows(frame)], ignore_index=True)
+        # Separate reconstructed component policy from exact saved forecasts.
+        report = pd.concat([report, compare_exact_component_capture(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
         report['Period'] = 'Prospective' if day > POLICY_DECLARED else 'Exploratory'
         if day <= date(2026,11,25):
             report.loc[report.Policy.isin((PAIRED_RATE_POLICY, *OPPORTUNITY_POLICIES)), 'Period'] = 'Exploratory'
         if day <= date(2026,11,26):
             report.loc[report.Policy.isin((HISTORY_RATE_POLICY, COMPONENT_POLICY, *LARGE_MINUTES_POLICIES, *CONSENSUS_HISTORY_POLICIES, *HISTORY_WINDOW_POLICIES)), 'Period'] = 'Exploratory'
+        report.loc[report.Policy.eq(COMPONENT_POLICY), 'Period'] = 'Exploratory'
+        if day < date(2026,11,28):
+            report.loc[report.Policy.eq(COMPONENT_POLICY+' — exact capture'), 'Period'] = 'Exploratory'
         reports.append(report)
     daily = pd.concat(reports, ignore_index=True)
     for col in ['Eligible played with baseline', 'DAILY MAE', 'Reviewed MAE', 'Shadow MAE',
