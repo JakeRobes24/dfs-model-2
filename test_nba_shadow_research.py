@@ -152,3 +152,37 @@ def test_component_rate_shadow_keeps_peripherals_separate_and_fails_closed():
     assert component_rate_shadow(frame.assign(injury_flag='Q')).component_shadow_fd.isna().all()
     assert compare_frozen_component_rate(frame.assign(verified_outcome='did_not_play'))['Paired players'].iloc[0]==0
     pd.testing.assert_frame_equal(frame,original)
+
+
+def test_exact_component_capture_roundtrip_and_tamper_gate():
+    from nba_shadow_research import COMPONENT_FIELDS, COMPONENT_CAPTURE_FIELDS, compare_exact_component_capture
+    day=date(2026,11,28)
+    row=dict(fanduel_id='137300-1',fanduel_name='Player A',team='BOS',game='BOS@NYK',
+        eligible=True,injury_flag='',prelock_status='',prelock_starter='starter',
+        projected_minutes=30,projected_fd_points=33,adjusted_minutes=30,adjusted_fd_points=33,
+        daily_box_points=20,daily_box_turnovers=2,daily_box_rebounds=5,daily_box_assists=4,
+        daily_box_steals=1,daily_box_blocks=0,daily_box_fieldGoalsAttempted=12,
+        daily_box_freeThrowsAttempted=4,shadow_rate_sources='NBA box')
+    row.update({k:None for k in COMPONENT_FIELDS})
+    row.update({f'component_starter_{k}':v for k,v in dict(games=3,minutes=90,
+        opportunities_per_minute=.6,net_per_opportunity=1.2,peripheral_per_minute=.5).items()})
+    pool=pd.DataFrame([row])
+    schedule=[dict(awayTeam={'teamTricode':'BOS'},homeTeam={'teamTricode':'NYK'},
+        gameTimeUtc='2026-11-28T23:00:00Z')]
+    cap=capture_pool(pool,pd.DataFrame(),schedule,day,'2026-11-28T20:00:00Z',('a'*64,'b'*64))
+    assert cap.frozen_component_fd.notna().all()
+    pd.testing.assert_frame_equal(cap[pool.columns],pool)
+    actual=pd.DataFrame([dict(fanduel_id=row['fanduel_id'],outcome='Played',
+        nba_actual_minutes=30,nba_fd_points=36,nba_source='NBA box',recorded_fd_points=None)])
+    r=build_replay_rows(cap,actual,day)
+    assert set(COMPONENT_CAPTURE_FIELDS)<=set(r)
+    assert compare_exact_component_capture(r)['Paired players'].iloc[0]==1
+    for bad in (r.assign(frozen_component_fd=99),
+                r.assign(frozen_component_basis='recent'),
+                r.assign(component_captured_at='2026-11-28T20:01:00Z'),
+                r.assign(injury_flag='Q'),
+                r.assign(replay_daily_sha256='invalid')):
+        assert compare_exact_component_capture(bad)['Paired players'].iloc[0]==0
+    assert compare_exact_component_capture(r.drop(columns=list(COMPONENT_CAPTURE_FIELDS)))['Paired players'].iloc[0]==0
+    late=capture_pool(pool,pd.DataFrame(),schedule,day,'2026-11-28T23:00:00Z',('a'*64,'b'*64))
+    assert 'frozen_component_fd' not in late
