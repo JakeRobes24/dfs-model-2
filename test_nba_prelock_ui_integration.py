@@ -59,3 +59,25 @@ def test_manual_reviewed_pool_export_preserves_same_research_features_as_archive
     assert ast.unparse(downloads[0].args[1])=='reviewed_export.to_csv(index=False)'
     assigns = [n for n in ast.walk(render) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='archive_pool' for t in n.targets)]
     assert any('reviewed_export' in ast.unparse(n.value) for n in assigns)
+
+
+def test_long_history_defaults_on_only_with_verified_early_schedule_and_reuses_scope():
+    tree = ast.parse(Path(__file__).with_name('site_ui.py').read_text(encoding='utf-8'))
+    render = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='render_slate')
+    calls = [n for n in ast.walk(render) if isinstance(n,ast.Call)]
+    longer = next(n for n in calls if n.args and isinstance(n.args[0],ast.Constant)
+                  and n.args[0].value=='Load a longer rotation window')
+    assert any(k.arg=='value' and ast.unparse(k.value)=='history_early' for k in longer.keywords)
+    guarded = [n for n in ast.walk(render) if isinstance(n,ast.If)
+               and ast.unparse(n.test)=='history_early and (refresh or not retained_long)']
+    assert len(guarded)==1
+    assert sum(isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+               and n.func.id=='extended_rotations' for n in ast.walk(guarded[0]))==1
+    role_guard = [n for n in ast.walk(render) if isinstance(n,ast.If)
+                  and ast.unparse(n.test)=='recover_roles and rotation_rows and role_early']
+    assert len(role_guard)==1
+    assert any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+               and n.func.id=='public_historical_roles' for n in ast.walk(role_guard[0]))
+    assert any(isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='retained_long'
+                   for t in n.targets) and 'research_scope' in ast.unparse(n.value)
+               for n in ast.walk(render))
