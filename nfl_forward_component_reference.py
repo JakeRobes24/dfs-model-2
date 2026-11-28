@@ -8,6 +8,7 @@ from datetime import datetime
 from math import isfinite
 from statistics import mean
 import unicodedata
+from forward_component_attribution import attribute, summarize_attribution
 
 PROVIDERS = ('Volt Fantasy', 'Malter Analytics')
 METRICS = {'passing_yards','passing_td','interceptions','rushing_attempts',
@@ -88,6 +89,7 @@ def compare_capture(capture, actuals):
     detail=[]
     single=defaultdict(list)
     efficiency=defaultdict(list)
+    attribution=defaultdict(list)
     for r in capture['rows']:
         k=key(r)
         if k in seen:
@@ -122,7 +124,9 @@ def compare_capture(capture, actuals):
             for volume, yards in (('rushing_attempts','rushing_yards'),('targets','receiving_yards'),('receptions','receiving_yards')):
                 if (volume in fs[p] and yards in fs[p] and volume in a and yards in a
                         and fs[p][volume]>0 and a[volume]>0):
-                    efficiency[(p,r['position'],yards+'_per_'+volume)].append(fs[p][yards]/fs[p][volume]-a[yards]/a[volume])
+                    metric=yards+'_per_'+volume
+                    efficiency[(p,r['position'],metric)].append(fs[p][yards]/fs[p][volume]-a[yards]/a[volume])
+                    attribution[(p,r['position'],metric)].append(attribute(fs[p][volume],a[volume],fs[p][yards],a[yards]))
         common=set(fs[PROVIDERS[0]]) & set(fs[PROVIDERS[1]]) & set(a)
         if not common:
             coverage['no_common_component']+=1
@@ -146,6 +150,8 @@ def compare_capture(capture, actuals):
                 for (p,pos,metric),values in sorted(groups.items())]
     return dict(provider_specific_components=summaries(single),
                 provider_specific_efficiency=summaries(efficiency),
+                provider_specific_yardage_attribution=[dict(provider=p,position=pos,metric=metric,**summarize_attribution(v))
+                    for (p,pos,metric),v in sorted(attribution.items())],
                 captured_players=len(seen),coverage=dict(coverage),matched_components=detail,
                 comparison=result,publication_unknown=[p for p in PROVIDERS
                     if capture['sources'][p].get('published_at') is None],
