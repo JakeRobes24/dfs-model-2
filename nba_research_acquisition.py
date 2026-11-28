@@ -50,7 +50,7 @@ def extended_history_safe(schedule, games, now, slate):
     games = list(games)
     if any(not isinstance(g,str) or g.count('@')!=1 or any(not team_code(t) for t in g.split('@')) for g in games):
         return False
-    expected = {matchup_key(g) for g in games}
+    expected = {matchup_key('@'.join(team_code(t) for t in g.split('@'))) for g in games}
     if not expected or any(not g or len(set(g.split('/')))!=2 or not all(g.split('/')) for g in expected):
         return False
     tips = {}
