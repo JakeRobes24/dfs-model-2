@@ -44,3 +44,16 @@ def test_unknown_outcomes_and_time_leakage():
     bad['sources']['Malter Analytics']['published_at']='2026-11-29T01:00:00Z'
     with pytest.raises(ValueError):
         compare_capture(bad,[actual])
+
+
+def test_single_source_targets_and_efficiency_not_lost():
+    capture,actual=fixture()
+    actual['components']['receiving_yards']=72
+    report=compare_capture(capture,[actual])
+    components={(r['provider'],r['metric']):r for r in report['provider_specific_components']}
+    assert components['Volt Fantasy','targets']['mae']==1
+    assert ('Malter Analytics','targets') not in components
+    rates={(r['provider'],r['metric']):r for r in report['provider_specific_efficiency']}
+    assert rates['Volt Fantasy','receiving_yards_per_targets']['mae']==pytest.approx(.75)
+    assert ('Malter Analytics','receiving_yards_per_targets') not in rates
+    assert not any(r['metric']=='targets' for r in report['comparison'])
