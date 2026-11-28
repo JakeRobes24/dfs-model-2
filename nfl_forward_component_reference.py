@@ -86,6 +86,8 @@ def compare_capture(capture, actuals):
         by_key[k]=r
     seen, scores, coverage = set(), defaultdict(list), defaultdict(int)
     detail=[]
+    single=defaultdict(list)
+    efficiency=defaultdict(list)
     for r in capture['rows']:
         k=key(r)
         if k in seen:
@@ -112,6 +114,15 @@ def compare_capture(capture, actuals):
             coverage['nonplay_or_unknown']+=1
             continue
         a=hit.get('components',{})
+        # Provider-specific support is reported separately from common support.
+        # A missing second provider must not discard actual target/carry evidence.
+        for p in PROVIDERS:
+            for metric in set(fs[p]) & set(a):
+                single[(p,r['position'],metric)].append(fs[p][metric]-a[metric])
+            for volume, yards in (('rushing_attempts','rushing_yards'),('targets','receiving_yards'),('receptions','receiving_yards')):
+                if (volume in fs[p] and yards in fs[p] and volume in a and yards in a
+                        and fs[p][volume]>0 and a[volume]>0):
+                    efficiency[(p,r['position'],yards+'_per_'+volume)].append(fs[p][yards]/fs[p][volume]-a[yards]/a[volume])
         common=set(fs[PROVIDERS[0]]) & set(fs[PROVIDERS[1]]) & set(a)
         if not common:
             coverage['no_common_component']+=1
@@ -129,7 +140,13 @@ def compare_capture(capture, actuals):
                            errors={p:dict(mae=mean(abs(r[p]) for r in rows),
                                           bias=mean(r[p] for r in rows))
                                    for p in PROVIDERS}))
-    return dict(captured_players=len(seen),coverage=dict(coverage),matched_components=detail,
+    def summaries(groups):
+        return [dict(provider=p,position=pos,metric=metric,n=len(values),
+                     mae=mean(abs(v) for v in values),bias=mean(values))
+                for (p,pos,metric),values in sorted(groups.items())]
+    return dict(provider_specific_components=summaries(single),
+                provider_specific_efficiency=summaries(efficiency),
+                captured_players=len(seen),coverage=dict(coverage),matched_components=detail,
                 comparison=result,publication_unknown=[p for p in PROVIDERS
                     if capture['sources'][p].get('published_at') is None],
                 certified=False,warning='Exploratory matched statistical components only; no scoring acceptance.')
