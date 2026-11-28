@@ -47,13 +47,15 @@ SOURCES = (
     ('SumerSports','Not applicable','Public historical and matchup reference','Public season-to-date QB/RB/WR/TE and team efficiency, routes, target share and rushing opportunity. Situational splits partly subscription-gated; verify dated game-level data and exact identities before historical replay. Third-party fantasy consensus is not an independent forecast vote'),
     ('BankrollSZN','Public historical tracking candidate','Not established','Public recent potential-assist and conversion table; DFS sample defaults to DraftKings, full board requires free account. Verify dated game logs, FanDuel tab, exact slate and provenance; no independent forecast vote'),
     ('Statyx','Public tracking candidate','Not established','Advertised historical opportunity, shooting, usage and teammate splits with CSV; inspected page had no numerical board rows. Verify export and identity before modeling'),
-    ('StatRankings','Not established','Public historical usage candidate','Dated first-read leaderboard and recent summaries; verify denominator, raw counts, upstream charting and game-level dates before using first-read rates'),
+    ('StatRankings','Limited public projection candidate','Public historical usage candidate','NBA public Nov27 preview displayed three DraftKings point rows, expanded stat/minutes access unverified; no FD rate. NFL dated first-read leaderboard and recent summaries; verify denominator, raw counts, upstream charting and game-level dates before using first-read rates'),
     ('HeatRadar','Not established','Public routes candidate','Weekly routes, targets and efficiency table schema; numerical rows not present in inspected response. Verify dated exports and source provenance'),
     ('Vektor Labs','Public historical minutes candidate','Not established','Dated conditional minutes, points/rebounds/assists/threes and separate availability. One recovered historical game matched; freeze time and probability censoring require verification. No full FD projection or automatic vote.'),
     ('Parlae','Public numerical candidate','Not established','Displayed dated minutes, FD-equivalent scoring and component ranges. Direct board returned previous date despite current search snippet. Verify exact date, point semantics, publication time and upstream independence.'),
     ('Volt Fantasy','Not established','Public weekly component candidate','Week 12 half-PPR, projected carries/targets, catches, yards and ranges; relative update time and game freeze claim require independent capture. No FD bonus/turnover equivalence assumed.'),
     ('Malter Analytics','Not established','Public weekly component candidate','Dated weekly half-PPR, projected stat lines and trailing-three-game snap, target and carry shares. Historical shares are not projected opportunities; exact game and source timing required.'),
     ('Dimers','Limited public component candidate','Limited public component candidate','Dated stat projections; most numerical rows locked, full board/CSV access not verified. Do not infer minutes or FD scoring; no subscription or automatic vote.'),
+    ('TipoffLab','Public dated minutes candidate','Not established','Selected historical minutes and injury redistribution estimates; Nov27 16 matched minutes rows including eight FanDuel salaries below 5000. DraftKings scoring, no FD conversion; private beta full board and source lineage unverified. No automatic vote.'),
+    ('Statz','Limited public component candidate','Not established','Public sample of points, rebounds, assists, threes, steals and blocks with ranges; minutes and turnovers not exposed in inspected board. Broader access requires account; no full FD rate or automatic vote.'),
     ('Huffalytics','Not established','Public weekly component candidate','Public weekly PPR depth-player receiving projections including receptions and yards. Publication time and upstream provenance unverified; ambiguous Rush/Touches/TD fields are not inferred as attempts, targets or channel-specific touchdowns. No automatic vote.'),
 )
 # Verified public access paths; links are not evidence of current coverage.
@@ -65,6 +67,8 @@ HISTORICAL_RESEARCH_LINKS = {
 }
 RESEARCH_LINKS = {
     'Huffalytics': 'https://huffalytics.com/nfl/w/12/',
+    'TipoffLab': 'https://dfs.tipofflab.com/nba-dfs-projections/2026-11-27',
+    'Statz': 'https://statz.ai/nba/projections/players',
     'Vektor Labs': 'https://www.vektorlabs.app/nba',
     'Parlae': 'https://parlae.io/fantasy/nba/projections',
     'Volt Fantasy': 'https://voltfantasy.com/nfl/projections',
