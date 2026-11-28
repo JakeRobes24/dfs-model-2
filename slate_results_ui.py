@@ -92,6 +92,20 @@ def render_post_slate():
                     st.dataframe(details.round(2), hide_index=True)
                     st.download_button('Download multi-slate policy evaluation', aggregate.to_csv(index=False),
                                        'shadow_multislate_summary.csv', mime='text/csv')
+                    from nba_window_shadow import compare_frozen_history_windows, FROZEN_FIELDS
+                    cohort_reports=[]
+                    for day, packet in earlier.groupby('slate_date', sort=True):
+                        if set(FROZEN_FIELDS)<=set(packet):
+                            cohort=compare_frozen_history_windows(packet,by_projected_minutes=True)
+                            if 'Eligible pre-tip players' in cohort:
+                                cohort_reports.append(cohort.assign(Date=day))
+                    if cohort_reports:
+                        by_minutes=pd.concat(cohort_reports,ignore_index=True)
+                        st.caption('Historical-window challengers by projected minutes. Frozen support counts all eligible players with verified recorded forecasts; paired error counts only verified played outcomes. Missing support is not zero production.')
+                        st.dataframe(by_minutes.round(3),hide_index=True)
+                        st.download_button('Download workload cohort evaluation',by_minutes.to_csv(index=False),
+                                           'shadow_workload_cohorts.csv',mime='text/csv')
+
             except SOURCE_ERRORS:
                 st.warning('Multi-slate evidence could not be verified. No policy was changed.')
 
