@@ -432,3 +432,18 @@ def test_role_sources_are_candidates_not_scoring_votes():
             assert 'Not verified' in rows.loc[name,'Refresh evidence']
             assert evidence.loc[name,'Evidence'] == 'No comparable rows in this archive'
             assert rows.loc[name,'Verified access link'].startswith('https://')
+
+
+
+def test_nov28_new_sources_stay_reference_only():
+    from research_source_registry import SOURCES, predictive_coverage
+    assert len(SOURCES) == len({row[0] for row in SOURCES})
+    for sport, names in [('NBA', ('Vektor Labs', 'Parlae', 'Dimers')), ('NFL', ('Volt Fantasy', 'Malter Analytics', 'Dimers'))]:
+        rows = research_checklist(sport, [(name, 'claimed forecast') for name in names]).set_index('Source')
+        coverage = predictive_coverage(sport).set_index('Source')
+        for name in names:
+            assert 'candidate' in rows.loc[name, 'Integration']
+            assert 'Not verified' in rows.loc[name, 'Refresh evidence']
+            assert 'claimed forecast' not in rows.loc[name, 'Refresh evidence']
+            assert coverage.loc[name, 'Evidence'] == 'No comparable rows in this archive'
+        assert rows.loc['Dimers', 'Verified access link'].endswith('/'+sport.lower()+'/player-projections')
