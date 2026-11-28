@@ -91,3 +91,41 @@ def test_candidate_window_sensitivity_keeps_unsupported_players_at_reviewed_scor
     pd.testing.assert_frame_equal(frame,original)
     with pytest.raises(ValueError,match='no longer eligible'):
         candidate_window_sensitivity(frame.assign(eligible=~frame.fanduel_id.eq('137200-1')),candidates,DAY)
+
+
+def test_workload_cohort_support_separate_from_verified_outcomes():
+    first=saved()
+    second=saved(p=pool().assign(fanduel_id='137200-2',fanduel_name='Player B',
+                                 adjusted_minutes=15,adjusted_fd_points=15),
+                 history=[dict(r,player='Player B',nba_id='102') for r in logs()])
+    third=saved(p=pool().assign(fanduel_id='137200-3',fanduel_name='Player C',
+                                adjusted_minutes=25,adjusted_fd_points=25),history=[])
+    r=replay(pd.concat([first,second,third],ignore_index=True))
+    report=compare_frozen_history_windows(r,by_projected_minutes=True)
+    counts=report.groupby('Cohort').first()
+    assert counts.loc['10 to <20','Eligible pre-tip players']==1
+    assert counts.loc['10 to <20','Frozen supported players']==1
+    assert counts.loc['10 to <20','Paired players']==0
+    assert pd.isna(counts.loc['10 to <20','Shadow MAE'])
+    assert counts.loc['20 to <30','Eligible pre-tip players']==1
+    assert counts.loc['20 to <30','Frozen supported players']==0
+    assert counts.loc['30 to 48','Paired players']==1
+    total=compare_frozen_history_windows(r)
+    assert total['Frozen supported players'].tolist()==[2]*4
+    assert total['Paired players'].tolist()==[1]*4
+    # Check the entire receipt before partitioning; each subgroup alone
+    # would otherwise accept its own unrelated input fingerprint.
+    r.loc[r.fanduel_id.eq('137200-2'),'replay_daily_sha256']='c'*64
+    bad=compare_frozen_history_windows(r,by_projected_minutes=True)
+    assert bad['Paired players'].eq(0).all()
+    assert 'Eligible pre-tip players' not in bad
+
+
+def test_history_window_missing_or_malformed_input_fingerprints_fail_closed():
+    r=replay(saved())
+    for bad in (r.drop(columns='replay_daily_sha256'),
+                r.assign(replay_contest_sha256='bad')):
+        assert compare_frozen_history_windows(bad)['Paired players'].tolist()==[0]*4
+    f=saved().drop(columns='replay_daily_sha256')
+    clean=f.drop(columns=['shadow_hw_version','shadow_hw_captured_at',*POLICIES.values()])
+    assert not set(POLICIES.values()) & set(freeze_history_windows(clean))
