@@ -57,6 +57,8 @@ def test_extended_history_requires_all_tips_and_ninety_minute_buffer():
     def allowed(rows,clock=now):
         return extended_history_safe(rows,games,clock,slate)
     assert allowed([a,b])
+    assert extended_history_safe([a,b],['ORL@WAS','BRK@CHA'],now,slate)
+    assert not extended_history_safe([a,b],['WSH@WAS','BKN@CHA'],now,slate)
     assert not allowed([a,b],'2026-11-28T20:00:01Z')
     assert not allowed([a])
     assert not allowed([a,b,a])
