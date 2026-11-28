@@ -75,7 +75,7 @@ def compare_across_slates(replays):
         # Separate reconstructed component policy from exact saved forecasts.
         if day >= date(2026,11,28) or set(COMPONENT_CAPTURE_FIELDS)<=set(frame):
             report = pd.concat([report, compare_exact_component_capture(frame)], ignore_index=True)
-        from nba_pooled_history_shadow import compare_frozen_pooled_history, FROZEN_FIELDS as POOLED_HISTORY_FIELDS
+        from nba_pooled_history_shadow import compare_frozen_pooled_history, FROZEN_FIELDS as POOLED_HISTORY_FIELDS, POLICIES as POOLED_POLICIES
         if day >= date(2026,11,28) or set(POOLED_HISTORY_FIELDS)<=set(frame):
             report = pd.concat([report, compare_frozen_pooled_history(frame)], ignore_index=True)
         report['Date'] = day.isoformat()
@@ -87,6 +87,8 @@ def compare_across_slates(replays):
         report.loc[report.Policy.eq(COMPONENT_POLICY), 'Period'] = 'Exploratory'
         if day < date(2026,11,28):
             report.loc[report.Policy.eq(COMPONENT_POLICY+' — exact capture'), 'Period'] = 'Exploratory'
+        if day < date(2026,11,28):
+            report.loc[report.Policy.isin(POOLED_POLICIES),'Period'] = 'Exploratory'
         reports.append(report)
     daily = pd.concat(reports, ignore_index=True)
     for col in ['Eligible played with baseline', 'DAILY MAE', 'Reviewed MAE', 'Shadow MAE',
