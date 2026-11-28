@@ -62,3 +62,10 @@ def test_no_target_day_training():
     second,_=simulate_archived_rosters(h,p,r,slate=DAY,draws=200)
     for k in first:
         assert np.array_equal(first[k].fd_points,second[k].fd_points)
+
+
+@pytest.mark.parametrize("teams", [["BOS", "NYK"] * 5, ["BOS"] * 5 + ["NYK"] * 3 + ["DAL"] * 2])
+def test_illegal_team_composition_rejected(teams):
+    history, pool, roster, _ = fixture()
+    with pytest.raises(ValueError, match='violates contest rules'):
+        simulate_archived_rosters(history, pool.assign(team=teams), roster, slate=DAY)

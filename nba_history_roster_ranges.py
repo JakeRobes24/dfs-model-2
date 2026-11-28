@@ -9,6 +9,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 from model import SLOTS, allowed_slots
+from nba_classic_rules import legal_team_counts
 from nba_history_ranges import historical_forecasts,_residuals,_band,_interval_score
 from nba_simulation import OutcomeDraws
 
@@ -40,7 +41,7 @@ def simulate_archived_rosters(records,pool,rosters,*,slate,draws=4000,seed=42):
         if len(g)!=9 or not g.fanduel_id.is_unique or Counter(g.slot)!=Counter(SLOTS):
             raise ValueError('Require exactly nine legal roster slots')
         players=lookup.loc[g.fanduel_id]
-        if (players.salary.sum()>60000 or players.team.value_counts().max()>4
+        if (players.salary.sum()>60000 or not legal_team_counts(players.team)
                 or any(slot not in allowed_slots(lookup.loc[pid,'roster_eligibility'])
                        for pid,slot in zip(g.fanduel_id,g.slot))):
             raise ValueError('Archived roster violates contest rules')

@@ -22,6 +22,8 @@ The [rotation follow-up](validation/nov28-rotation-evidence.md) reconciles final
 
 The [candidate-range follow-up](validation/nov28-reconstructed-candidate-ranges.md) reproduces the Nov 27 simulation receipt and makes later candidate ranges downloadable. Treat its one-slate interval miss as a diagnostic and continue the cross-sport archive audit.
 
+The [multi-slate roster calibration replay](validation/nov28-multislate-roster-calibration.md) compares the same legal candidates and forecast centers on three dated pre-tip checkpoints. Miss direction and the primary minutes or production-rate error changed across dates. Keep the paired uncertainty model in shadow evaluation and preserve availability cases outside its played-only scope.
+
 ## November 24 checkpoint (NBA contest 137128)
 
 - Hosted archive submission and backup publication observed. Four pre-tip candidates and 105 contest rows preserved; manifest reports 668 historical research rows.
