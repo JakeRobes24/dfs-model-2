@@ -1,8 +1,10 @@
 """Isolated Streamlit NFL import preview, not the production entry point."""
 import json
+from hashlib import sha256
 import pandas as pd
 import streamlit as st
 from nfl_daily_audit import audit_nfl_daily
+from nfl_review_archive import create_nfl_review_archive, restore_nfl_review_archive, review_bundle
 from nfl_reviewed_candidates import compare_reviewed_nfl
 from nfl_weather_ui import render_nfl_weather
 from nfl_projection_review import review_nfl_projections
@@ -143,10 +145,10 @@ if contest and daily and contest_id:
             bundle=st.file_uploader("Reviewed candidate bundle JSON",type=["json"])
             if bundle:
                 try:
-                    args=json.loads(bundle.getvalue())
+                    args=review_bundle(bundle.getvalue())
                     result=compare_reviewed_nfl(contest.getvalue(),daily.getvalue(),
                         contest_id=contest_id,single_game=mode=="Single game",
-                        **{k:args[k] for k in ("slate_date","cutoff_utc","daily_capture","evidence","candidates","salary_cap")})
+                        **args)
                 except (ValueError,TypeError,KeyError,UnicodeError) as exc:
                     st.error(str(exc))
                 else:
@@ -158,3 +160,41 @@ if contest and daily and contest_id:
                         st.dataframe(pd.DataFrame(result["unresolved"]),hide_index=True)
                     st.download_button("Download fixed-candidate review",json.dumps(result,indent=2),
                                        file_name="nfl_candidate_review.json",mime="application/json")
+                    scope = (report["contest_sha256"], report["daily_sha256"],
+                             mode, sha256(bundle.getvalue()).hexdigest())
+                    if st.button("Freeze NFL review archive", key="nfl_freeze_review"):
+                        st.session_state.pop("nfl_review_snapshot", None)
+                        try:
+                            archive, manifest = create_nfl_review_archive(
+                                contest.getvalue(), daily.getvalue(), bundle.getvalue(),
+                                contest_id=contest_id, single_game=mode == "Single game")
+                        except (ValueError, TypeError, KeyError, UnicodeError) as exc:
+                            st.error(str(exc))
+                        else:
+                            st.session_state["nfl_review_snapshot"] = scope, archive, manifest
+                    saved = st.session_state.get("nfl_review_snapshot")
+                    if saved and saved[0] == scope:
+                        _, archive, manifest = saved
+                        st.caption(f"Frozen {manifest['captured_at_utc']}. Timing {manifest['timing'].replace('_', ' ')}.")
+                        st.download_button("Download NFL review archive", archive,
+                            file_name=f"NFL-{contest_id}-{manifest['slate_date']}-review.zip",
+                            mime="application/zip")
+
+with st.expander("Recover an NFL review archive"):
+    st.caption("Check a saved ZIP and replay its original review. This does not certify kickoff timing or player status.")
+    recovery = st.file_uploader("Saved NFL review ZIP", type=["zip"], key="nfl_review_recovery")
+    if recovery:
+        try:
+            manifest, recorded, repeated = restore_nfl_review_archive(recovery.getvalue())
+        except (ValueError, TypeError, KeyError, UnicodeError) as exc:
+            st.error(str(exc))
+        else:
+            if repeated:
+                st.success("Saved NFL review reproduced from original inputs.")
+            else:
+                st.warning("The current replay differs from the saved review. The download contains the saved result.")
+            st.caption(f"Contest {manifest['contest_id']} · {manifest['slate_date']} · "
+                       f"{len(recorded['accepted_players'])} accepted · {len(recorded['unresolved'])} unresolved")
+            st.download_button("Download saved NFL review report", json.dumps(recorded, indent=2),
+                               file_name=f"NFL-{manifest['contest_id']}-saved-report.json",
+                               mime="application/json")

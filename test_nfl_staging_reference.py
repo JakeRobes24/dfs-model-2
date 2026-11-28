@@ -44,3 +44,32 @@ def test_staging_prop_sims_result_is_bound_to_uploaded_inputs_and_selected_week(
     assert not app.exception and any('Reference FD' in table.value for table in app.dataframe)
     app.file_uploader[1].upload('new-daily.csv', export(OFF).replace('20.8', '21.8').encode(), 'text/csv').run()
     assert not any('Reference FD' in table.value for table in app.dataframe)
+
+
+def test_nfl_staging_archive_download_and_restore_are_scoped_to_original_inputs():
+    import json
+
+    from nfl_review_archive import restore_nfl_review_archive
+    from test_nfl_reviewed_candidates import fixture
+
+    contest, daily, kwargs = fixture()
+    kwargs.pop('contest_id')
+    kwargs.pop('single_game')
+    bundle = json.dumps(kwargs).encode('utf-8')
+    app = AppTest.from_file(str(Path(__file__).with_name('app_nfl_staging.py'))).run()
+    app.text_input[0].set_value('137123')
+    app.file_uploader[0].upload('contest.csv', contest, 'text/csv')
+    app.file_uploader[1].upload('daily.csv', daily, 'text/csv').run()
+    next(w for w in app.file_uploader if w.label == 'Reviewed candidate bundle JSON').upload(
+        'review.json', bundle, 'application/json').run()
+    app.button(key='nfl_freeze_review').click().run()
+    assert not app.exception and not app.error
+    assert any(button.label == 'Download NFL review archive' for button in app.get('download_button'))
+    scope, raw, manifest = app.session_state['nfl_review_snapshot']
+    assert restore_nfl_review_archive(raw)[2]
+    app.run()
+    assert app.session_state['nfl_review_snapshot'] == (scope, raw, manifest)
+    app.file_uploader(key='nfl_review_recovery').upload('saved.zip', raw, 'application/zip').run()
+    assert any('reproduced from original inputs' in status.value for status in app.success)
+    app.file_uploader[1].upload('new.csv', daily + b'\n', 'text/csv').run()
+    assert not any('Download NFL review archive' == button.label for button in app.get('download_button'))
