@@ -49,6 +49,11 @@ SOURCES = (
     ('Statyx','Public tracking candidate','Not established','Advertised historical opportunity, shooting, usage and teammate splits with CSV; inspected page had no numerical board rows. Verify export and identity before modeling'),
     ('StatRankings','Not established','Public historical usage candidate','Dated first-read leaderboard and recent summaries; verify denominator, raw counts, upstream charting and game-level dates before using first-read rates'),
     ('HeatRadar','Not established','Public routes candidate','Weekly routes, targets and efficiency table schema; numerical rows not present in inspected response. Verify dated exports and source provenance'),
+    ('Vektor Labs','Public historical minutes candidate','Not established','Dated conditional minutes, points/rebounds/assists/threes and separate availability. One recovered historical game matched; freeze time and probability censoring require verification. No full FD projection or automatic vote.'),
+    ('Parlae','Public numerical candidate','Not established','Displayed dated minutes, FD-equivalent scoring and component ranges. Direct board returned previous date despite current search snippet. Verify exact date, point semantics, publication time and upstream independence.'),
+    ('Volt Fantasy','Not established','Public weekly component candidate','Week 12 half-PPR, projected carries/targets, catches, yards and ranges; relative update time and game freeze claim require independent capture. No FD bonus/turnover equivalence assumed.'),
+    ('Malter Analytics','Not established','Public weekly component candidate','Dated weekly half-PPR, projected stat lines and trailing-three-game snap, target and carry shares. Historical shares are not projected opportunities; exact game and source timing required.'),
+    ('Dimers','Limited public component candidate','Limited public component candidate','Dated stat projections; most numerical rows locked, full board/CSV access not verified. Do not infer minutes or FD scoring; no subscription or automatic vote.'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -130,7 +135,8 @@ def research_checklist(sport, source_status=()):
             current = 'Identity not verified'
         else:
             current = 'Not verified by automatic refresh; use applicable reference or manual check'
-        link = 'https://propsims.com/dfs/fanduel/' if (sport, name) == ('NFL', 'PropSims') else RESEARCH_LINKS.get(name, '')
+        link = {('NFL', 'PropSims'): 'https://propsims.com/dfs/fanduel/',
+                ('NFL', 'Dimers'): 'https://www.dimers.com/nfl/player-projections'}.get((sport, name), RESEARCH_LINKS.get(name, ''))
         rows.append({'Source':name,'Integration':mode,'Research purpose':purpose,'Refresh evidence':current,
                      'Verified access link': link,
                      'Historical reference link': HISTORICAL_RESEARCH_LINKS.get(name, '')})
