@@ -106,3 +106,50 @@ class ProjectionReviewTests(unittest.TestCase):
             r=review([evidence(),evidence("two")],a)
             self.assertEqual(r["rows"][0]["decision"],"contest_out")
             self.assertIsNone(r["rows"][0]["review_consensus_fd"])
+
+
+    def test_later_distinct_record_supersedes_old_forecast_in_either_order(self):
+        records=[evidence(score=9),evidence(score=5.2,source_record_id="new-run",
+                    asof_utc="2026-11-26T15:10:00Z",observed_at="2026-11-26T15:20:00Z"),
+                 evidence("two",5.8)]
+        for submitted in (records,list(reversed(records))):
+            row=review(submitted)["rows"][0]
+            self.assertEqual(row["decision"],"corroborated_gap_review")
+            self.assertEqual(row["review_consensus_fd"],5.5)
+            self.assertEqual(row["independent_family_count"],2)
+            self.assertEqual([r["projection_fd"] for r in row["superseded_source_records"]],[9])
+            self.assertEqual(sorted(r["projection_fd"] for r in row["accepted_source_records"]),[5.2,5.8])
+            self.assertIsNone(row["daily_fd"])
+
+    def test_same_family_different_source_does_not_supersede(self):
+        row=review([evidence(score=9),evidence(score=5.2,source="affiliate",source_record_id="new-run",
+                    asof_utc="2026-11-26T15:10:00Z",observed_at="2026-11-26T15:20:00Z"),
+                    evidence("two",5.8)])["rows"][0]
+        self.assertEqual(row["decision"],"source_disagreement")
+        self.assertEqual(row["superseded_source_records"],[])
+        self.assertIsNone(row["review_consensus_fd"])
+
+    def test_post_cutoff_revision_cannot_supersede_valid_record(self):
+        report=review([evidence(),evidence(score=20,source_record_id="late",
+            asof_utc="2026-11-26T16:01:00Z",observed_at="2026-11-26T16:02:00Z"),evidence("two",5.8)])
+        row=report["rows"][0]
+        self.assertEqual(row["review_consensus_fd"],5.5)
+        self.assertEqual(row["superseded_source_records"],[])
+        self.assertEqual(report["rejected_evidence"][0]["reason"],"stale_or_post_cutoff")
+
+    def test_newest_simultaneous_conflict_is_not_resolved_by_old_record(self):
+        common=dict(asof_utc="2026-11-26T15:10:00Z",observed_at="2026-11-26T15:20:00Z")
+        records=[evidence(),evidence(score=4,source_record_id="new-a",**common),
+                 evidence(score=9,source_record_id="new-b",**common),evidence("two",5.8)]
+        for submitted in (records,list(reversed(records))):
+            row=review(submitted)["rows"][0]
+            self.assertEqual(row["decision"],"source_disagreement")
+            self.assertEqual(row["conflicting_families"],["one"])
+            self.assertIsNone(row["review_consensus_fd"])
+
+    def test_conflicting_reused_record_id_still_quarantined_after_revision(self):
+        row=review([evidence(),evidence(score=9),evidence(score=5.2,source_record_id="new",
+            asof_utc="2026-11-26T15:10:00Z",observed_at="2026-11-26T15:20:00Z"),
+            evidence("two",5.8)])["rows"][0]
+        self.assertEqual(row["conflicting_families"],["one"])
+        self.assertIsNone(row["review_consensus_fd"])
