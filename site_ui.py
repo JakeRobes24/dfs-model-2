@@ -959,7 +959,7 @@ def render_slate(history_slot):
                                      key='slate_simulation_stress')
                 if (use_archive or files) and st.button('Simulate current candidates', key='slate_simulation_run'):
                     try:
-                        from nba_simulation import simulate_reviewed_candidates
+                        from nba_simulation import candidate_range_receipt, simulate_reviewed_candidates
                         if use_archive:
                             with st.spinner('Verifying earlier private captures and final NBA box scores…'):
                                 training, coverage = load_prior_replays(history, slate, token)
@@ -1064,10 +1064,22 @@ def render_slate(history_slot):
                         if not alternative.empty:
                             candidates = pd.concat([candidates, alternative[['fanduel_id']].assign(
                                 lineup='Best distinct alternative')], ignore_index=True)
+                        simulation_seed = 42
                         ranges, pairs, count, outcomes = simulate_reviewed_candidates(
-                            training, scored, candidates, slate, return_draws=True)
+                            training, scored, candidates, slate, seed=simulation_seed, return_draws=True)
                         st.caption(f'{count} earlier verified played training rows; 4,000 shared outcome draws.')
                         st.dataframe(ranges, hide_index=True)
+                        captured = datetime.now(ET)
+                        refreshed = public_slate_schedule(slate) if slate == captured.date() else []
+                        started_now, schedule_complete = started_contest_games(refreshed, pool.game, captured)
+                        timing = ('at_or_after_cutoff' if started_now else
+                                  'before_scheduled_tip' if schedule_complete else 'schedule_unverified')
+                        receipt = candidate_range_receipt(
+                            scored, candidates, ranges, slate=slate, captured_at=captured,
+                            timing=timing, draws=len(outcomes.fd_points), seed=simulation_seed, training_players=count)
+                        st.download_button('Download candidate ranges and roster snapshot', receipt,
+                                           file_name=f'{slate}-candidate-range-receipt.json',
+                                           mime='application/json', on_click='ignore')
                         if not pairs.empty:
                             st.dataframe(pairs, hide_index=True)
                         if stress:

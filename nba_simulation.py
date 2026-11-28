@@ -1,6 +1,7 @@
 """Experimental NBA outcome ranges conditional on a player taking the court."""
 from dataclasses import dataclass
 from itertools import combinations
+import json
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,48 @@ import pandas as pd
 MINUTE_BANDS = (18, 28)
 MIN_COHORT = 20
 QUANTILES = (.1, .5, .9)
+
+
+def candidate_range_receipt(pool, rosters, ranges, *, slate, captured_at, timing,
+                            draws, seed, training_players):
+    """Export the exact player forecasts and candidate ranges displayed in the audit."""
+    when = pd.Timestamp(captured_at)
+    timings = {'before_scheduled_tip', 'at_or_after_cutoff', 'schedule_unverified'}
+    if (pd.isna(when) or when.tzinfo is None or timing not in timings
+            or (timing=='before_scheduled_tip' and when.tz_convert('America/New_York').date()!=slate)):
+        raise ValueError('Invalid simulation capture timestamp or timing.')
+    if type(draws) is not int or draws < 1 or type(seed) is not int or type(training_players) is not int or training_players < 1:
+        raise ValueError('Simulation receipt requires its draw, seed and training settings.')
+    roster_columns = ['lineup', 'fanduel_id']
+    point_columns = ['adjusted_minutes','adjusted_fd_points']
+    ranges_columns = ['lineup','reviewed_fd','fd_p10','fd_p50','fd_p90','fd_stddev']
+    players = rosters[roster_columns].merge(pool[['fanduel_id', *point_columns]], on='fanduel_id',
+                                           how='left',validate='many_to_one')
+    ids = players.fanduel_id
+    if (players.empty or not ids.str.fullmatch(r'\d+-\d+').all()
+            or ids.str.split('-').str[0].nunique()!=1
+            or players.lineup.isna().any() or players.duplicated(roster_columns).any()
+            or not players.groupby('lineup').size().eq(9).all()):
+        raise ValueError('Simulation receipt requires nine distinct players per candidate in one contest.')
+    scores = ranges[ranges_columns]
+    if scores.lineup.isna().any() or not scores.lineup.is_unique or set(scores.lineup)!=set(players.lineup):
+        raise ValueError('Candidate ranges do not match the archived rosters.')
+    projections = _numeric(players, point_columns)
+    numeric = _numeric(scores, ranges_columns[1:])
+    if (not projections.notna().all().all() or not projections.gt(0).all().all()
+            or not numeric.notna().all().all() or not numeric.fd_stddev.ge(0).all()
+            or not (numeric.fd_p10.le(numeric.fd_p50)&numeric.fd_p50.le(numeric.fd_p90)).all()):
+        raise ValueError('Simulation receipt requires valid projections and ordered quantiles.')
+    expected = projections.adjusted_fd_points.groupby(players.lineup).sum()
+    if not np.allclose(scores.lineup.map(expected), numeric.reviewed_fd, atol=1e-8, rtol=0):
+        raise ValueError('Candidate projected totals disagree with the displayed inputs.')
+    return json.dumps(dict(schema=1, contest=ids.iloc[0].split('-')[0], slate_date=slate.isoformat(),
+                           captured_at_utc=when.tz_convert('UTC').isoformat(), timing=timing,
+                           method='reviewed_minutes_independent_played_residuals', conditional_on_playing=True,
+                           draws=draws, seed=seed, training_players=training_players,
+                           players=players.assign(**projections).to_dict('records'),
+                           ranges=scores.assign(**numeric).to_dict('records')),
+                      indent=2, allow_nan=False)+'\n'
 
 
 def _numeric(frame, columns):

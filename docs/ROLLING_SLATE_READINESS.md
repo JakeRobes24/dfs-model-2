@@ -20,6 +20,8 @@ The [first five-contest audit](validation/nov28-live-performance-audit.md) recor
 
 The [rotation follow-up](validation/nov28-rotation-evidence.md) reconciles final substitution clocks and evaluates two pretip warning rules. Continue gathering timed roles and complete close-time forecasts for prospective testing.
 
+The [candidate-range follow-up](validation/nov28-reconstructed-candidate-ranges.md) reproduces the Nov 27 simulation receipt and makes later candidate ranges downloadable. Treat its one-slate interval miss as a diagnostic and continue the cross-sport archive audit.
+
 ## November 24 checkpoint (NBA contest 137128)
 
 - Hosted archive submission and backup publication observed. Four pre-tip candidates and 105 contest rows preserved; manifest reports 668 historical research rows.
