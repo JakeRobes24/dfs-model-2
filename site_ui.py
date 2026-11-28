@@ -986,6 +986,17 @@ def render_slate(history_slot):
                     st.dataframe(exposure_review[2].round(3), hide_index=True)
                     st.download_button('Download exposure change review', exposure_review[2].to_csv(index=False),
                                        'portfolio_exposure_changes.csv', mime='text/csv')
+        if not started and not lineups.empty:
+            with st.expander('Historical minutes and production sensitivity'):
+                st.caption('Fixed legal candidates under the existing 20% historical challengers. Unsupported players keep reviewed scores; this is sensitivity only, not a new optimization or a validated scoring rule.')
+                try:
+                    from nba_window_shadow import candidate_window_sensitivity
+                    window_review=candidate_window_sensitivity(reviewed_export,lineups,slate)
+                    st.dataframe(window_review.round(3),hide_index=True)
+                    st.download_button('Download historical candidate sensitivity',window_review.to_csv(index=False),
+                                       file_name=f'{slate}-{contest_id}-candidate-history-sensitivity.csv',mime='text/csv')
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                    st.warning(f'Historical candidate sensitivity unavailable: {exc}')
         if not lineups.empty:
             with st.expander('Experimental simulated candidate comparison'):
                 st.caption('Conditional on playing, with independent player residuals. Uses reviewed adjusted minutes and FD points, not raw DAILY. No ownership, game correlation or contest win probability is inferred; optimizer rankings are unchanged.')
