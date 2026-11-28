@@ -54,6 +54,7 @@ SOURCES = (
     ('Volt Fantasy','Not established','Public weekly component candidate','Week 12 half-PPR, projected carries/targets, catches, yards and ranges; relative update time and game freeze claim require independent capture. No FD bonus/turnover equivalence assumed.'),
     ('Malter Analytics','Not established','Public weekly component candidate','Dated weekly half-PPR, projected stat lines and trailing-three-game snap, target and carry shares. Historical shares are not projected opportunities; exact game and source timing required.'),
     ('Dimers','Limited public component candidate','Limited public component candidate','Dated stat projections; most numerical rows locked, full board/CSV access not verified. Do not infer minutes or FD scoring; no subscription or automatic vote.'),
+    ('Huffalytics','Not established','Public weekly component candidate','Public weekly PPR depth-player receiving projections including receptions and yards. Publication time and upstream provenance unverified; ambiguous Rush/Touches/TD fields are not inferred as attempts, targets or channel-specific touchdowns. No automatic vote.'),
 )
 # Verified public access paths; links are not evidence of current coverage.
 # Recovered historical reference paths are not proof of present-day availability.
@@ -63,6 +64,7 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'Huffalytics': 'https://huffalytics.com/nfl/w/12/',
     'Vektor Labs': 'https://www.vektorlabs.app/nba',
     'Parlae': 'https://parlae.io/fantasy/nba/projections',
     'Volt Fantasy': 'https://voltfantasy.com/nfl/projections',
