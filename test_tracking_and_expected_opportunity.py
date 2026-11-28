@@ -59,3 +59,22 @@ def test_expected_nfl_components_share_known_rows_and_never_use_target_expectati
     assert compare_expected_opportunity(workload, missing, season=2026)[0].empty
     ambiguous = pd.concat([source, source.iloc[[1]].assign(position='WR')])
     assert compare_expected_opportunity(workload, ambiguous, season=2026)[0].empty
+
+
+def test_missing_unrelated_rebound_chances_do_not_discard_valid_assists():
+    headers=''.join(f'<th>{field}</th>' for field in TRACKING_COLUMNS)
+    def html(values):
+        cells=''.join(f'<td>{value}</td>' for value in values)
+        return (f'<h1>Jordan Hawkins</h1><table><thead><tr>{headers}</tr></thead>'
+                f'<tbody><tr><td><a href="/game/2026-11-08/phi-at-chi">Game</a></td>{cells}</tr></tbody></table>')
+    values=[17,1,2,0,'–',21,6,15,2,0]
+    row,=nba_house_potential_assists(html(values))
+    assert row['potential']==2 and row['rebounds']==0
+    official=pd.DataFrame([dict(row,game_id='123',nba_id='22')]).drop(columns='potential')
+    source=pd.DataFrame([row])
+    assert join_assist_tracking(official,source).potential.tolist()==[2]
+    assert join_assist_tracking(official.assign(rebounds=1),source).potential.isna().all()
+    for field,value in ((0,4),(1,3),(2,'–'),(3,'–')):
+        changed=values.copy()
+        changed[field]=value
+        assert nba_house_potential_assists(html(changed))==[]
