@@ -16,7 +16,8 @@ from nba_component_pool_replay import CHANNELS,component_pool_forecast
 from nba_distribution_review import bounded,timestamp
 from slate_import import contest_player_keys,player_key
 
-VERSION='2026-11-28-pooled-history-v1'
+VERSION='2026-11-28-pooled-history-v2'
+MAX_LATEST_AGE_DAYS=7
 PRIOR_END=date(2026,11,17)
 # Source: DFS_Model_2_NBA_Rotation_Replay.zip, 2026-11-18.json,
 # SHA-256 8ec493160d935b4b4faed6efb144077f8c52fb5e2529d0b9023de1846a474e12.
@@ -27,8 +28,8 @@ INPUTS=('pooled_hw_slate','pooled_hw_history_json')
 FROZEN_FIELDS=(*INPUTS,'pooled_hw_version','pooled_hw_captured_at',
                'pooled_hw_personal_fd','pooled_hw_pooled_fd',
                'pooled_hw_components_json')
-POLICIES=('Personal four-game components at reviewed minutes',
-          'Pooled net/assist/stocks at reviewed minutes')
+POLICIES=('Personal four-game components at reviewed minutes (recent history)',
+          'Pooled net/assist/stocks at reviewed minutes (recent history)')
 
 
 def attach_pooled_history(pool, rotations, slate):
@@ -83,7 +84,8 @@ def pooled_prediction(row,slate):
         dates=[_day(r['game_date']) for r in logs]
         aliases=contest_player_keys(row.fanduel_name,row.fanduel_id)
         if (len(ids)!=1 or not next(iter(ids)).isdigit() or dates!=sorted(set(dates))
-                or any(not slate-timedelta(days=30)<=d<slate for d in dates)):
+                or any(not slate-timedelta(days=30)<=d<slate for d in dates)
+                or (slate-dates[-1]).days>MAX_LATEST_AGE_DAYS):
             return None
         for r in logs:
             if (r.get('team')!=row.team or player_key(r.get('player','')) not in aliases
