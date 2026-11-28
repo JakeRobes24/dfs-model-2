@@ -435,24 +435,54 @@ def render_slate(history_slot):
             st.dataframe(paired_players.loc[paired_players['Paired providers'].lt(2)].merge(scored[['fanduel_id','fanduel_name','team']], on='fanduel_id', validate='one_to_one').drop(columns='fanduel_id'), hide_index=True)
     from nba_matchup_context import matchup_context
     from nba_shadow_research import freeze_research_features
+    from nba_research_acquisition import extended_history_safe
+    history_now = datetime.now(ET)
+    history_schedule = public_slate_schedule(slate) if slate == history_now.date() else []
+    history_early = extended_history_safe(history_schedule, games, datetime.now(ET), slate)
     with st.expander('Historical research window'):
         st.caption('The longer window feeds both discrepancy review and frozen experimental evidence. Reviewed live scoring continues to use its established recent rotation inputs.')
-        longer = st.checkbox('Load a longer rotation window', key=f'rotation_window_{contest_id}_{slate}')
+        longer = st.checkbox('Load a longer rotation window', value=history_early,
+                             key=f'rotation_window_{contest_id}_{slate}')
         recover_roles = st.checkbox('Cross-check missing historical starter and bench roles', value=True,
                                     key=f'role_window_{contest_id}_{slate}')
-        st.caption('Public final-game role recovery is cached and research-only. Disable if time to lock is short; missing roles remain unknown.')
+        st.caption('New optional historical requests are limited to verified schedules with at least 90 minutes before the first contest tip. This buffer does not guarantee retrieval duration. Earlier same-contest history can be retained near lock.')
     rotation_rows, coverage = rotations, rotation_status
+    long_snapshot = st.session_state.get('slate_long_rotation_snapshot')
+    retained_long = long_snapshot is not None and long_snapshot[0] == research_scope
+    used_longer = False
     if longer:
-        with st.spinner('Checking up to ten recent team games…'):
-            rotation_rows, coverage = extended_rotations(slate, tuple(sorted(set(pool.game))))
-    if recover_roles and rotation_rows:
+        if retained_long:
+            rotation_rows, coverage = long_snapshot[1:3]
+            used_longer = True
+        if history_early and (refresh or not retained_long):
+            try:
+                with st.spinner('Checking up to ten recent team games…'):
+                    extended_rows, extended_coverage = extended_rotations(slate, games)
+                if extended_rows:
+                    rotation_rows, coverage = extended_rows, extended_coverage
+                    used_longer = True
+                else:
+                    st.info('No longer-window observations returned; retaining available earlier history.')
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                st.warning(f'Extended history unavailable: {exc}. Retaining available earlier history.')
+        elif not history_early:
+            st.caption('Using retained longer history; no new optional request near lock.' if retained_long
+                       else 'Longer history deferred: schedule or time buffer not verified.')
+    # Recheck the clock after extended retrieval. Optional role requests must
+    # not start solely because there was time before the previous batch.
+    role_early = extended_history_safe(history_schedule, games, datetime.now(ET), slate)
+    if recover_roles and rotation_rows and role_early:
         try:
             with st.spinner('Cross-checking historical starting roles…'):
-                rotation_rows, role_coverage = public_historical_roles(rotation_rows, slate, longer)
+                rotation_rows, role_coverage = public_historical_roles(rotation_rows, slate, used_longer)
             st.caption(f'Historical starter/bench coverage: {role_coverage["known"]}/{role_coverage["total"]} played box observations. '
                        f'{role_coverage["attempted_games"]}/{role_coverage["pending_games"]} games with missing role flags checked.')
         except (OSError, ValueError, KeyError, TypeError) as exc:
             st.warning(f'Historical role recovery unavailable: {exc}. Unverified roles remain unknown.')
+    elif recover_roles and not role_early:
+        st.caption('New optional historical role requests deferred; retained role evidence is unchanged.')
+    if used_longer:
+        st.session_state['slate_long_rotation_snapshot'] = (research_scope, rotation_rows, coverage)
     recent_rates, recent_absences = opportunity_evidence(scored, rotation_rows, slate)
     team_review = team_opportunity_review(scored, audit, now)
     if not team_review.empty:
@@ -469,7 +499,7 @@ def render_slate(history_slot):
     reviewed_export = attach_window_inputs(reviewed_export, rotation_rows, slate)
     window_supported = int(reviewed_export.shadow_hw_history_json.ne('[]').sum())
     st.caption(f'{window_supported} players with eight matched historical observations for experimental window review. '
-               'Completeness, availability and pre-tip checks still apply. Enable the longer rotation window early in the session for coverage.')
+               'Completeness, availability and pre-tip checks still apply. The longer window defaults on when the verified schedule permits an early request.')
     if not queue.empty:
         queue = attach_rate_context(queue, recent_rates)
         if not matchup.empty:
