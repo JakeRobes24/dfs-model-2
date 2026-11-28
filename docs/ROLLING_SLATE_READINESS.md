@@ -16,6 +16,8 @@ After completing the November 27 NBA contest 137257 post-slate review, pause dis
 
 Acceptance: a reproducible multi-slate performance report with sample counts, matched comparisons, data gaps, signed bias and error decomposition, pre-lock versus final candidate attribution, and a ranked set of testable corrective hypotheses. This is an approved research priority, not a claim of completed audit or implemented changes.
 
+The [first five-contest audit](validation/nov28-live-performance-audit.md) records the matched evidence and outstanding archive gaps. Keep this priority while expanding comparable close-time and simulation records.
+
 ## November 24 checkpoint (NBA contest 137128)
 
 - Hosted archive submission and backup publication observed. Four pre-tip candidates and 105 contest rows preserved; manifest reports 668 historical research rows.

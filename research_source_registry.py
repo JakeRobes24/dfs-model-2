@@ -54,6 +54,7 @@ HISTORICAL_RESEARCH_LINKS = {
     'KeelStats': 'https://keelstats.com/nba/usage',
 }
 RESEARCH_LINKS = {
+    'SumerSports': 'https://sumersports.com/players/wide-receiver/',
     'MatchWiz': 'https://matchwiz.ai/nba/lineups',
     'TheCapper': 'https://thecapper.io/nba/projections/',
     'KeelStats': 'https://keelstats.com/nba/usage',
