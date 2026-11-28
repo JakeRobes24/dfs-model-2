@@ -363,3 +363,82 @@ def compare_frozen_component_rate(frame):
                        'MAE improvement vs reviewed':mae.adjusted_fd_points-mae.component_shadow_fd,
                        'Shadow bias':errors.component_shadow_fd.mean()})
     return pd.DataFrame([report])
+
+
+COMPONENT_CAPTURE_VERSION='2026-11-28-v1'
+COMPONENT_CAPTURE_FIELDS=('component_capture_version','component_captured_at',
+                          'frozen_component_fd','frozen_component_basis')
+
+
+def freeze_component_rate(frame):
+    """Freeze the existing fixed component challenger, not a new rate policy.
+
+    Only full verified pre-tip capture metadata is accepted. Older archived
+    features may support reconstruction but cannot establish an exact frozen
+    prediction. Aggregate historical features retain their original provenance
+    limitations; this receipt does not independently authenticate source times.
+    """
+    required={'fanduel_id','replay_captured_at_utc','replay_cutoff_utc',
+              'replay_timing','replay_before_full_slate_tip',
+              'replay_contest_sha256','replay_daily_sha256'}
+    out=frame.copy()
+    if frame.empty or not required<=set(frame):
+        return out
+    from nba_distribution_review import timestamp
+    captured=frame.replay_captured_at_utc.map(timestamp)
+    cutoff=frame.replay_cutoff_utc.map(timestamp)
+    if (not frame.fanduel_id.is_unique or captured.isna().any() or cutoff.isna().any()
+        or captured.nunique()!=1 or not (captured<cutoff).all()
+        or not frame.replay_timing.eq('before_scheduled_tip').all()
+        or not frame.replay_before_full_slate_tip.astype(str).str.lower().eq('true').all()
+        or any(frame[k].nunique()!=1 or not frame[k].astype(str).str.fullmatch('[0-9a-f]{64}').all()
+               for k in ('replay_contest_sha256','replay_daily_sha256'))):
+        return out
+    original=out.copy()
+    # Capture uses original importer names; replay uses the FD-specific aliases.
+    for source,dest in [('projected_minutes','daily_minutes'),('projected_fd_points','daily_points')]:
+        if source in original:
+            original[dest]=original[source]
+    predicted=component_rate_shadow(original)
+    if predicted.empty:
+        return out
+    lookup=predicted.set_index('fanduel_id')
+    out['component_capture_version']=COMPONENT_CAPTURE_VERSION
+    out['component_captured_at']=out.replay_captured_at_utc
+    out['frozen_component_fd']=out.fanduel_id.map(lookup.component_shadow_fd)
+    out['frozen_component_basis']=out.fanduel_id.map(lookup.component_basis)
+    return out
+
+
+def compare_exact_component_capture(frame):
+    """Grade only recorded forecast values that reproduce from original inputs."""
+    empty=pd.DataFrame([{'Policy':COMPONENT_POLICY+' — exact capture','Paired players':0}])
+    if not {*COMPONENT_CAPTURE_FIELDS,'daily_points','adjusted_fd_points',
+            'actual_points','actual_minutes','eligible','verified_outcome','nba_source'}<=set(frame):
+        return empty
+    expected=freeze_component_rate(frame.drop(columns=list(COMPONENT_CAPTURE_FIELDS)))
+    if not set(COMPONENT_CAPTURE_FIELDS)<=set(expected):
+        return empty
+    from nba_distribution_review import timestamp
+    recorded=pd.to_numeric(frame.frozen_component_fd,errors='coerce')
+    calculated=pd.to_numeric(expected.frozen_component_fd,errors='coerce')
+    numeric=frame[['daily_points','adjusted_fd_points','actual_points','actual_minutes']].apply(pd.to_numeric,errors='coerce')
+    baseline=(frame.eligible.astype(str).str.lower().eq('true') & frame.verified_outcome.eq('played')
+              & frame.nba_source.fillna('').astype(str).str.strip().ne('')
+              & numeric.actual_minutes.between(10,60)
+              & np.isfinite(numeric).all(axis=1))
+    good=(baseline & frame.component_capture_version.eq(COMPONENT_CAPTURE_VERSION)
+          & frame.component_captured_at.map(timestamp).notna()
+          & frame.component_captured_at.map(timestamp).eq(frame.replay_captured_at_utc.map(timestamp))
+          & frame.frozen_component_basis.eq(expected.frozen_component_basis)
+          & np.isfinite(recorded) & np.isclose(recorded,calculated,rtol=1e-9,atol=1e-8))
+    report=empty.iloc[0].to_dict()
+    report.update({'Paired players':int(good.sum()),'Eligible played with baseline':int(baseline.sum())})
+    if good.any():
+        actual=numeric.loc[good,'actual_points']
+        err=recorded[good]-actual
+        before=(numeric.loc[good,'adjusted_fd_points']-actual).abs()
+        report.update({'DAILY MAE':(numeric.loc[good,'daily_points']-actual).abs().mean(),
+                       'Reviewed MAE':before.mean(),'Shadow MAE':err.abs().mean(),
+                       'MAE improvement vs reviewed':(before-err.abs()).mean(),'Shadow bias':err.mean()})
+    return pd.DataFrame([report])
