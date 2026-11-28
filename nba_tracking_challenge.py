@@ -28,10 +28,14 @@ def nba_house_potential_assists(raw):
             continue
         link = cells[0].find('a', href=True)
         match = re.fullmatch(r'/game/(\d{4}-\d{2}-\d{2})/([a-z]+)-at-([a-z]+)', link['href']) if link else None
-        values = [cell.get_text(' ', strip=True) for cell in cells[1:6]]
+        # Rebound chances are not used to validate potential assists. Require
+        # the counting-box rebounds for the independent identity cross-check,
+        # but do not discard a valid assist observation solely for a missing
+        # unrelated tracking channel.
+        values = [cell.get_text(' ', strip=True) for cell in cells[1:5]]
         if not match or not all(value.isdecimal() for value in values):
             continue
-        minutes, assists, potential, rebounds, _ = map(int, values)
+        minutes, assists, potential, rebounds = map(int, values)
         if 0 <= assists <= potential <= 60 and 10 <= minutes <= 60:
             rows.append(dict(date=match[1], game=f'{team_code(match[2])}@{team_code(match[3])}',
                              name=name, rounded_minutes=minutes, assists=assists, rebounds=rebounds,
