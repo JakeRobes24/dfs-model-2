@@ -169,3 +169,68 @@ def predictive_coverage(sport, *, matched=None, captured=None):
         lambda row: 'Matched outcomes' if row['Matched forecast rows by metric'] else
         'Captured forecasts' if row['Forecast rows awaiting outcomes'] else 'No comparable rows in this archive',
         axis=1))
+
+
+# Highest established use across sports, not a live coverage or deployment claim.
+# A source may have a lower integration level in the other sport.
+MODEL_SUPPORT = {
+    'Official NBA reports / NBA Stats': 'NBA: official availability and historical rotation/production',
+    'Official NFL reports / statistics': 'NFL: manual official status and outcome evidence',
+    'RotoWire': 'NBA: starter and minutes evidence; NFL: manual research',
+    'NBA House': 'NBA: minutes evidence',
+    'RotoGrinders': 'NBA: minutes and point consensus; NFL: manual research',
+    'PropSims': 'NBA: minutes and point consensus; NFL: advisory weekly reference',
+    'Daily Fantasy Fuel': 'NBA: point consensus; NFL: manual research',
+    'LineupExperts': 'NBA: conditional verified points upload; automatic public board is reference only',
+}
+INTEGRATED_REFERENCE = {
+    'Fantasy Team Advisors', 'FantasySportsEdge', 'MatchWiz', 'KeelStats',
+    'Edgehalla', '4for4', 'DailyFantasy.tips',
+}
+MANUAL_HISTORICAL = {
+    'Courtside', 'Drop Coverage', 'DraftEdge', 'RotoQL / stat-api',
+    'Linemate', 'WalterPicks', 'TheCapper', 'The Fantasy Footballers',
+    'Fantasy Points', 'FantasySharks', 'Upper Hand Fantasy', 'FTN via nflverse',
+    'PBP Stats', 'SumerSports',
+}
+NBA_POINT_FAMILIES = {'Daily Fantasy Fuel', 'PropSims', 'RotoGrinders', 'LineupExperts'}
+NBA_MINUTE_PROVIDERS = {'RotoWire', 'NBA House', 'PropSims', 'RotoGrinders'}
+
+
+def source_inventory():
+    """All registered providers, one row each; no inference of live acceptance.
+
+    New names default to candidate pending explicit classification. NFL has no
+    automatic weighted independent point consensus in the reviewed staging path.
+    Separate the base contest and DAILY inputs from external research providers.
+    """
+    names = [r[0] for r in SOURCES]
+    groups = [set(MODEL_SUPPORT), INTEGRATED_REFERENCE, MANUAL_HISTORICAL]
+    if len(names) != len(set(names)) or any(
+            not g <= set(names) for g in groups) or any(
+            a & b for i,a in enumerate(groups) for b in groups[i+1:]):
+        raise ValueError('Source inventory has duplicate or stale classifications')
+    rows = []
+    for name,nba,nfl,purpose in SOURCES:
+        if name in MODEL_SUPPORT:
+            tier = 'Direct or conditional model support'
+        elif name in INTEGRATED_REFERENCE:
+            tier = 'Integrated advisory reference'
+        elif name in MANUAL_HISTORICAL:
+            tier = 'Manual or historical research'
+        else:
+            tier = 'Candidate / further verification'
+        rows.append({'Source':name, 'Highest established use':tier,
+                     'NBA integration':nba, 'NFL integration':nfl,
+                     'NBA eligible point family':name in NBA_POINT_FAMILIES,
+                     'NBA eligible automatic minutes provider':name in NBA_MINUTE_PROVIDERS,
+                     'NFL automatic point consensus':False,
+                     'Model contribution':MODEL_SUPPORT.get(name, 'Research only; no automatic scoring vote'),
+                     'Research purpose':purpose,
+                     'Verified access link':RESEARCH_LINKS.get(name,'')})
+    return pd.DataFrame(rows)
+
+
+def source_inventory_counts():
+    """Counts of registry entries, not the number of successfully fetched sources."""
+    return source_inventory()['Highest established use'].value_counts().to_dict()
